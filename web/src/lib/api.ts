@@ -51,8 +51,31 @@ export interface CompanyRow {
   openVacancies: number;
 }
 
+/**
+ * Деталі компанії. Тип описує саме те, що повертає GET /companies/:id, і навмисно
+ * не успадковує CompanyRow: рахунку в цій відповіді немає, він рахується на льоту
+ * лише для списку. Раніше тип обіцяв поле score, і в інтерфейсі показувався нуль.
+ */
 export interface CompanyDetail {
-  company: CompanyRow & { careersSlug: string | null; sizeHint: string | null };
+  company: {
+    id: number;
+    name: string;
+    domain: string;
+    country: string | null;
+    city: string | null;
+    sizeHint: string | null;
+    sources: string[];
+    careersUrl: string | null;
+    careersKind: string;
+    careersSlug: string | null;
+    techHints: string[];
+    tags: string[];
+    description: string | null;
+    sourceUrl: string | null;
+    firstSeen: number;
+    lastChecked: number | null;
+    lastChangeAt: number | null;
+  };
   state: { status: string; reason: string | null; updatedAt: number } | null;
   vacancies: {
     id: number;

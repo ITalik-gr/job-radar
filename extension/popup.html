@@ -2,84 +2,104 @@
 <html lang="uk">
   <head>
     <meta charset="utf-8" />
-    <style>
-      :root { color-scheme: dark; }
-      body {
-        width: 320px;
-        margin: 0;
-        padding: 12px;
-        background: #0b0d10;
-        color: #e6e9ef;
-        font: 13px/1.45 ui-sans-serif, system-ui, sans-serif;
-      }
-      h1 { font-size: 14px; margin: 0 0 8px; }
-      h2 { font-size: 11px; text-transform: uppercase; color: #8a93a3; margin: 10px 0 4px; letter-spacing: .04em; }
-      .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
-      .muted { color: #8a93a3; }
-      .panel { border: 1px solid #262b33; border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #14171c; }
-      button {
-        width: 100%;
-        padding: 7px;
-        margin-top: 6px;
-        border-radius: 6px;
-        border: 1px solid #1e4433;
-        background: #12271c;
-        color: #6ee7a8;
-        font: inherit;
-        cursor: pointer;
-      }
-      button.secondary { border-color: #262b33; background: #1b1f26; color: #e6e9ef; }
-      button.danger { border-color: #4a2226; background: #2a1618; color: #f2777a; }
-      label { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
-      input[type='number'] { width: 62px; background: #1b1f26; color: #e6e9ef; border: 1px solid #262b33; border-radius: 4px; padding: 2px 4px; }
-      .links a {
-        display: block;
-        color: #e6e9ef;
-        text-decoration: none;
-        padding: 3px 6px;
-        border-radius: 4px;
-      }
-      .links a:hover { background: #1b1f26; color: #6ee7a8; }
-      .bad { color: #f2777a; }
-    </style>
+    <!--
+      Розширення не має збірки, тому Mantine тут не підключити. Токени кольорів,
+      відступів і розмірів навмисно ті самі, що у веб-застосунку, щоб попап
+      і радар виглядали одним інструментом.
+    -->
+    <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <h1>Job Radar Collector</h1>
+    <header class="bar">
+      <span class="brand">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <circle cx="8" cy="8" r="6.6" fill="none" stroke="#cfe0f9" stroke-width="1.6" />
+          <circle cx="8" cy="8" r="2.4" fill="#2a78d6" />
+        </svg>
+        Job Radar
+      </span>
 
-    <div class="panel">
-      <div class="row"><span class="muted">сервер</span><span id="health">перевіряю</span></div>
-      <div class="row"><span class="muted">каталог</span><span id="site">невідомо</span></div>
-      <div class="row"><span class="muted">карток тут</span><span id="found">0</span></div>
-      <div class="row"><span class="muted">з доменом</span><span id="withDomain">0</span></div>
-      <div class="row"><span class="muted">наступна сторінка</span><span id="next">нема</span></div>
-    </div>
+      <span class="status" id="health">
+        <i class="dot" data-tone="idle"></i>
+        <span id="healthText">перевіряю</span>
+      </span>
+    </header>
 
-    <div class="panel">
-      <div class="row"><span class="muted">сьогодні сторінок</span><span id="pages">0</span></div>
-      <div class="row"><span class="muted">нових компаній</span><span id="created">0</span></div>
-      <div class="row"><span class="muted">оновлено</span><span id="updated">0</span></div>
-    </div>
+    <main>
+      <section class="card">
+        <div class="card-head">
+          <span class="label">Ця сторінка</span>
+          <span class="pill" id="site">перевіряю</span>
+        </div>
 
-    <button id="walk">Автообхід пагінації</button>
-    <button id="collect" class="secondary">Зібрати цю сторінку</button>
+        <div class="metrics two" id="pageMetrics">
+          <div><b id="found">0</b><span>карток на сторінці</span></div>
+          <div><b id="withDomain">0</b><span>з доменом</span></div>
+        </div>
 
-    <h2>Налаштування</h2>
-    <div class="panel">
-      <label><input type="checkbox" id="auto" /> збирати автоматично</label>
-      <label>пауза, с <input type="number" id="minDelay" min="3" max="60" /> до <input type="number" id="maxDelay" min="3" max="90" /></label>
-      <label>сторінок за прохід <input type="number" id="maxPages" min="1" max="50" /></label>
-      <label style="display:block">адреса радара
-        <input type="text" id="apiUrl" style="width:100%;margin-top:2px;background:#1b1f26;color:#e6e9ef;border:1px solid #262b33;border-radius:4px;padding:3px 5px" />
-      </label>
-      <label style="display:block">токен, якщо задеплоєно
-        <input type="password" id="token" style="width:100%;margin-top:2px;background:#1b1f26;color:#e6e9ef;border:1px solid #262b33;border-radius:4px;padding:3px 5px" />
-      </label>
-    </div>
+        <p class="note" id="pageNote" hidden></p>
+      </section>
 
-    <h2>Куди піти по студії</h2>
-    <div class="links" id="catalogs"></div>
+      <div class="actions">
+        <button id="walk" class="btn primary">Автообхід пагінації</button>
+        <button id="collect" class="btn">Зібрати цю сторінку</button>
+      </div>
 
-    <button id="open" class="secondary">Відкрити Job Radar</button>
+      <section class="card">
+        <div class="card-head">
+          <span class="label">Сьогодні зібрано</span>
+        </div>
+        <div class="metrics">
+          <div><b id="pages">0</b><span>сторінок</span></div>
+          <div><b id="created">0</b><span>нових</span></div>
+          <div><b id="updated">0</b><span>оновлено</span></div>
+        </div>
+      </section>
+
+      <details id="catalogsBox">
+        <summary>Куди піти по студії</summary>
+        <div class="links" id="catalogs"></div>
+      </details>
+
+      <details id="settingsBox">
+        <summary>Налаштування</summary>
+
+        <div class="settings">
+          <label class="check">
+            <input type="checkbox" id="auto" />
+            <span>збирати автоматично при відкритті каталогу</span>
+          </label>
+
+          <div class="field">
+            <span class="field-label">Пауза між сторінками, секунди</span>
+            <div class="row">
+              <input type="number" id="minDelay" min="3" max="60" />
+              <span class="sep">до</span>
+              <input type="number" id="maxDelay" min="3" max="90" />
+            </div>
+            <span class="hint">Не менше трьох: гортаємо не швидше за людину.</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Сторінок за один прохід</span>
+            <input type="number" id="maxPages" min="1" max="50" />
+            <span class="hint">Стеля 50, далі обхід зупиняється сам.</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Адреса радара</span>
+            <input type="text" id="apiUrl" spellcheck="false" />
+          </div>
+
+          <div class="field">
+            <span class="field-label">Токен, якщо задеплоєно</span>
+            <input type="password" id="token" />
+          </div>
+        </div>
+      </details>
+
+      <button id="open" class="btn wide">Відкрити Job Radar</button>
+    </main>
 
     <script src="catalogs.js"></script>
     <script src="popup.js"></script>

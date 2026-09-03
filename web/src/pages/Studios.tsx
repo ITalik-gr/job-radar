@@ -1,134 +1,352 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  DataList,
+  Divider,
+  EmptyState,
+  Group,
+  Kbd,
+  NumberInput,
+  ScrollArea,
+  Select,
+  Skeleton,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import {
+  Ban,
+  Check,
+  Clock,
+  ExternalLink,
+  Mail,
+  Palette,
+  Search,
+  Send,
+  ThumbsDown,
+} from 'lucide-react';
 import { api, formatDate, type StudioCard } from '../lib/api';
-import { Button, ErrorBox, Panel, Score, Tag } from '../components/ui';
+import { useHotkeys } from '../lib/hotkeys';
+import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
+import { Score } from '../components/Score';
 
 const TEMPLATES = ['studio_pitch', 'agency_cold', 'project_offer', 'referral'];
 
-function Card({ card, onAct }: { card: StudioCard; onAct: (body: Record<string, unknown>) => void }) {
-  const [open, setOpen] = useState(false);
+/** Стек, знятий із сайту студії. WordPress і Tilda означають, що фронт там навряд чи наймають. */
+const WEAK_STACK = ['wordpress', 'tilda', 'wix', 'squarespace', 'drupal'];
+
+function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; onSelect: () => void }) {
+  return (
+    <UnstyledButton
+      onClick={onSelect}
+      px="md"
+      py="sm"
+      w="100%"
+      style={{
+        display: 'block',
+        textAlign: 'left',
+        borderBottom: '1px solid var(--mantine-color-gray-2)',
+        borderLeft: `3px solid ${active ? 'var(--mantine-color-brand-6)' : 'transparent'}`,
+        background: active ? 'var(--mantine-color-brand-0)' : undefined,
+      }}
+    >
+      <Group gap="sm" wrap="nowrap" align="flex-start">
+        <Score value={card.score} size="sm" />
+        <Box style={{ minWidth: 0, flex: 1 }}>
+          <Group gap={6} wrap="nowrap">
+            <Text size="sm" fw={600} truncate>
+              {card.name}
+            </Text>
+            {card.lastContactedAt && <Clock size={13} color="var(--mantine-color-yellow-7)" />}
+          </Group>
+
+          <Text size="xs" c="dimmed" truncate mt={2}>
+            {[card.city, card.country].filter(Boolean).join(', ') || card.domain}
+          </Text>
+
+          <Group gap={4} mt={6} wrap="nowrap" style={{ overflow: 'hidden' }}>
+            {card.openVacancies > 0 && (
+              <Badge size="xs" color="green">
+                вакансій {card.openVacancies}
+              </Badge>
+            )}
+            {card.techHints.slice(0, 3).map((tech) => (
+              <Badge key={tech} size="xs" color={WEAK_STACK.includes(tech) ? 'red' : 'brand'}>
+                {tech}
+              </Badge>
+            ))}
+          </Group>
+        </Box>
+      </Group>
+    </UnstyledButton>
+  );
+}
+
+function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string, unknown>) => void }) {
   const [template, setTemplate] = useState(TEMPLATES[0]!);
 
-  return (
-    <Panel className="p-3">
-      <div className="flex items-start gap-3">
-        <div className="w-10 shrink-0 pt-0.5">
-          <Score value={card.score} />
-        </div>
+  useHotkeys(
+    useMemo(
+      () => ({
+        i: () => onAct({ action: 'interesting' }),
+        n: () => onAct({ action: 'not_interesting' }),
+        e: () => onAct({ action: 'contacted', templateUsed: template }),
+        b: () => onAct({ action: 'blacklist' }),
+        s: () => onAct({ action: 'snooze', days: 60 }),
+      }),
+      [onAct, template],
+    ),
+  );
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <a
+  const weak = card.techHints.filter((tech) => WEAK_STACK.includes(tech));
+
+  return (
+    <>
+      <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+        <Box p="lg" maw={860}>
+          <Group gap="sm" mb="xs">
+            <Text size="sm" c="dimmed">
+              {card.domain}
+            </Text>
+            {card.sizeHint && <Badge color="gray">{card.sizeHint}</Badge>}
+            {card.lastContactedAt && (
+              <Badge color="yellow" leftSection={<Clock size={11} />}>
+                писали {formatDate(card.lastContactedAt)}
+              </Badge>
+            )}
+          </Group>
+
+          <Title order={2}>{card.name}</Title>
+
+          {card.description && (
+            <Text mt="sm" c="dimmed">
+              {card.description}
+            </Text>
+          )}
+
+          {weak.length > 0 && (
+            <Alert color="yellow" mt="md" title="Стек сайту слабкий">
+              На сайті видно {weak.join(', ')}. Така студія рідко наймає React-розробника, лист майже напевно
+              піде в нікуди.
+            </Alert>
+          )}
+
+          <Group mt="md" gap="sm">
+            <Button
+              component="a"
               href={`https://${card.domain}`}
               target="_blank"
               rel="noreferrer"
-              className="text-[15px] font-medium hover:underline"
+              variant="light"
+              leftSection={<ExternalLink size={14} />}
             >
-              {card.name}
-            </a>
-            <span className="text-[var(--color-muted)]">{card.domain}</span>
-            {card.sizeHint && <Tag>{card.sizeHint}</Tag>}
-            {card.country && <Tag>{card.country}</Tag>}
-            {card.city && <span className="text-[var(--color-muted)]">{card.city}</span>}
-            {card.lastContactedAt && <Tag tone="warn">писали {formatDate(card.lastContactedAt)}</Tag>}
-          </div>
-
-          {card.description && (
-            <p className="mt-1 line-clamp-2 text-[var(--color-muted)]">{card.description}</p>
-          )}
-
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            {card.techHints.map((tech) => (
-              <Tag key={tech} tone={['wordpress', 'tilda'].includes(tech) ? 'bad' : 'good'}>
-                {tech}
-              </Tag>
-            ))}
-            {card.tags.slice(0, 6).map((tag) => (
-              <Tag key={tag}>{tag}</Tag>
-            ))}
-            {card.openVacancies > 0 && <Tag tone="good">вакансій {card.openVacancies}</Tag>}
+              Сайт студії
+            </Button>
             {card.careersUrl && (
-              <a href={card.careersUrl} target="_blank" rel="noreferrer" className="hover:underline">
-                сторінка вакансій
-              </a>
+              <Button component="a" href={card.careersUrl} target="_blank" rel="noreferrer" variant="subtle">
+                Сторінка вакансій
+              </Button>
             )}
             {card.sourceUrl && (
-              <a
-                href={card.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--color-accent)] hover:underline"
-              >
-                профіль у каталозі
-              </a>
+              <Button component="a" href={card.sourceUrl} target="_blank" rel="noreferrer" variant="subtle">
+                Профіль у каталозі
+              </Button>
             )}
-          </div>
+          </Group>
 
-          {card.contacts.length > 0 && (
-            <div className="mt-1 text-[var(--color-muted)]">
-              {card.contacts.map((contact, index) => (
-                <span key={index} className="mr-3">
-                  {contact.name} {contact.role && `(${contact.role})`} {contact.email}
-                </span>
+          <Divider my="lg" />
+
+          <DataList labelWidth={132} gap="sm">
+            <DataList.Item>
+              <DataList.ItemLabel>рахунок</DataList.ItemLabel>
+              <DataList.ItemValue>
+                <Score value={card.score} />
+              </DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>де</DataList.ItemLabel>
+              <DataList.ItemValue>
+                {[card.city, card.country].filter(Boolean).join(', ') || <Text c="dimmed">не вказано</Text>}
+              </DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>стек із сайту</DataList.ItemLabel>
+              <DataList.ItemValue>
+                {card.techHints.length === 0 ? (
+                  <Text c="dimmed">не визначено</Text>
+                ) : (
+                  <Group gap={6}>
+                    {card.techHints.map((tech) => (
+                      <Badge key={tech} color={WEAK_STACK.includes(tech) ? 'red' : 'brand'}>
+                        {tech}
+                      </Badge>
+                    ))}
+                  </Group>
+                )}
+              </DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>теги каталогу</DataList.ItemLabel>
+              <DataList.ItemValue>
+                {card.tags.length === 0 ? (
+                  <Text c="dimmed">немає</Text>
+                ) : (
+                  <Group gap={6}>
+                    {/* Каталоги пхають у теги все підряд, аж до часток відсотків.
+                        Показуємо перші десять, решта в лічильнику. */}
+                    {card.tags.slice(0, 10).map((tag) => (
+                      <Badge key={tag} color="gray">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {card.tags.length > 10 && (
+                      <Text size="sm" c="dimmed">
+                        ще {card.tags.length - 10}
+                      </Text>
+                    )}
+                  </Group>
+                )}
+              </DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>джерела</DataList.ItemLabel>
+              <DataList.ItemValue>{card.sources.join(', ') || <Text c="dimmed">невідомо</Text>}</DataList.ItemValue>
+            </DataList.Item>
+          </DataList>
+
+          {/* Іменні контакти цінніші за hello@, тому вони окремим блоком і вище за розбір рахунку. */}
+          <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
+            контакти
+          </Text>
+          {card.contacts.length === 0 ? (
+            <Text c="dimmed" size="sm">
+              іменних контактів немає. Пошта на сайті майже завжди hello@ або info@, її читає менеджер.
+            </Text>
+          ) : (
+            <Stack gap={6}>
+              {card.contacts.map((contact, position) => (
+                <Group key={position} gap="xs">
+                  <Mail size={14} color="var(--mantine-color-dimmed)" />
+                  <Text fw={500}>{contact.name ?? contact.email}</Text>
+                  {contact.role && (
+                    <Badge color="gray" size="sm">
+                      {contact.role}
+                    </Badge>
+                  )}
+                  {contact.name && contact.email && (
+                    <Anchor href={`mailto:${contact.email}`} size="sm">
+                      {contact.email}
+                    </Anchor>
+                  )}
+                </Group>
               ))}
-            </div>
+            </Stack>
           )}
 
-          {open && (
-            <div className="mt-2 space-y-0.5 border-t border-[var(--color-line)] pt-2">
-              {card.why.map((item) => (
-                <div key={item.reason} className="flex gap-2">
-                  <span className={`w-10 text-right ${item.weight > 0 ? 'text-[var(--color-accent)]' : 'text-[var(--color-danger)]'}`}>
-                    {item.weight > 0 ? '+' : ''}
-                    {item.weight}
-                  </span>
-                  <span className="text-[var(--color-muted)]">{item.reason}</span>
-                </div>
-              ))}
-              <div className="pt-1 text-[var(--color-muted)]">джерела: {card.sources.join(', ')}</div>
-            </div>
-          )}
-        </div>
+          <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
+            звідки такий рахунок
+          </Text>
+          <Stack gap={4}>
+            {card.why.map((item) => (
+              <Group key={item.reason} gap="sm" wrap="nowrap">
+                <Text
+                  w={38}
+                  ta="right"
+                  fw={600}
+                  className="tabular"
+                  c={item.weight > 0 ? 'green.8' : 'red.8'}
+                >
+                  {item.weight > 0 ? '+' : ''}
+                  {item.weight}
+                </Text>
+                <Text c="dimmed">{item.reason}</Text>
+              </Group>
+            ))}
+          </Stack>
+        </Box>
+      </ScrollArea>
 
-        <div className="flex w-64 shrink-0 flex-col gap-1">
-          <div className="flex gap-1">
-            <Button tone="good" onClick={() => onAct({ action: 'interesting' })}>
-              Цікаво
-            </Button>
-            <Button onClick={() => onAct({ action: 'not_interesting' })}>Не цікаво</Button>
-          </div>
-          <div className="flex gap-1">
-            <select
-              value={template}
-              onChange={(event) => setTemplate(event.target.value)}
-              className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-panel-2)] px-1 py-1 text-[12px]"
-            >
-              {TEMPLATES.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-            <Button tone="good" onClick={() => onAct({ action: 'contacted', templateUsed: template })}>
-              Написав
-            </Button>
-          </div>
-          <div className="flex gap-1">
-            <Button tone="bad" onClick={() => onAct({ action: 'blacklist' })}>
-              Блок
-            </Button>
-            <Button onClick={() => onAct({ action: 'snooze', days: 60 })}>Відкласти 60 днів</Button>
-          </div>
-          <Button onClick={() => setOpen((value) => !value)}>{open ? 'Згорнути' : 'Чому цей рахунок'}</Button>
-        </div>
-      </div>
-    </Panel>
+      <PaneFooter>
+        <Button
+          color="green"
+          leftSection={<Check size={15} />}
+          rightSection={<Kbd size="xs">i</Kbd>}
+          onClick={() => onAct({ action: 'interesting' })}
+        >
+          Цікаво
+        </Button>
+        <Button
+          variant="default"
+          leftSection={<ThumbsDown size={15} />}
+          rightSection={<Kbd size="xs">n</Kbd>}
+          onClick={() => onAct({ action: 'not_interesting' })}
+        >
+          Не цікаво
+        </Button>
+
+        <Tooltip label="більше ніколи не показувати цю компанію">
+          <Button
+            color="red"
+            variant="light"
+            leftSection={<Ban size={15} />}
+            rightSection={<Kbd size="xs">b</Kbd>}
+            onClick={() => onAct({ action: 'blacklist' })}
+          >
+            Блок
+          </Button>
+        </Tooltip>
+        <Tooltip label="прибрати зі списку на 60 днів">
+          <Button
+            variant="default"
+            leftSection={<Clock size={15} />}
+            rightSection={<Kbd size="xs">s</Kbd>}
+            onClick={() => onAct({ action: 'snooze', days: 60 })}
+          >
+            Відкласти
+          </Button>
+        </Tooltip>
+
+        <Group gap="xs" ml="auto" wrap="nowrap">
+          <Select
+            data={TEMPLATES}
+            value={template}
+            onChange={(value) => value && setTemplate(value)}
+            allowDeselect={false}
+            w={150}
+            aria-label="шаблон листа"
+          />
+          <Button
+            leftSection={<Send size={15} />}
+            rightSection={<Kbd size="xs">e</Kbd>}
+            onClick={() => onAct({ action: 'contacted', templateUsed: template })}
+          >
+            Написав
+          </Button>
+        </Group>
+      </PaneFooter>
+    </>
   );
 }
 
 export function StudiosPage() {
   const client = useQueryClient();
   const [filters, setFilters] = useState({ q: '', country: '', min: '', all: '' });
+  const [cursor, setCursor] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['studios', filters],
@@ -136,57 +354,131 @@ export function StudiosPage() {
   });
 
   const act = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => api.companyAction(id, body),
-    onSuccess: () => {
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown>; name: string }) =>
+      api.companyAction(id, body),
+    onSuccess: (_result, { name }) => {
+      notifications.show({ color: 'green', title: name, message: 'збережено' });
       void client.invalidateQueries({ queryKey: ['studios'] });
       void client.invalidateQueries({ queryKey: ['stats'] });
     },
+    onError: (mutationError) =>
+      notifications.show({ color: 'red', title: 'не збереглось', message: String(mutationError) }),
   });
 
-  if (error) return <ErrorBox error={error} />;
+  const cards = data?.cards ?? [];
+  const index = Math.min(cursor, Math.max(0, cards.length - 1));
+  const current = cards[index];
+
+  useHotkeys(
+    useMemo(
+      () => ({
+        j: () => setCursor((value) => Math.min(value + 1, cards.length - 1)),
+        arrowdown: () => setCursor((value) => Math.min(value + 1, cards.length - 1)),
+        k: () => setCursor((value) => Math.max(value - 1, 0)),
+        arrowup: () => setCursor((value) => Math.max(value - 1, 0)),
+      }),
+      [cards.length],
+    ),
+    cards.length > 0,
+  );
+
+  if (error) {
+    return (
+      <Box p="lg">
+        <Alert color="red" title="Не вдалось прочитати список студій">
+          {error instanceof Error ? error.message : String(error)}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={filters.q}
-          onChange={(event) => setFilters({ ...filters, q: event.target.value })}
-          placeholder="назва, домен або тег"
-          className="w-56 rounded border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1"
-        />
-        <input
-          value={filters.country}
-          onChange={(event) => setFilters({ ...filters, country: event.target.value })}
-          placeholder="країна, напр. UA"
-          className="w-36 rounded border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1"
-        />
-        <input
-          value={filters.min}
-          onChange={(event) => setFilters({ ...filters, min: event.target.value })}
-          placeholder="мін. рахунок"
-          className="w-32 rounded border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1"
-        />
-        <label className="flex items-center gap-1 text-[var(--color-muted)]">
-          <input
-            type="checkbox"
-            checked={filters.all === '1'}
-            onChange={(event) => setFilters({ ...filters, all: event.target.checked ? '1' : '' })}
+    <SplitView
+      listWidth={368}
+      list={
+        <>
+          <PaneHeader>
+            <TextInput
+              placeholder="назва, домен або тег"
+              leftSection={<Search size={14} />}
+              value={filters.q}
+              onChange={(event) => setFilters({ ...filters, q: event.currentTarget.value })}
+              style={{ flex: 1 }}
+            />
+            <Button
+              variant={filtersOpen ? 'light' : 'subtle'}
+              onClick={() => setFiltersOpen((value) => !value)}
+              px="sm"
+            >
+              Фільтри
+            </Button>
+          </PaneHeader>
+
+          {filtersOpen && (
+            <Stack gap="sm" p="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+              <Group gap="sm" grow>
+                <TextInput
+                  label="Країна"
+                  placeholder="UA"
+                  value={filters.country}
+                  onChange={(event) => setFilters({ ...filters, country: event.currentTarget.value })}
+                />
+                <NumberInput
+                  label="Мін. рахунок"
+                  placeholder={String(data?.threshold ?? 5)}
+                  value={filters.min}
+                  onChange={(value) => setFilters({ ...filters, min: value === '' ? '' : String(value) })}
+                />
+              </Group>
+              <Checkbox
+                label="показати тих, кому вже писали"
+                checked={filters.all === '1'}
+                onChange={(event) => setFilters({ ...filters, all: event.currentTarget.checked ? '1' : '' })}
+              />
+            </Stack>
+          )}
+
+          <Group px="md" py={6} gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+            <Text size="xs" c="dimmed">
+              знайдено {cards.length}, поріг {data?.threshold ?? '-'}
+            </Text>
+            <Text size="xs" c="dimmed" ml="auto">
+              <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> перехід
+            </Text>
+          </Group>
+
+          <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+            {isLoading &&
+              Array.from({ length: 8 }, (_, position) => <Skeleton key={position} h={72} m="md" />)}
+            {cards.map((card, position) => (
+              <Row
+                key={card.companyId}
+                card={card}
+                active={position === index}
+                onSelect={() => setCursor(position)}
+              />
+            ))}
+          </ScrollArea>
+        </>
+      }
+      detail={
+        current ? (
+          <Detail
+            key={current.companyId}
+            card={current}
+            onAct={(body) => act.mutate({ id: current.companyId, body, name: current.name })}
           />
-          показати тих, кому вже писали
-        </label>
-        {data && <span className="text-[var(--color-muted)]">поріг {data.threshold}, знайдено {data.cards.length}</span>}
-      </div>
-
-      {isLoading && <div className="text-[var(--color-muted)]">завантаження</div>}
-      {data?.cards.length === 0 && (
-        <Panel className="p-3 text-[var(--color-muted)]">
-          порожньо. Імпортуй ще сторінок каталогу (`pnpm cli import:clutch`) або знизь мінімальний рахунок
-        </Panel>
-      )}
-
-      {data?.cards.map((card) => (
-        <Card key={card.companyId} card={card} onAct={(body) => act.mutate({ id: card.companyId, body })} />
-      ))}
-    </div>
+        ) : (
+          <Box p="xl" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+            <EmptyState
+              icon={<Palette size={28} />}
+              withIndicatorBackground
+              title={isLoading ? 'Читаю каталог' : 'Під ці фільтри нічого не підпало'}
+              description="Знизь мінімальний рахунок або збери ще сторінок каталогу розширенням у браузері."
+            />
+          </Box>
+        )
+      }
+    />
   );
 }

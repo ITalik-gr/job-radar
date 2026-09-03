@@ -1,0 +1,377 @@
+/* Ті самі токени, що в theme.ts веб-застосунку. */
+:root {
+  color-scheme: light;
+
+  --page: #f7f7f5;
+  --surface: #ffffff;
+  --subtle: #f3f3f1;
+  --line: #e6e5e1;
+  --line-strong: #d2d1cc;
+
+  --ink: #161615;
+  --ink-2: #575653;
+  --ink-3: #8a8985;
+
+  --brand: #2a78d6;
+  --brand-ink: #1c5cab;
+  --brand-soft: #eff5fd;
+  --brand-line: #cfe0f9;
+
+  --good: #0ca30c;
+  --warn: #fab219;
+  --warn-ink: #8a5d00;
+  --bad: #d03b3b;
+  --bad-ink: #a62d2d;
+
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* ---------- шапка ---------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Крапка стану завжди йде з текстом: колір сам по собі нічого не значить. */
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  flex: none;
+}
+
+.dot[data-tone='ok'] {
+  background: var(--good);
+}
+
+.dot[data-tone='bad'] {
+  background: var(--bad);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+/* ---------- картки ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.pill {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pill[data-tone='muted'] {
+  border-color: var(--line);
+  background: var(--subtle);
+  color: var(--ink-3);
+}
+
+/* Три числа в рядок: сканується одним поглядом, без читання підписів. */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* Стан наступної сторінки це не число, тому він живе в рядку-примітці, а не серед метрик. */
+.metrics.two {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.metrics > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics b {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics span {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.note {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.note[data-tone='warn'] {
+  color: var(--warn-ink);
+}
+
+.note[data-tone='bad'] {
+  color: var(--bad-ink);
+}
+
+/* ---------- кнопки ---------- */
+
+.actions {
+  display: grid;
+  gap: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--subtle);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  border-color: var(--brand-ink);
+  background: var(--brand);
+  color: #fff;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--brand-ink);
+}
+
+.btn.danger {
+  border-color: var(--bad);
+  background: #fdf0f0;
+  color: var(--bad-ink);
+}
+
+.btn.wide {
+  width: 100%;
+}
+
+/* ---------- згортайки ---------- */
+
+details {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 500;
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(-45deg);
+  flex: none;
+}
+
+details[open] summary::before {
+  transform: rotate(45deg);
+}
+
+details[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------- посилання на каталоги ---------- */
+
+.links {
+  padding: 8px;
+}
+
+.links .group {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  padding: 8px 6px 2px;
+}
+
+.links a {
+  display: block;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.links a:hover {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+/* ---------- налаштування ---------- */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sep {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+input[type='text'],
+input[type='password'],
+input[type='number'] {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+}
+
+input[type='number'] {
+  width: 72px;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.check input {
+  margin: 3px 0 0;
+  accent-color: var(--brand);
+}

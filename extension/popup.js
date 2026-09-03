@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+
 const SETTINGS = {
   autoCollect: true,
   minDelay: 4000,
@@ -24,10 +25,10 @@ async function send(message) {
 
 function renderCatalogs() {
   const root = $('catalogs');
+
   for (const { group, links } of JOB_RADAR_CATALOGS) {
     const title = document.createElement('div');
-    title.className = 'muted';
-    title.style.margin = '6px 0 2px';
+    title.className = 'group';
     title.textContent = group;
     root.appendChild(title);
 
@@ -44,10 +45,18 @@ function renderCatalogs() {
   }
 }
 
+function setNote(text, tone) {
+  const node = $('pageNote');
+  node.hidden = !text;
+  node.textContent = text ?? '';
+  if (tone) node.dataset.tone = tone;
+  else delete node.dataset.tone;
+}
+
 async function refresh() {
   const health = await chrome.runtime.sendMessage({ type: 'radar:health' });
-  $('health').textContent = health?.ok ? 'на звʼязку' : (health?.error ?? 'не запущений');
-  $('health').className = health?.ok ? '' : 'bad';
+  $('healthText').textContent = health?.ok ? 'на звʼязку' : (health?.error ?? 'не запущений');
+  $('health').querySelector('.dot').dataset.tone = health?.ok ? 'ok' : 'bad';
 
   const day = new Date().toISOString().slice(0, 10);
   const stored = await chrome.storage.local.get({ stats: {}, ...SETTINGS });
@@ -56,6 +65,7 @@ async function refresh() {
   $('pages').textContent = today.pages;
   $('created').textContent = today.created;
   $('updated').textContent = today.updated;
+
   $('auto').checked = stored.autoCollect;
   $('minDelay').value = Math.round(stored.minDelay / 1000);
   $('maxDelay').value = Math.round(stored.maxDelay / 1000);
@@ -64,19 +74,41 @@ async function refresh() {
   $('token').value = stored.token;
 
   const preview = await send({ type: 'radar:preview' });
+
+  // Не каталог: числа порожні, зате одразу видно, куди піти. Тому список каталогів
+  // розкривається сам, а на каталозі лишається згорнутим і не займає екран.
   if (!preview) {
     $('site').textContent = 'не каталог';
+    $('site').dataset.tone = 'muted';
+    $('pageMetrics').hidden = true;
+    setNote('Відкрий сторінку каталогу зі списку нижче, і збір почнеться сам.');
+    $('catalogsBox').open = true;
     $('walk').disabled = true;
+    $('collect').disabled = true;
     return;
   }
 
-  $('site').textContent = preview.site + (preview.known ? '' : ', незнайомий');
+  delete $('site').dataset.tone;
+  $('site').textContent = preview.site;
+  $('pageMetrics').hidden = false;
   $('found').textContent = preview.total;
   $('withDomain').textContent = preview.withDomain;
-  $('next').textContent = preview.nextPage ? 'є' : 'нема';
-  $('walk').textContent = preview.walking ? 'Зупинити автообхід' : 'Автообхід пагінації';
-  $('walk').className = preview.walking ? 'danger' : '';
-  $('walk').disabled = !preview.nextPage && !preview.walking;
+  $('collect').disabled = preview.total === 0;
+
+  const walk = $('walk');
+  walk.textContent = preview.walking ? 'Зупинити автообхід' : 'Автообхід пагінації';
+  walk.className = preview.walking ? 'btn danger' : 'btn primary';
+  walk.disabled = !preview.nextPage && !preview.walking;
+
+  if (!preview.known) {
+    setNote('Каталог незнайомий, розбір іде загальною евристикою. Перевір, чи схожі числа на правду.', 'warn');
+  } else if (preview.total === 0) {
+    setNote('Карток не видно. Можливо, сторінка ще вантажиться або показує перевірку.', 'warn');
+  } else if (!preview.nextPage) {
+    setNote('Наступної сторінки не видно, автообхід зупиниться після цієї.');
+  } else {
+    setNote(`Наступна сторінка знайдена, за прохід буде до ${stored.maxPages} сторінок.`);
+  }
 }
 
 $('walk').addEventListener('click', async () => {
@@ -86,9 +118,11 @@ $('walk').addEventListener('click', async () => {
 });
 
 $('collect').addEventListener('click', async () => {
-  $('collect').textContent = 'збираю';
+  const button = $('collect');
+  button.disabled = true;
+  button.textContent = 'збираю';
   await send({ type: 'radar:collect-now' });
-  $('collect').textContent = 'Зібрати цю сторінку';
+  button.textContent = 'Зібрати цю сторінку';
   await refresh();
 });
 
@@ -104,7 +138,11 @@ for (const [id, key, scale] of [
 ]) {
   $(id).addEventListener('change', async (event) => {
     const value =
-      scale === 'text' ? event.target.value.trim() : scale ? Number(event.target.value) * scale : event.target.checked;
+      scale === 'text'
+        ? event.target.value.trim()
+        : scale
+          ? Number(event.target.value) * scale
+          : event.target.checked;
     await chrome.storage.local.set({ [key]: value });
     await send({ type: 'radar:settings', settings: { [key]: value } });
   });

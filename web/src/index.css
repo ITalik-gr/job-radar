@@ -1,120 +1,33 @@
-@import 'tailwindcss';
-
 /*
- * Світла робоча тема. Щільна, майже без тіней, лінії волосяні.
- * Це інструмент на щодня, тому головне читабельність таблиць і швидке сканування очима.
+ * Порядок шарів важливий. Mantine приносить власне скидання стилів і власні класи,
+ * Tailwind тут лишається тільки для верстки сторінок, тому його утиліти мусять
+ * перебивати Mantine. Preflight від Tailwind не підключаємо: два скидання поспіль
+ * конфліктують і ламають типографіку компонентів.
  */
-@theme {
-  /* площини */
-  --color-page: #f7f7f5;
-  --color-surface: #ffffff;
-  --color-subtle: #f3f3f1;
-  --color-hover: #f7f7f5;
-  --color-line: #e6e5e1;
-  --color-line-strong: #d2d1cc;
+@layer theme, mantine, utilities;
 
-  /* текст */
-  --color-ink: #161615;
-  --color-ink-2: #575653;
-  --color-ink-3: #8a8985;
+@import 'tailwindcss/theme.css' layer(theme);
+@import '@mantine/core/styles.layer.css';
+@import '@mantine/notifications/styles.layer.css';
+@import 'tailwindcss/utilities.css' layer(utilities);
 
-  /* акцент, він же єдиний колір графіків */
-  --color-accent: #2a78d6;
-  --color-accent-ink: #1c5cab;
-  --color-accent-soft: #eff5fd;
-  --color-accent-line: #cfe0f9;
-
-  /* статуси, беруться з фіксованої статусної палети і не використовуються як серії */
-  --color-good: #0ca30c;
-  --color-good-ink: #0a7207;
-  --color-good-soft: #edf8ed;
-  --color-good-line: #c9e7c9;
-
-  --color-warn: #fab219;
-  --color-warn-ink: #8a5d00;
-  --color-warn-soft: #fdf5e5;
-  --color-warn-line: #f0dfb6;
-
-  --color-bad: #d03b3b;
-  --color-bad-ink: #a62d2d;
-  --color-bad-soft: #fdf0f0;
-  --color-bad-line: #f2d3d3;
-
-  /* хрома графіків */
-  --color-grid: #ebeae5;
-  --color-axis: #c3c2bd;
-
-  /* щільна шкала розмірів */
-  --text-2xs: 10px;
-  --text-2xs--line-height: 14px;
-  --text-xs: 11px;
-  --text-xs--line-height: 15px;
-  --text-sm: 12px;
-  --text-sm--line-height: 17px;
-  --text-base: 13px;
-  --text-base--line-height: 19px;
-  --text-md: 14px;
-  --text-md--line-height: 20px;
-  --text-lg: 15px;
-  --text-lg--line-height: 21px;
-  --text-xl: 18px;
-  --text-xl--line-height: 24px;
-  --text-2xl: 22px;
-  --text-2xl--line-height: 28px;
-  --text-3xl: 30px;
-  --text-3xl--line-height: 34px;
-
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
-
-  --radius-md: 6px;
-  --radius-lg: 8px;
+html,
+body,
+#root {
+  height: 100%;
 }
 
-@layer base {
-  html {
-    color-scheme: light;
-  }
-
-  body {
-    background: var(--color-page);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
-    font-size: var(--text-base);
-    line-height: var(--text-base--line-height);
-    -webkit-font-smoothing: antialiased;
-  }
-
-  /* Числа в таблицях мусять вирівнюватись по колонках, інакше рахунки неможливо порівняти. */
-  table,
-  .tabular {
-    font-variant-numeric: tabular-nums;
-  }
-
-  :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
-    border-radius: 3px;
-  }
-
-  ::selection {
-    background: var(--color-accent-line);
-  }
+/* Числа в таблицях і рахунках вирівнюються по колонках, інакше їх неможливо порівняти. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
-@layer utilities {
-  /* Заголовок секції: дрібний, розріджений, приглушений. Використовується всюди однаково. */
-  .label {
-    font-size: var(--text-2xs);
-    line-height: var(--text-2xs--line-height);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-ink-3);
-    font-weight: 500;
-  }
-
-  .scroll-thin {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-line-strong) transparent;
-  }
+/* Сирий текст вакансії: моноширинний, з переносами, без горизонтального скролу. */
+.raw-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.6;
+  color: var(--mantine-color-dimmed);
 }

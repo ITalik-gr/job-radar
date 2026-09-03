@@ -1,139 +1,436 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Code,
+  DataList,
+  Divider,
+  EmptyState,
+  Group,
+  Kbd,
+  Progress,
+  ScrollArea,
+  Select,
+  Skeleton,
+  Spoiler,
+  Stack,
+  Text,
+  Title,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import {
+  Ban,
+  Check,
+  Clock,
+  ExternalLink,
+  Inbox,
+  MessageSquareQuote,
+  Send,
+  ThumbsDown,
+  TriangleAlert,
+} from 'lucide-react';
 import { api, formatSalary, type QueueCard } from '../lib/api';
-import { Button, ErrorBox, Panel, Score, Tag } from '../components/ui';
+import { useHotkeys } from '../lib/hotkeys';
+import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
+import { Score } from '../components/Score';
 
 const TEMPLATES = ['fullstack_ai', 'frontend_react', 'agency_cold', 'referral'];
 
-function Card({ card, onAct }: { card: QueueCard; onAct: (body: Record<string, unknown>) => void }) {
-  const [open, setOpen] = useState(false);
+const DONE: Record<string, string> = {
+  interesting: 'у цікавих',
+  not_interesting: 'відкинуто',
+  contacted: 'позначено як написано',
+  blacklist: 'у блокліст',
+  snooze: 'відкладено на 30 днів',
+};
+
+/** Рядок списку. Тільки те, за чим власник обирає, що читати далі: рахунок, компанія, роль. */
+function Row({
+  card,
+  active,
+  onSelect,
+}: {
+  card: QueueCard;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const node = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (active) node.current?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
+  return (
+    <UnstyledButton
+      ref={node}
+      onClick={onSelect}
+      px="md"
+      py="sm"
+      w="100%"
+      style={{
+        display: 'block',
+        textAlign: 'left',
+        borderBottom: '1px solid var(--mantine-color-gray-2)',
+        borderLeft: `3px solid ${active ? 'var(--mantine-color-brand-6)' : 'transparent'}`,
+        background: active ? 'var(--mantine-color-brand-0)' : undefined,
+      }}
+    >
+      <Group gap="sm" wrap="nowrap" align="flex-start">
+        <Score value={card.score} size="sm" />
+        <Box style={{ minWidth: 0, flex: 1 }}>
+          <Group gap={6} wrap="nowrap">
+            <Text size="sm" fw={600} truncate>
+              {card.company}
+            </Text>
+            {card.needsReview && <TriangleAlert size={13} color="var(--mantine-color-yellow-7)" />}
+            {card.contactedNote && <Clock size={13} color="var(--mantine-color-yellow-7)" />}
+          </Group>
+
+          <Text size="sm" lineClamp={2} mt={2}>
+            {card.title ?? 'без назви'}
+          </Text>
+
+          {/* У вузькому списку теги стеку не влазять і обрізаються в кашу.
+              Тут потрібне лише те, за чим обирають, що читати далі. */}
+          <Group gap={6} mt={6} wrap="nowrap" style={{ overflow: 'hidden' }}>
+            {card.remote && (
+              <Badge size="xs" color="green">
+                remote
+              </Badge>
+            )}
+            <Text size="xs" c="dimmed" truncate>
+              {[card.seniority, card.location, formatSalary(card)].filter(Boolean).join(' · ') || 'без деталей'}
+            </Text>
+          </Group>
+        </Box>
+      </Group>
+    </UnstyledButton>
+  );
+}
+
+/** Відкрита картка. Одна на екран, тому тут можна дозволити собі повітря і повний текст. */
+function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string, unknown>) => void }) {
   const [template, setTemplate] = useState(TEMPLATES[0]!);
   const salary = formatSalary(card);
 
-  return (
-    <Panel className="p-3">
-      <div className="flex items-start gap-3">
-        <div className="w-10 shrink-0 pt-0.5">
-          <Score value={card.score} />
-        </div>
+  useHotkeys(
+    useMemo(
+      () => ({
+        i: () => onAct({ action: 'interesting' }),
+        n: () => onAct({ action: 'not_interesting' }),
+        e: () => onAct({ action: 'contacted', channel: 'email', templateUsed: template }),
+        b: () => onAct({ action: 'blacklist' }),
+        s: () => onAct({ action: 'snooze', days: 30 }),
+        enter: () => window.open(card.url, '_blank', 'noreferrer'),
+      }),
+      [onAct, template, card.url],
+    ),
+  );
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="font-medium">{card.company}</span>
-            <a
-              href={`https://${card.domain}`}
+  return (
+    <>
+      <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+        <Box p="lg" maw={860}>
+          <Group gap="sm" mb="xs">
+            <Anchor href={`https://${card.domain}`} target="_blank" rel="noreferrer" fw={600}>
+              {card.company}
+            </Anchor>
+            <Text size="sm" c="dimmed">
+              {card.domain}
+            </Text>
+            {card.needsReview && (
+              <Badge color="yellow" leftSection={<TriangleAlert size={11} />}>
+                перевірити вручну
+              </Badge>
+            )}
+          </Group>
+
+          <Title order={2}>{card.title ?? 'без назви'}</Title>
+
+          {card.contactedNote && (
+            <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="Цій компанії вже писали">
+              {card.contactedNote}. Повторний контакт через квартал нормальний, через тиждень ні.
+            </Alert>
+          )}
+
+          <Group mt="md" gap="sm">
+            <Button
+              component="a"
+              href={card.url}
               target="_blank"
               rel="noreferrer"
-              className="text-[var(--color-muted)] hover:underline"
+              variant="light"
+              leftSection={<ExternalLink size={14} />}
+              rightSection={<Kbd size="xs">↵</Kbd>}
             >
-              {card.domain}
-            </a>
-            {card.needsReview && <Tag tone="warn">потребує перегляду</Tag>}
-            {card.contactedNote && <Tag tone="warn">{card.contactedNote}</Tag>}
-          </div>
+              Відкрити вакансію
+            </Button>
+            {card.careersUrl && (
+              <Button component="a" href={card.careersUrl} target="_blank" rel="noreferrer" variant="subtle">
+                Усі вакансії компанії
+              </Button>
+            )}
+          </Group>
 
-          <a href={card.url} target="_blank" rel="noreferrer" className="block text-[15px] hover:underline">
-            {card.title ?? 'без назви'}
-          </a>
+          <Divider my="lg" />
 
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            {card.stack.slice(0, 8).map((tech) => (
-              <Tag key={tech}>{tech}</Tag>
-            ))}
-            {card.seniority && <Tag>{card.seniority}</Tag>}
-            {card.remote && <Tag tone="good">remote</Tag>}
-            {card.location && <span className="text-[var(--color-muted)]">{card.location}</span>}
-            {salary && <Tag tone="good">{salary}</Tag>}
-          </div>
+          <DataList labelWidth={132} gap="sm">
+            <DataList.Item>
+              <DataList.ItemLabel>рахунок</DataList.ItemLabel>
+              <DataList.ItemValue>
+                <Score value={card.score} />
+              </DataList.ItemValue>
+            </DataList.Item>
 
-          {open && (
-            <div className="mt-2 space-y-2 border-t border-[var(--color-line)] pt-2">
-              {card.why && <p className="text-[var(--color-muted)]">{card.why}</p>}
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[var(--color-panel-2)] p-2 text-[11px] text-[var(--color-muted)]">
-                {(card.rawText ?? '').slice(0, 4000)}
-              </pre>
-            </div>
+            <DataList.Item>
+              <DataList.ItemLabel>грейд</DataList.ItemLabel>
+              <DataList.ItemValue>{card.seniority ?? <Text c="dimmed">не вказано</Text>}</DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>формат</DataList.ItemLabel>
+              <DataList.ItemValue>
+                <Group gap="xs">
+                  {card.remote ? <Badge color="green">remote</Badge> : <Text c="dimmed">не вказано</Text>}
+                  {card.location && <Text>{card.location}</Text>}
+                </Group>
+              </DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>вилка</DataList.ItemLabel>
+              <DataList.ItemValue>
+                {salary ? (
+                  <Text fw={600} className="tabular">
+                    {salary}
+                  </Text>
+                ) : (
+                  <Text c="dimmed">не вказана</Text>
+                )}
+              </DataList.ItemValue>
+            </DataList.Item>
+
+            <DataList.Item>
+              <DataList.ItemLabel>стек</DataList.ItemLabel>
+              <DataList.ItemValue>
+                {card.stack.length === 0 ? (
+                  <Text c="dimmed">не розпізнано</Text>
+                ) : (
+                  <Group gap={6}>
+                    {card.stack.map((tech) => (
+                      <Badge key={tech} color="gray">
+                        {tech}
+                      </Badge>
+                    ))}
+                  </Group>
+                )}
+              </DataList.ItemValue>
+            </DataList.Item>
+          </DataList>
+
+          {card.why && (
+            <Alert mt="lg" variant="light" icon={<MessageSquareQuote size={16} />} title="Думка моделі">
+              {card.why}
+            </Alert>
           )}
-        </div>
 
-        <div className="flex w-64 shrink-0 flex-col gap-1">
-          <div className="flex gap-1">
-            <Button tone="good" onClick={() => onAct({ action: 'interesting' })}>
-              Цікаво
-            </Button>
-            <Button onClick={() => onAct({ action: 'not_interesting' })}>Не цікаво</Button>
-          </div>
-          <div className="flex gap-1">
-            <select
-              value={template}
-              onChange={(event) => setTemplate(event.target.value)}
-              className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-panel-2)] px-1 py-1 text-[12px]"
-            >
-              {TEMPLATES.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-            <Button
-              tone="good"
-              onClick={() => onAct({ action: 'contacted', channel: 'email', templateUsed: template })}
-            >
-              Написав
-            </Button>
-          </div>
-          <div className="flex gap-1">
-            <Button tone="bad" onClick={() => onAct({ action: 'blacklist' })}>
-              Блок компанії
-            </Button>
-            <Button onClick={() => onAct({ action: 'snooze', days: 30 })}>Відкласти 30 днів</Button>
-          </div>
-          <Button onClick={() => setOpen((value) => !value)}>{open ? 'Згорнути' : 'Розкрити'}</Button>
-        </div>
-      </div>
-    </Panel>
+          <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
+            сирий текст вакансії
+          </Text>
+          <Spoiler maxHeight={160} showLabel="показати весь текст" hideLabel="згорнути">
+            <Code block className="raw-text">
+              {(card.rawText ?? '').slice(0, 8000) || 'сирого тексту немає'}
+            </Code>
+          </Spoiler>
+        </Box>
+      </ScrollArea>
+
+      {/* Смуга рішень. Завжди на одному місці, тому руку не треба шукати кнопку заново. */}
+      {/*
+        Рішення злива і рішення відмови стоять ліворуч, надсилання листа праворуч.
+        Так шість кнопок вкладаються в один рядок і не переносяться на другий,
+        а рука щоразу тягнеться в те саме місце.
+      */}
+      <PaneFooter>
+        <Button
+          color="green"
+          leftSection={<Check size={15} />}
+          rightSection={<Kbd size="xs">i</Kbd>}
+          onClick={() => onAct({ action: 'interesting' })}
+        >
+          Цікаво
+        </Button>
+        <Button
+          variant="default"
+          leftSection={<ThumbsDown size={15} />}
+          rightSection={<Kbd size="xs">n</Kbd>}
+          onClick={() => onAct({ action: 'not_interesting' })}
+        >
+          Не цікаво
+        </Button>
+        <Tooltip label="більше ніколи не показувати цю компанію">
+          <Button
+            color="red"
+            variant="light"
+            leftSection={<Ban size={15} />}
+            rightSection={<Kbd size="xs">b</Kbd>}
+            onClick={() => onAct({ action: 'blacklist' })}
+          >
+            Блок
+          </Button>
+        </Tooltip>
+        <Tooltip label="прибрати з черги на 30 днів">
+          <Button
+            variant="default"
+            leftSection={<Clock size={15} />}
+            rightSection={<Kbd size="xs">s</Kbd>}
+            onClick={() => onAct({ action: 'snooze', days: 30 })}
+          >
+            Відкласти
+          </Button>
+        </Tooltip>
+
+        <Group gap="xs" ml="auto" wrap="nowrap">
+          <Select
+            data={TEMPLATES}
+            value={template}
+            onChange={(value) => value && setTemplate(value)}
+            allowDeselect={false}
+            w={150}
+            aria-label="шаблон листа"
+          />
+          <Button
+            leftSection={<Send size={15} />}
+            rightSection={<Kbd size="xs">e</Kbd>}
+            onClick={() => onAct({ action: 'contacted', channel: 'email', templateUsed: template })}
+          >
+            Написав
+          </Button>
+        </Group>
+      </PaneFooter>
+    </>
   );
 }
 
 export function QueuePage() {
   const client = useQueryClient();
+  const [cursor, setCursor] = useState(0);
   const { data, error, isLoading } = useQuery({ queryKey: ['queue'], queryFn: () => api.queue() });
 
   const act = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => api.act(id, body),
-    onSuccess: () => {
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown>; company: string }) => api.act(id, body),
+    onSuccess: (_result, { body, company }) => {
+      notifications.show({ color: 'green', title: company, message: DONE[String(body.action)] ?? 'збережено' });
       void client.invalidateQueries({ queryKey: ['queue'] });
       void client.invalidateQueries({ queryKey: ['stats'] });
+      void client.invalidateQueries({ queryKey: ['outreach'] });
     },
+    onError: (mutationError) =>
+      notifications.show({ color: 'red', title: 'не збереглось', message: String(mutationError) }),
   });
 
-  if (error) return <ErrorBox error={error} />;
-  if (isLoading || !data) return <div className="text-[var(--color-muted)]">завантаження</div>;
+  const pending = data?.cards.filter((card) => !card.decision) ?? [];
+  const index = Math.min(cursor, Math.max(0, pending.length - 1));
+  const current = pending[index];
 
-  const pending = data.cards.filter((card) => !card.decision);
+  useHotkeys(
+    useMemo(
+      () => ({
+        j: () => setCursor((value) => Math.min(value + 1, pending.length - 1)),
+        arrowdown: () => setCursor((value) => Math.min(value + 1, pending.length - 1)),
+        k: () => setCursor((value) => Math.max(value - 1, 0)),
+        arrowup: () => setCursor((value) => Math.max(value - 1, 0)),
+      }),
+      [pending.length],
+    ),
+    pending.length > 0,
+  );
+
+  if (error) {
+    return (
+      <Box p="lg">
+        <Alert color="red" title="Не вдалось прочитати чергу">
+          {error instanceof Error ? error.message : String(error)}
+        </Alert>
+      </Box>
+    );
+  }
+
+  if (isLoading || !data) {
+    return (
+      <Box p="lg">
+        <Stack gap="sm">
+          {Array.from({ length: 5 }, (_, position) => (
+            <Skeleton key={position} h={64} />
+          ))}
+        </Stack>
+      </Box>
+    );
+  }
+
+  const decided = data.cards.length - pending.length;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline gap-3 text-[var(--color-muted)]">
-        <span>
-          зріз за {data.day}: {pending.length} з {data.total} чекають рішення
-        </span>
-        {act.error && <span className="text-[var(--color-danger)]">{String(act.error)}</span>}
-      </div>
+    <SplitView
+      listWidth={368}
+      list={
+        <>
+          <PaneHeader>
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <Group gap="xs" justify="space-between">
+                <Text fw={600}>{pending.length} чекають рішення</Text>
+                <Text size="xs" c="dimmed">
+                  зріз за {data.day}
+                </Text>
+              </Group>
+              {/* Прогрес показує, що черга конечна: десять карток закінчуються, і це видно. */}
+              <Progress value={(decided / Math.max(1, data.cards.length)) * 100} size="xs" mt={6} />
+              <Text size="xs" c="dimmed" mt={4}>
+                розібрано {decided} з {data.cards.length}
+                <Text span mx={6}>
+                  ·
+                </Text>
+                <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> перехід
+              </Text>
+            </Box>
+          </PaneHeader>
 
-      {pending.length === 0 && (
-        <Panel className="p-3 text-[var(--color-muted)]">
-          на сьогодні все розібрано. новий зріз буде завтра, або запусти джерела на вкладці Джерела
-        </Panel>
-      )}
-
-      {pending.map((card) => (
-        <Card
-          key={card.queueItemId}
-          card={card}
-          onAct={(body) => act.mutate({ id: card.vacancyId, body })}
-        />
-      ))}
-    </div>
+          <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+            {pending.map((card, position) => (
+              <Row
+                key={card.queueItemId}
+                card={card}
+                active={position === index}
+                onSelect={() => setCursor(position)}
+              />
+            ))}
+          </ScrollArea>
+        </>
+      }
+      detail={
+        current ? (
+          <Detail
+            key={current.queueItemId}
+            card={current}
+            onAct={(body) => act.mutate({ id: current.vacancyId, body, company: current.company })}
+          />
+        ) : (
+          <Box p="xl" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+            <EmptyState
+              icon={<Inbox size={28} />}
+              withIndicatorBackground
+              title="На сьогодні все розібрано"
+              description="Новий зріз зʼявиться завтра. Щоб не чекати, запусти джерела кнопкою у шапці."
+            />
+          </Box>
+        )
+      }
+    />
   );
 }

@@ -1,0 +1,56 @@
+name: Deploy
+
+# Збірка і викатка живуть тут, а не у Workers Builds на стороні Cloudflare.
+# Причина: там білд зависав на етапі Initializing, тобто ще до клонування репо,
+# і жодна зміна в коді на це не впливала. Тут увесь ланцюжок видно в логах
+# GitHub, крок, що впав, зрозумілий, і будь-який запуск можна повторити кнопкою.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Два пуші підряд не мають викочуватись одночасно: переможе той, що завершиться
+# останнім, а це не обовʼязково новіший коміт.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Версію pnpm бере з поля packageManager у package.json, версію Node з .node-version.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      # --ignore-scripts тут обовʼязковий. У залежностях є better-sqlite3, нативний
+      # драйвер для локальної роботи. У CI він збирається через node-gyp кілька хвилин
+      # або зависає назовсім, а воркеру він не потрібен: у хмарі база це D1.
+      - name: Встановити залежності
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Воркер один і він же прод, тому зламану збірку краще зупинити тут.
+      - name: Перевірити типи
+        run: |
+          pnpm typecheck
+          pnpm exec tsc --noEmit -p web/tsconfig.json
+
+      - name: Зібрати фронт
+        run: pnpm build:web
+
+      # Міграції D1 навмисно не тут: деплой воркера їх не запускає, і застосовувати
+      # схему автоматично на кожен пуш небезпечно. Після pnpm db:generate робити
+      # один раз з ноута: pnpm cf:migrate
+      - name: Викотити воркер
+        run: pnpm exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
