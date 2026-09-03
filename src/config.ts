@@ -74,7 +74,7 @@ export const config = {
     },
     /** Скільки символів тексту вакансії йде в модель. Довший хвіст майже не додає користі. */
     get maxInputChars() {
-      return num('LLM_MAX_INPUT_CHARS', 5000);
+      return num('LLM_MAX_INPUT_CHARS', 8000);
     },
   },
   telegram: {

@@ -4,6 +4,11 @@
 
 Один воркер віддає і API, і фронт. База це D1. Планувальник це Cron Triggers.
 
+## Якщо білд на Cloudflare висить
+
+Майже завжди це компіляція `better-sqlite3`. Лікується прапорцем `--ignore-scripts`
+у Build command, див. розділ про Git нижче. Версія Node фіксується файлом `.node-version`.
+
 ## Найчастіша помилка на проді
 
 `Failed query: select ... params:` на будь-якому запиті означає, що **у віддаленій базі немає
@@ -57,10 +62,14 @@ Cloudflare робить білд сам на кожен пуш. Налаштув
 
 | поле | значення |
 | --- | --- |
-| Build command | `pnpm install --frozen-lockfile && pnpm build:web` |
+| Build command | `pnpm install --frozen-lockfile --ignore-scripts && pnpm build:web` |
 | Deploy command | `npx wrangler deploy` |
 | Root directory | `/` |
 | Build variables | не потрібні, секрети живуть окремо |
+
+**Чому `--ignore-scripts`:** у залежностях є `better-sqlite3`, нативний драйвер для локальної
+роботи. У CI він компілюється через node-gyp, це кілька хвилин або взагалі зависання,
+а воркеру він не потрібен: там база це D1. З цим прапорцем збірка займає секунди.
 
 Важливо: **міграції D1 у цей ланцюжок не входять.** Після зміни схеми (тобто після
 `pnpm db:generate`) треба один раз виконати з ноута:
@@ -113,13 +122,21 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://jo
 
 ## Перенести локальну базу в D1
 
+`sqlite3 .dump` не годиться: він містить `CREATE TABLE`, які конфліктують із уже застосованими
+міграціями. Тому є окрема команда, яка віддає тільки дані:
+
 ```bash
-sqlite3 data/radar.db .dump > /tmp/dump.sql
-# прибрати рядки CREATE TABLE, якщо міграції вже застосовані
-pnpm wrangler d1 execute job-radar --remote --file=/tmp/dump.sql
+# тільки компанії і листування, це головне, близько 400 КБ
+pnpm cli export:sql /tmp/data.sql --tables companies,company_state,contacts,outreach
+pnpm wrangler d1 execute job-radar --remote --file=/tmp/data.sql
 ```
 
-Або просто почати з чистої бази: `catalog:dou`, розширення і `discover` наповнять її за вечір.
+Повний експорт разом із вакансіями і снапшотами важить близько 13 МБ, це вже впирається
+в ліміти одного `d1 execute`. Вакансії простіше зібрати наново кнопкою "Оновити вакансії",
+вони й так оновлюються кожні 6 годин.
+
+Або почати з чистої бази: розширення, кнопка "Зібрати DOU" і "Знайти career-сторінки"
+наповнять її за вечір.
 
 ## Що лишилось локальним
 

@@ -30,7 +30,7 @@ import { saveSnapshot } from '../pipeline/snapshots.js';
 import { fetchText } from '../lib/http.js';
 import { companies } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import '../sources/index.js';
 import { watchRules } from '../pipeline/rules.js';
 
@@ -542,6 +542,60 @@ program
   });
 
 program
+  .command('export:sql')
+  .description('вивантажити дані локальної бази як INSERT-и для D1')
+  .argument('<file>', 'куди писати, наприклад /tmp/data.sql')
+  .option('--tables <list>', 'які таблиці, через кому')
+  .action(async (file: string, opts: { tables?: string }) => {
+    const sqlite = getSqlite();
+    // Порядок важливий: спершу компанії, потім усе, що на них посилається.
+    const order = [
+      'companies',
+      'company_state',
+      'contacts',
+      'vacancies',
+      'snapshots',
+      'outreach',
+      'queue_items',
+      'llm_cache',
+      'llm_usage',
+      'runs',
+    ];
+    const tables = opts.tables ? opts.tables.split(',').map((name) => name.trim()) : order;
+
+    const quote = (value: unknown): string => {
+      if (value === null || value === undefined) return 'null';
+      if (typeof value === 'number') return String(value);
+      if (typeof value === 'bigint') return value.toString();
+      if (value instanceof Uint8Array) return `x'${Buffer.from(value).toString('hex')}'`;
+      return `'${String(value).replace(/'/g, "''")}'`;
+    };
+
+    const lines: string[] = [];
+    let total = 0;
+
+    for (const table of tables) {
+      const rows = sqlite.prepare(`select * from ${table}`).all() as Record<string, unknown>[];
+      if (rows.length === 0) continue;
+      const columns = Object.keys(rows[0]!);
+
+      for (const row of rows) {
+        lines.push(
+          `insert or ignore into ${table} (${columns.map((c) => `"${c}"`).join(', ')}) values (${columns
+            .map((column) => quote(row[column]))
+            .join(', ')});`,
+        );
+      }
+      total += rows.length;
+      console.log(`${table}: ${rows.length}`);
+    }
+
+    writeFileSync(file, lines.join('\n'), 'utf8');
+    console.log(`\nзаписано ${total} рядків у ${file}`);
+    console.log('далі: pnpm wrangler d1 execute job-radar --remote --file=' + file);
+  });
+
+program
   .command('doctor')
   .description('перевірити задеплоєний радар: база, міграції, токен')
   .argument('<url>', 'адреса воркера, наприклад https://job-radar.xxx.workers.dev')
@@ -560,7 +614,11 @@ program
     };
 
     console.log(`статус: ${response.status}`);
-    console.log(`база: ${body.db ?? 'невідомо'}`);
+    console.log(
+      body.db
+        ? `база: ${body.db}`
+        : 'база: перевірка недоступна, у проді старий білд без ?deep=1, потрібен передеплой',
+    );
     if (body.tables) console.log(`таблиць: ${body.tables.length}`);
     if (body.missing?.length) console.log(`бракує таблиць: ${body.missing.join(', ')}`);
     if (body.hint) console.log(`що робити: ${body.hint}`);
