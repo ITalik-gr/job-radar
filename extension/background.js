@@ -2,7 +2,8 @@
  * Пересилає зібране в Job Radar і веде лічильник за добу.
  * Адрес налаштовується: локальний сервер або задеплоєний воркер на Cloudflare.
  */
-const DEFAULTS = { apiUrl: 'http://localhost:3000', token: '' };
+// Локально замінити на http://localhost:3000 у попапі розширення.
+const DEFAULTS = { apiUrl: 'https://job-radar.example.workers.dev', token: '' };
 
 async function settings() {
   return chrome.storage.local.get(DEFAULTS);

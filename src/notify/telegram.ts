@@ -1,6 +1,6 @@
 import { Bot } from 'grammy';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
-import { config } from '../config.js';
+import { config, envValue } from '../config.js';
 import { getDb } from '../db/client.js';
 import { companies, runs, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
@@ -32,7 +32,7 @@ async function send(text: string): Promise<void> {
   });
 }
 
-export const WEB_URL = process.env.WEB_URL ?? 'http://localhost:5173';
+export const WEB_URL = envValue('WEB_URL') ?? 'https://job-radar.example.workers.dev';
 
 function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

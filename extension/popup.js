@@ -4,7 +4,7 @@ const SETTINGS = {
   minDelay: 4000,
   maxDelay: 9000,
   maxPages: 25,
-  apiUrl: 'http://localhost:3000',
+  apiUrl: 'https://job-radar.example.workers.dev',
   token: '',
 };
 

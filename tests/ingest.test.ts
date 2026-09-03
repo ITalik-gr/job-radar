@@ -156,6 +156,87 @@ describe('ingestVacancies', () => {
   });
 });
 
+describe('економія на моделі', () => {
+  it('вакансію, яку відсіюють безкоштовні правила, у модель не шлемо', async () => {
+    let called = false;
+    const stats = await ingestVacancies(
+      [
+        raw({
+          title: 'React Engineer, Platform',
+          url: 'https://acme.com/jobs/geo',
+          externalId: 'geo',
+          location: 'San Francisco, hybrid',
+        }),
+      ],
+      {
+        caller: async () => {
+          called = true;
+          return { text: '{}', inputTokens: 0, outputTokens: 0 };
+        },
+      },
+      acme,
+    );
+
+    expect(called).toBe(false);
+    expect(stats.skippedByFilter).toBe(1);
+    expect(stats.created).toBe(1);
+  });
+
+  it('нетехнічна роль теж не доходить до моделі', async () => {
+    let called = false;
+    await ingestVacancies(
+      [raw({ title: 'Account Executive, EMEA', url: 'https://acme.com/jobs/ae', externalId: 'ae' })],
+      {
+        caller: async () => {
+          called = true;
+          return { text: '{}', inputTokens: 0, outputTokens: 0 };
+        },
+      },
+      acme,
+    );
+    expect(called).toBe(false);
+  });
+
+  it('перспективна вакансія модель усе ж отримує', async () => {
+    let called = false;
+    await ingestVacancies(
+      [
+        raw({
+          title: 'Frontend Engineer, Growth',
+          url: 'https://acme.com/jobs/good',
+          externalId: 'good',
+          location: 'Remote, Europe',
+        }),
+      ],
+      {
+        caller: async () => {
+          called = true;
+          return {
+            text: JSON.stringify({
+              is_vacancy: true,
+              title: 'Frontend Engineer, Growth',
+              stack: ['react'],
+              seniority: 'senior',
+              remote: true,
+              location: 'Remote, Europe',
+              salary_min: null,
+              salary_max: null,
+              currency: null,
+              english_level_required: null,
+              relevance: 80,
+              why: 'збіг',
+            }),
+            inputTokens: 10,
+            outputTokens: 5,
+          };
+        },
+      },
+      acme,
+    );
+    expect(called).toBe(true);
+  });
+});
+
 describe('closeMissing', () => {
   it('зниклі вакансії закриваються, а не видаляються', async () => {
     const open = await getDb().select().from(vacancies).where(eq(vacancies.companyId, acme.id));

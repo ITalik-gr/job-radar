@@ -4,6 +4,28 @@
 
 Один воркер віддає і API, і фронт. База це D1. Планувальник це Cron Triggers.
 
+## Найчастіша помилка на проді
+
+`Failed query: select ... params:` на будь-якому запиті означає, що **у віддаленій базі немає
+таблиць**. Міграції треба застосувати окремо, деплой воркера їх не запускає.
+
+```bash
+pnpm wrangler d1 migrations apply job-radar --remote
+pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
+```
+
+`doctor` покаже, які таблиці є, яких бракує і що робити. Те саме віддає
+`GET /api/health?deep=1`, він доступний без токена.
+
+Перевірити напряму:
+
+```bash
+pnpm wrangler d1 execute job-radar --remote --command "select name from sqlite_master where type='table'"
+```
+
+Має бути 10 таблиць: companies, company_state, contacts, llm_cache, llm_usage, outreach,
+queue_items, runs, snapshots, vacancies.
+
 ## Один раз
 
 ```bash
@@ -26,11 +48,45 @@ pnpm cf:migrate
 pnpm deploy
 ```
 
-Після викатки воркер живе на `https://job-radar.<твій-субдомен>.workers.dev`.
+Після викатки воркер живе на `https://job-radar.example.workers.dev`.
+
+## Деплой через підключений Git
+
+Cloudflare робить білд сам на кожен пуш. Налаштування в дашборді, Workers and Pages,
+твій воркер, Settings, Build:
+
+| поле | значення |
+| --- | --- |
+| Build command | `pnpm install --frozen-lockfile && pnpm build:web` |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | `/` |
+| Build variables | не потрібні, секрети живуть окремо |
+
+Важливо: **міграції D1 у цей ланцюжок не входять.** Після зміни схеми (тобто після
+`pnpm db:generate`) треба один раз виконати з ноута:
+
+```bash
+pnpm wrangler d1 migrations apply job-radar --remote
+```
+
+Секрети (`RADAR_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
+задаються один раз через `wrangler secret put` або в дашборді, Settings, Variables and Secrets.
+Вони не в репозиторії і не перезаписуються деплоєм.
+
+## Корисні команди
+
+| команда | що робить |
+| --- | --- |
+| `pnpm deploy` | зібрати фронт і викотити (з ноута) |
+| `pnpm cf:migrate` | застосувати міграції до віддаленої бази |
+| `pnpm cf:migrate:local` | те саме для локальної D1 (`wrangler dev`) |
+| `pnpm cf:dev` | воркер локально на справжньому D1, порт 8787 |
+| `pnpm cf:tail` | живі логи проду |
+| `pnpm cf:doctor <url> --token <token>` | перевірка бази і роутів на проді |
 
 ## Перший вхід
 
-Відкрити `https://job-radar.<субдомен>.workers.dev/?token=<RADAR_TOKEN>`.
+Відкрити `https://job-radar.example.workers.dev/?token=<RADAR_TOKEN>`.
 Токен збережеться в браузері, далі заходити можна без нього. На телефоні так само.
 
 Без токена API віддає 401. Це єдиний захист, і його досить для інструмента на одну людину,
@@ -40,7 +96,7 @@ pnpm deploy
 
 У попапі розширення вписати:
 
-- **адреса радара**: `https://job-radar.<субдомен>.workers.dev`
+- **адреса радара**: `https://job-radar.example.workers.dev`
 - **токен**: той самий `RADAR_TOKEN`
 
 Далі збирач шле компанії прямо в хмару, локальний сервер більше не потрібен.
@@ -50,7 +106,7 @@ pnpm deploy
 Команди бота на Workers працюють через вебхук, полінгу там немає:
 
 ```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://job-radar.<субдомен>.workers.dev/api/telegram/webhook"
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://job-radar.example.workers.dev/api/telegram/webhook"
 ```
 
 Сповіщення за розкладом (дайджест, фолоу-апи, алерти) працюють і без вебхука.

@@ -542,6 +542,38 @@ program
   });
 
 program
+  .command('doctor')
+  .description('перевірити задеплоєний радар: база, міграції, токен')
+  .argument('<url>', 'адреса воркера, наприклад https://job-radar.xxx.workers.dev')
+  .option('--token <token>', 'RADAR_TOKEN, якщо заданий')
+  .action(async (url: string, opts: { token?: string }) => {
+    const base = url.replace(/\/$/, '');
+    const headers = opts.token ? { 'x-radar-token': opts.token } : undefined;
+
+    const response = await fetch(`${base}/api/health?deep=1`, { headers });
+    const body = (await response.json()) as {
+      db?: string;
+      tables?: string[];
+      missing?: string[];
+      hint?: string | null;
+      error?: string;
+    };
+
+    console.log(`статус: ${response.status}`);
+    console.log(`база: ${body.db ?? 'невідомо'}`);
+    if (body.tables) console.log(`таблиць: ${body.tables.length}`);
+    if (body.missing?.length) console.log(`бракує таблиць: ${body.missing.join(', ')}`);
+    if (body.hint) console.log(`що робити: ${body.hint}`);
+    if (body.error) console.log(`помилка: ${body.error}`);
+
+    const companies = await fetch(`${base}/api/companies`, { headers });
+    const data = (await companies.json()) as unknown;
+    console.log(
+      `/api/companies: ${companies.status}, ${Array.isArray(data) ? `${data.length} записів` : JSON.stringify(data).slice(0, 160)}`,
+    );
+  });
+
+program
   .command('llm:budget')
   .description('скільки викликів моделі лишилось сьогодні')
   .action(async () => {

@@ -8,6 +8,10 @@ import type { RawVacancy } from '../sources/registry.js';
 import { classifyText, type ClassifyOptions } from './classify.js';
 import { dedupeKey, mergeSources } from './dedupe.js';
 import { hasStopWord, scoreVacancy, STOP_WORD_SCORE } from './score.js';
+import { rules } from './rules.js';
+
+/** Максимум, який модель може додати: llm_relevance 100 ділиться на 20. */
+export const LLM_MAX_BOOST = 5;
 
 export interface IngestOptions extends ClassifyOptions {
   /** Не викликати модель узагалі: корисно для сухого прогону і тестів. */
@@ -26,6 +30,8 @@ export interface IngestStats {
   classified: number;
   needsReview: number;
   detailed: number;
+  /** Скільки записів не пішли в модель, бо їх відсіяли безкоштовні правила. */
+  skippedByFilter: number;
 }
 
 async function resolveCompany(item: RawVacancy, fallback?: Company): Promise<Company | null> {
@@ -68,6 +74,7 @@ export async function ingestVacancies(
     classified: 0,
     needsReview: 0,
     detailed: 0,
+    skippedByFilter: 0,
   };
   const threshold = options.detailThreshold ?? 400;
 
@@ -144,9 +151,41 @@ export async function ingestVacancies(
       continue;
     }
 
+    // Детерміновані фільтри ганяються ДО моделі. Вони безкоштовні і відсіюють
+    // більшість: роль не та, гео не те, рахунок такий, що навіть максимальні
+    // 5 балів від моделі не витягнуть його до порогу.
+    const preliminary = scoreVacancy({
+      text: rawText,
+      title: item.title,
+      location: item.location,
+      remote: item.remote,
+      companyDomain: owner.domain,
+      companySizeHint: owner.sizeHint,
+    });
+
+    const hopeless = preliminary.rejectedBy !== null || preliminary.score < rules().threshold - LLM_MAX_BOOST;
+
+    if (hopeless) {
+      await db.insert(vacancies).values({
+        companyId: owner.id,
+        source: item.source,
+        externalId: item.externalId,
+        url: item.url,
+        title: item.title,
+        rawText,
+        location: item.location,
+        remote: item.remote,
+        score: preliminary.score,
+        dedupeKey: key,
+      });
+      stats.skippedByFilter += 1;
+      stats.created += 1;
+      continue;
+    }
+
     const result = options.skipLlm
       ? { classification: null, reason: 'budget' as const, needsReview: false }
-      : await classifyText(text.slice(0, 12000), options);
+      : await classifyText(text.slice(0, config.llm.maxInputChars), options);
 
     if (result.classification) stats.classified += 1;
     if (result.needsReview) stats.needsReview += 1;

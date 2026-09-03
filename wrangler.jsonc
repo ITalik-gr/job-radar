@@ -1,35 +1,43 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "job-radar",
-  "main": "src/worker.ts",
-  "compatibility_date": "2026-09-01",
-  "compatibility_flags": ["nodejs_compat"],
-
-  // Фронт віддається як статика тим самим воркером, окремий Pages не потрібен.
-  "assets": {
-    "directory": "web/dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
-  },
-
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "job-radar",
-      "database_id": "ЗАМІНИТИ_ПІСЛЯ_wrangler_d1_create",
-      "migrations_dir": "src/db/migrations"
-    }
-  ],
-
-  "triggers": {
-    "crons": ["0 */6 * * *", "0 4 * * 1", "0 5 * * 2", "0 10 * * *", "0 18 * * *"]
-  },
-
-  "vars": {
-    "ANTHROPIC_MODEL": "claude-haiku-4-5-20251001"
-  },
-
-  "observability": {
-    "enabled": true
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "job-radar",
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-09-01",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// Фронт віддається як статика тим самим воркером, окремий Pages не потрібен.
+	"assets": {
+		"directory": "web/dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "job-radar",
+			"database_id": "your-d1-database-id",
+			"migrations_dir": "src/db/migrations"
+		},
+		{
+			"binding": "job_radar",
+			"database_name": "job-radar",
+			"database_id": "your-d1-database-id"
+		}
+	],
+	"triggers": {
+		"crons": [
+			"0 */6 * * *",
+			"0 4 * * 1",
+			"0 5 * * 2",
+			"0 10 * * *",
+			"0 18 * * *"
+		]
+	},
+	"vars": {
+		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001"
+	},
+	"observability": {
+		"enabled": true
+	}
 }

@@ -15,7 +15,7 @@
 
 ## Як користуватись
 
-1. Запустити Job Radar: `pnpm start`
+1. Радар має бути доступний: прод https://job-radar.example.workers.dev або локально `pnpm start`
 2. Відкрити каталог: Clutch, GoodFirms, DesignRush, Sortlist, The Manifest, UpCity,
    TechBehemoths, DOU
 3. Гортати сторінки як завжди
@@ -56,8 +56,9 @@ TechBehemoths, DOU за типами бізнесу.
 
 ## Робота з задеплоєним радаром
 
-У попапі задаються адреса радара і токен. За замовчуванням це `http://localhost:3000`,
-для хмарної версії треба вписати адресу воркера і `RADAR_TOKEN`. Деталі в `DEPLOY.md`.
+У попапі задаються адреса радара і токен. За замовчуванням стоїть прод
+`https://job-radar.example.workers.dev`, лишається вписати `RADAR_TOKEN`.
+Для локальної роботи замінити адресу на `http://localhost:3000`. Деталі в `DEPLOY.md`.
 
 ## Якщо каталог не розпізнався
 

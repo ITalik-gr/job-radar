@@ -52,6 +52,7 @@ export async function syncSource(id: string, options: SyncOptions = {}): Promise
       classified: 0,
       needsReview: 0,
       detailed: 0,
+      skippedByFilter: 0,
     };
     let closed = 0;
     let found = 0;

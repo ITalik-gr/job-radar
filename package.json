@@ -21,7 +21,11 @@
     "deploy": "pnpm build:web && wrangler deploy",
     "cf:dev": "wrangler dev",
     "cf:migrate": "wrangler d1 migrations apply job-radar --remote",
-    "cf:migrate:local": "wrangler d1 migrations apply job-radar --local"
+    "cf:migrate:local": "wrangler d1 migrations apply job-radar --local",
+    "cf:build": "pnpm build:web",
+    "cf:deploy": "wrangler deploy",
+    "cf:tail": "wrangler tail job-radar --format pretty",
+    "cf:doctor": "tsx src/cli/index.ts doctor"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

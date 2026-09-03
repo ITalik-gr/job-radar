@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { app, requireToken } from './api/index.js';
+import { app } from './api/index.js';
+import { setRuntimeEnv } from './config.js';
 import { setDb, schema } from './db/client.js';
 import { log } from './lib/log.js';
 import { listSources } from './sources/registry.js';
@@ -28,25 +29,10 @@ export interface Env {
   ASSETS?: Fetcher;
 }
 
-/**
- * config читає process.env, якого на Workers немає. Замість переписування всього
- * конфіга підкладаємо мінімальний shim із секретів воркера.
- */
-function bindEnv(env: Env): void {
-  const globals = globalThis as { process?: { env: Record<string, string | undefined>; versions?: unknown } };
-  globals.process ??= { env: {} };
-  Object.assign(globals.process.env, {
-    ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
-    ANTHROPIC_MODEL: env.ANTHROPIC_MODEL,
-    TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
-    TELEGRAM_CHAT_ID: env.TELEGRAM_CHAT_ID,
-    WEB_URL: env.WEB_URL,
-    RADAR_TOKEN: env.RADAR_TOKEN,
-  });
-}
-
 function prepare(env: Env): void {
-  bindEnv(env);
+  // Секрети і біндінги приходять на кожен запит, тому конфіг і база ставляться тут.
+  setRuntimeEnv(env as unknown as Record<string, unknown>);
+  if (!env.DB) throw new Error('немає біндінгу D1 з іменем DB, перевір wrangler.jsonc');
   setDb(drizzle(env.DB, { schema }));
 }
 

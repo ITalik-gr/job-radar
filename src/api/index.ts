@@ -71,12 +71,46 @@ app.use(
   }),
 );
 
-app.use('/api/*', async (c, next) => {
-  const token = typeof process !== 'undefined' ? process.env.RADAR_TOKEN : undefined;
-  return requireToken(token)(c, next);
-});
+app.use('/api/*', async (c, next) => requireToken(config.token)(c, next));
 
-app.get('/api/health', (c) => c.json({ ok: true, day: todayKey() }));
+/**
+ * Здоровʼя. З `?deep=1` ще й перевіряє базу: на проді найчастіша причина падінь це
+ * незастосовані міграції, і тоді будь-який запит валиться з "no such table".
+ */
+app.get('/api/health', async (c) => {
+  const base = { ok: true, day: todayKey() };
+  if (c.req.query('deep') !== '1') return c.json(base);
+
+  try {
+    const rows = await getDb().all<{ name: string }>(
+      sql`select name from sqlite_master where type = 'table' order by name`,
+    );
+    const tables = rows.map((row) => row.name).filter((name) => !name.startsWith('sqlite_'));
+    const expected = [
+      'companies',
+      'company_state',
+      'contacts',
+      'llm_cache',
+      'llm_usage',
+      'outreach',
+      'queue_items',
+      'runs',
+      'snapshots',
+      'vacancies',
+    ];
+    const missing = expected.filter((name) => !tables.includes(name));
+
+    return c.json({
+      ...base,
+      db: missing.length === 0 ? 'ok' : 'міграції не застосовані',
+      tables,
+      missing,
+      hint: missing.length === 0 ? null : 'pnpm wrangler d1 migrations apply job-radar --remote',
+    });
+  } catch (error) {
+    return c.json({ ...base, ok: false, db: 'помилка', error: describe(error) }, 500);
+  }
+});
 
 app.get('/api/queue', async (c) => {
   const day = c.req.query('day') ?? todayKey();
@@ -260,10 +294,22 @@ app.get('/api/vacancies/:id', async (c) => {
   return row ? c.json(row) : c.json({ error: 'вакансії немає' }, 404);
 });
 
+/**
+ * Drizzle загортає помилку драйвера, і назовні летить "Failed query: select ..." без причини.
+ * Справжній текст лежить у cause, саме він і потрібен, коли щось не так на проді.
+ */
+function describe(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = (error as { cause?: unknown }).cause;
+  const causeText = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+  return causeText ? `${error.message.split('\n')[0]}: ${causeText}` : error.message;
+}
+
 app.onError((error, c) => {
   const status = (error as { status?: number }).status ?? 500;
-  if (status !== 401) log.error({ err: error.message, path: c.req.path }, 'помилка API');
-  return c.json({ error: error.message }, status as 401 | 500);
+  const message = describe(error);
+  if (status !== 401) log.error({ err: message, path: c.req.path }, 'помилка API');
+  return c.json({ error: message }, status as 401 | 500);
 });
 
 if (import.meta.url === `file://${process.argv[1]}`) {

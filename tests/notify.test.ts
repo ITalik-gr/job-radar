@@ -5,7 +5,7 @@ import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { outreach, runs, vacancies, type Company } from '../src/db/schema.js';
 import { upsertCompany } from '../src/pipeline/companies.js';
-import { HELP_TEXT, notify, statusText } from '../src/notify/telegram.js';
+import { HELP_TEXT, notify, statusText, WEB_URL } from '../src/notify/telegram.js';
 import { SCHEDULE } from '../src/scheduler.js';
 import cron from 'node-cron';
 
@@ -66,7 +66,7 @@ describe('сповіщення', () => {
     expect(await notify.digest({ sender })).toBe(true);
     const message = sent.at(-1)!;
     expect(message).toContain('Черга на');
-    expect(message).toMatch(/localhost:5173/);
+    expect(message).toContain(WEB_URL);
   });
 
   it('нагадування про фолоу-апи рахує дні без відповіді', async () => {
@@ -117,7 +117,7 @@ describe('довідка в боті', () => {
       expect(HELP_TEXT).toContain(topic);
     }
     expect(HELP_TEXT).toContain('/status');
-    expect(HELP_TEXT).toContain('localhost:5173');
+    expect(HELP_TEXT).toContain(WEB_URL);
   });
 
   it('текст валідний HTML для телеграма: усі теги закриті', () => {

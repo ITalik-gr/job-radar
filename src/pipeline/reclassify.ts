@@ -2,13 +2,18 @@ import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { companies, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
+import { config } from '../config.js';
 import { classifyText, type ClassifyOptions } from './classify.js';
+import { LLM_MAX_BOOST } from './ingest.js';
+import { rules } from './rules.js';
 import { scoreVacancy } from './score.js';
 
 export interface ReclassifyStats {
   taken: number;
   classified: number;
   needsReview: number;
+  /** Відсіяні безкоштовними правилами, без виклику моделі. */
+  skipped: number;
 }
 
 /**
@@ -32,10 +37,29 @@ export async function classifyPending(limit = 20, options: ClassifyOptions = {})
     .orderBy(desc(vacancies.score))
     .limit(limit);
 
-  const stats: ReclassifyStats = { taken: rows.length, classified: 0, needsReview: 0 };
+  const stats: ReclassifyStats = { taken: rows.length, classified: 0, needsReview: 0, skipped: 0 };
 
   for (const { vacancy: row, company } of rows) {
-    const result = await classifyText(`${row.title ?? ''}\n${row.rawText ?? ''}`.slice(0, 12000), options);
+    // Та сама перевірка, що й на вході: модель не кличемо там, де вона нічого не змінить.
+    const preliminary = scoreVacancy({
+      text: row.rawText ?? '',
+      title: row.title,
+      location: row.location,
+      remote: row.remote,
+      companyDomain: company.domain,
+      companySizeHint: company.sizeHint,
+    });
+
+    if (preliminary.rejectedBy !== null || preliminary.score < rules().threshold - LLM_MAX_BOOST) {
+      await db.update(vacancies).set({ score: preliminary.score, needsReview: false }).where(eq(vacancies.id, row.id));
+      stats.skipped += 1;
+      continue;
+    }
+
+    const result = await classifyText(
+      `${row.title ?? ''}\n${row.rawText ?? ''}`.slice(0, config.llm.maxInputChars),
+      options,
+    );
     const llm = result.classification;
     if (result.needsReview) stats.needsReview += 1;
     if (!llm) {
