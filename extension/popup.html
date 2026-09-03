@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 12px;
+        background: #0b0d10;
+        color: #e6e9ef;
+        font: 13px/1.45 ui-sans-serif, system-ui, sans-serif;
+      }
+      h1 { font-size: 14px; margin: 0 0 8px; }
+      h2 { font-size: 11px; text-transform: uppercase; color: #8a93a3; margin: 10px 0 4px; letter-spacing: .04em; }
+      .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+      .muted { color: #8a93a3; }
+      .panel { border: 1px solid #262b33; border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #14171c; }
+      button {
+        width: 100%;
+        padding: 7px;
+        margin-top: 6px;
+        border-radius: 6px;
+        border: 1px solid #1e4433;
+        background: #12271c;
+        color: #6ee7a8;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.secondary { border-color: #262b33; background: #1b1f26; color: #e6e9ef; }
+      button.danger { border-color: #4a2226; background: #2a1618; color: #f2777a; }
+      label { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+      input[type='number'] { width: 62px; background: #1b1f26; color: #e6e9ef; border: 1px solid #262b33; border-radius: 4px; padding: 2px 4px; }
+      .links a {
+        display: block;
+        color: #e6e9ef;
+        text-decoration: none;
+        padding: 3px 6px;
+        border-radius: 4px;
+      }
+      .links a:hover { background: #1b1f26; color: #6ee7a8; }
+      .bad { color: #f2777a; }
+    </style>
+  </head>
+  <body>
+    <h1>Job Radar Collector</h1>
+
+    <div class="panel">
+      <div class="row"><span class="muted">сервер</span><span id="health">перевіряю</span></div>
+      <div class="row"><span class="muted">каталог</span><span id="site">невідомо</span></div>
+      <div class="row"><span class="muted">карток тут</span><span id="found">0</span></div>
+      <div class="row"><span class="muted">з доменом</span><span id="withDomain">0</span></div>
+      <div class="row"><span class="muted">наступна сторінка</span><span id="next">нема</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="row"><span class="muted">сьогодні сторінок</span><span id="pages">0</span></div>
+      <div class="row"><span class="muted">нових компаній</span><span id="created">0</span></div>
+      <div class="row"><span class="muted">оновлено</span><span id="updated">0</span></div>
+    </div>
+
+    <button id="walk">Автообхід пагінації</button>
+    <button id="collect" class="secondary">Зібрати цю сторінку</button>
+
+    <h2>Налаштування</h2>
+    <div class="panel">
+      <label><input type="checkbox" id="auto" /> збирати автоматично</label>
+      <label>пауза, с <input type="number" id="minDelay" min="3" max="60" /> до <input type="number" id="maxDelay" min="3" max="90" /></label>
+      <label>сторінок за прохід <input type="number" id="maxPages" min="1" max="50" /></label>
+      <label style="display:block">адреса радара
+        <input type="text" id="apiUrl" style="width:100%;margin-top:2px;background:#1b1f26;color:#e6e9ef;border:1px solid #262b33;border-radius:4px;padding:3px 5px" />
+      </label>
+      <label style="display:block">токен, якщо задеплоєно
+        <input type="password" id="token" style="width:100%;margin-top:2px;background:#1b1f26;color:#e6e9ef;border:1px solid #262b33;border-radius:4px;padding:3px 5px" />
+      </label>
+    </div>
+
+    <h2>Куди піти по студії</h2>
+    <div class="links" id="catalogs"></div>
+
+    <button id="open" class="secondary">Відкрити Job Radar</button>
+
+    <script src="catalogs.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,31 @@
+@import 'tailwindcss';
+
+/* Щільний темний робочий інтерфейс. Без анімацій, без порожніх станів на пів екрана. */
+@theme {
+  --color-bg: #0b0d10;
+  --color-panel: #14171c;
+  --color-panel-2: #1b1f26;
+  --color-line: #262b33;
+  --color-ink: #e6e9ef;
+  --color-muted: #8a93a3;
+  --color-accent: #6ee7a8;
+  --color-warn: #f0b429;
+  --color-danger: #f2777a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+}
+
+* {
+  scrollbar-color: var(--color-line) transparent;
+}

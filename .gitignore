@@ -1,0 +1,12 @@
+node_modules/
+data/*.db
+data/*.db-*
+logs/
+
+.env
+.env.local
+imports/**/*.html
+imports/**/*.csv
+!imports/seed-companies.csv
+.DS_Store
+dist/

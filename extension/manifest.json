@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Job Radar Collector",
+  "version": "1.0.0",
+  "description": "Збирає компанії з каталогів агенцій у локальний Job Radar",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://*.workers.dev/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://clutch.co/*",
+        "https://www.clutch.co/*",
+        "https://www.goodfirms.co/*",
+        "https://goodfirms.co/*",
+        "https://www.designrush.com/*",
+        "https://designrush.com/*",
+        "https://www.sortlist.com/*",
+        "https://sortlist.com/*",
+        "https://themanifest.com/*",
+        "https://www.themanifest.com/*",
+        "https://upcity.com/*",
+        "https://www.upcity.com/*",
+        "https://techbehemoths.com/*",
+        "https://www.techbehemoths.com/*",
+        "https://www.awwwards.com/*",
+        "https://wadline.com/*",
+        "https://jobs.dou.ua/*"
+      ],
+      "js": [
+        "parsers.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Job Radar Collector"
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `companies` ADD `source_url` text;

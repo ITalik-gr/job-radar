@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:himalayasJobs="https://himalayas.app/ns/jobs" xmlns:media="http://search.yahoo.com/mrss/">
+    <channel>
+        <title><![CDATA[Remote jobs from Himalayas]]></title>
+        <description><![CDATA[Discover the best remote and work from home jobs on Himalayas at top remote companies.]]></description>
+        <link>https://himalayas.app/jobs</link>
+        <image>
+            <url>https://cdn-images.himalayas.app/og_images/default-open-graph-image.jpg</url>
+            <title>Remote jobs from Himalayas</title>
+            <link>https://himalayas.app/jobs</link>
+        </image>
+        <generator>RSS for Node</generator>
+        <lastBuildDate>Thu, 03 Sep 2026 16:59:12 GMT</lastBuildDate>
+        <atom:link href="https://himalayas.app/jobs/rss" rel="self" type="application/rss+xml"/>
+        <pubDate>Thu, 03 Sep 2026 16:57:12 GMT</pubDate>
+        <copyright><![CDATA[2026 Himalayas Remote Jobs Pty Ltd]]></copyright>
+        <language><![CDATA[en]]></language>
+        <ttl>1440</ttl>
+        <himalayasJobs:lastBuildDate>Thu, 03 Sep 2026 16:57:12 GMT</himalayasJobs:lastBuildDate>
+        <item>
+            <title><![CDATA[Senior Salesforce Technical Consultant (m/w/d) - Team mit 400% Umsatzwachstum]]></title>
+            <description><![CDATA[Wenn du glaubst, dass Arbeiten bei allen IT-Beratungen gleich ist.]]></description>
+            <link>https://himalayas.app/companies/mindsquare-ag/jobs/senior-salesforce-technical-consultant-m-w-d-team-mit-400-umsatzwachstum</link>
+            <guid isPermaLink="true">https://himalayas.app/companies/mindsquare-ag/jobs/senior-salesforce-technical-consultant-m-w-d-team-mit-400-umsatzwachstum</guid>
+            <category><![CDATA[Salesforce-Consulting]]></category>
+            <category><![CDATA[Technical-Consulting]]></category>
+            <category><![CDATA[CRM-Consulting]]></category>
+            <category><![CDATA[IT-Consulting]]></category>
+            <category><![CDATA[Salesforce-Development]]></category>
+            <category><![CDATA[Senior-Salesforce-Consultant]]></category>
+            <category><![CDATA[Salesforce-Senior-Consultant]]></category>
+            <category><![CDATA[Senior-Salesforce-Technical-Lead]]></category>
+            <category><![CDATA[Salesforce-Technical-Consultant]]></category>
+            <category><![CDATA[Lead-Salesforce-Consultant]]></category>
+            <pubDate>Thu, 03 Sep 2026 16:57:12 GMT</pubDate>
+            <media:content url="" medium="image">
+            </media:content>
+            <himalayasJobs:companyName>mindsquare AG</himalayasJobs:companyName>
+            <himalayasJobs:companyLogo></himalayasJobs:companyLogo>
+            <himalayasJobs:locationRestriction>Germany</himalayasJobs:locationRestriction>
+            <himalayasJobs:timezoneRestriction>1</himalayasJobs:timezoneRestriction>
+            <content:encoded><![CDATA[<div class="content-intro">
+<p><strong>Wenn du glaubst, dass Arbeiten bei allen IT-Beratungen gleich ist. Free your mind!</strong> Bei mindsquare geht´s um mehr: mehr Anspruch, mehr Impact, mehr du. Hier kommst du nicht einfach irgendwo unter. Du wirst Teil einer einzigartigen Community, die dich fordert, fördert und feiert. Wer bei uns einsteigt, entwickelt sich – fachlich, persönlich &amp; menschlich.</p>
+<p>Weil Durchschnitt keine Option ist. <strong>Free your mind @mindsquare!</strong></p>
+</div><h3>📅 Start:</h3>Nach Absprache, je früher, desto besser <h3>💼 Anstellung:</h3><p>Vollzeit (40 Std.) oder Teilzeit ab 28 Std.</p><h3>💻 Bereich:</h3><h3>IT-Consulting, CRM-Business Unit </h3><h3>📍  Standort:</h3><h3>Remote, hybrid oder vor Ort beim Kunden</h3><h3>Dein Umfeld</h3><p>Du kommst in einen Salesforce-Bereich, der gerade richtig Fahrt aufnimmt: 400 % Umsatzwachstum in diesem Jahr, knapp 40 Menschen zwischen festem Team, Talentnetzwerk und externen Spezialist:innen. Wir bilden unseren eigenen Nachwuchs aus - und gewinnen gezielt externes Senior-Know-how ein, um uns zu stärken. Bei uns führt niemand mehr als 6 Personen direkt, und Feedback ist Teil unserer DNA im Alltag, nicht nur im Jahresgespräch.</p><p>„Verantwortung übernehmen“ ist bei uns kein Wandspruch: keine Ausreden, dafür Verlässlichkeit, auch wenn mal was schiefläuft. Und weil „We love IT“ für uns ernst gemeint ist, triffst du auf Kolleg:innen, die für Technik brennen und sich laufend weiterentwickeln wollen.</p><h3>Deine Aufgaben </h3><div>
+<p>Du entwickelst technische Salesforce-Lösungen, die unsere Kunden wirklich voranbringen. Dabei arbeitest du eng mit unseren Architekt:innen zusammen und setzt Lösungen in unserer Systemlandschaft rund um Salesforce und SAP BTP/CI konkret um, zum Beispiel wie bei einem unserer Kunden Serviceanfragen mit Inventardaten aus dem ERP zusammengeführt werden. Darüber hinaus nach dem Onboarding:</p>
+<ul>
+<li>Du setzt technische Konzepte für Salesforce-Projekte im Team um und bringst dich mit eigenen Lösungsideen ein </li>
+<li>Du bist an der Anbindung von Salesforce an angrenzende Systeme beteiligt, von der Datenstruktur bis zur laufenden Weiterentwicklung</li>
+<li>Bringe deine Expertise rund um Sales Cloud, Service Cloud und moderne Salesforce-Technologien und KI-Lösungen in Projekte ein und gestalte nachhaltige Kundenbeziehungen mit</li>
+<li>Berate Kunden zu technischen Lösungen und erkläre komplexe Zusammenhänge verständlich</li>
+<li>Durch dein proaktives Einbringen von neuen Ideen entwickelst du dich und den Bereich weiter und kannst damit aktiv den Wachstum mitgestalten </li>
+</ul>
+</div><h3>Was dich erwartet</h3><p>🚗 Freie Fahrzeugwahl als Benefit, egal ob sparsam oder sportlich oder doch das Jobrad</p><p>💶 Transparentes Fixgehalt ohne Bonus-Wettrennen, Jahresgehalt durch 12 zwischen 65.000 - 80.000 Euro (je nach Erfahrungslevel und Netzwerk)</p><p>🌍 Arbeiten von fast überall , Hauptsache erreichbar zwischen 8 und 17 Uhr</p><p>🤝 Führung mit maximal 6 Personen pro Führungskraft, nah statt anonym</p><p>🗣 Feedback als gelebter Alltag und fester Teil unserer Wertekultur</p><p>🧠 KI als strategischer Tl unserer Ausrichtung, mit eigenem Kundensegment und eigener F&amp;E und Claude Max Abo</p><p>🎓 Intensives Onboarding, klarer Einarbeitungsplan, Werte-Workshop mit einem unserer Gründer</p><p>🙌 „Bring Dich ein“ statt Ellbogen: deine Ideen zählen</p><p>👉 <strong>Hier gibt es mehr Infos zu unseren Benefits</strong></p><h3>Dein Profil</h3><div>
+<p>Du liebst Technologie und willst Lösungen entwickeln, die mehr können als Standard. Gleichzeitig macht es dir Spaß, Kunden zu beraten, Verantwortung zu übernehmen und technische Themen verständlich zu vermitteln.</p>
+<ul>
+<li>Einschlägige praktische Erfahrung in der externen Beratung - reine Inhouse-Erfahrung reicht bei uns in der Regel nicht, außer du bringst vergleichbare Beratungs- oder Steuerungserfahrung mit, zum Beispiel aus einer Selbstständigkeit</li>
+<li>Salesforce-Zertifizierungen: Administrator und Platform Developer I, Platform App Builder (weitere Zertifizierungen wie Agentforce Specialist von Vorteil)</li>
+<li>Erste Praxiserfahrung mit Integrationen zwischen Salesforce und ERP-Systemen von Vorteil, idealerweise mit SAP BTP/CI</li>
+<li>Dein Wohnsitz liegt in Deutschland , arbeiten von unterwegs ist möglich, solange du zwischen 8 und 17 Uhr erreichbar bist</li>
+<li>Erfahrung mit MuleSoft wünschenswert</li>
+<li>großes Interesse an KI-gestützten Lösungen im CRM-Umfeld</li>
+</ul>
+<p>Ganz ehrlich: Wir suchen Menschen, die liefern, nicht nur gut klingen, deine Ergebnisse zählen mehr als deine Präsentation im Meeting. Fachwissen und Erfahrung sind für uns nicht verhandelbar. Und falls dir eine Zertifizierung noch fehlt, obwohl du das Wissen längst hast: kein Beinbruch, das holst du bei uns in der Probezeit nach, mit unserer Unterstützung in Zeit und Budget.</p>
+</div><div class="content-conclusion">
+<div class="elementor-element elementor-element-4db12718 elementor-widget elementor-widget-heading"><div class="elementor-widget-container"><h3>Bewirb dich jetzt und geh mit uns den Weg in Richtung IT-Elite</h3></div></div>
+<div class="elementor-element elementor-element-111030cb elementor-widget elementor-widget-text-editor"><div class="elementor-widget-container">
+<p>Unsere Mission ist klar: Wir werden zur ersten Adresse für digitale Exzellenz. Ein elitärer Anspruch? Definitiv. Aber genau dafür stehen wir. Wir nehmen alle mit, die Lust auf diesen Weg an die Spitze haben. Weil Durchschnitt keine Option ist: <strong>Free your mind @mindsquare!</strong></p>
+<h3>Noch Fragen?</h3>
+<h3>Dein Ansprechpartner:</h3>
+<h3>Timm Funke, Personalleiter</h3>
+<p>Mail: </p>
+<h3>Tel.: 0521 - 560 6450</h3>
+<p><strong><img alt="" width="320"></strong></p>
+</div></div>
+<div class="elementor-element elementor-element-111030cb elementor-widget elementor-widget-text-editor"><div class="elementor-widget-container"><p><strong>Lust auf weitere Insights? Besuche uns auf diesen Kanälen:</strong></p></div></div>
+<p></p>
+</div><p>Originally posted on <a href="https://himalayas.app">Himalayas</a></p>]]></content:encoded>
+            <himalayasJobs:expiryDate>Mon, 02 Nov 2026 16:57:12 GMT</himalayasJobs:expiryDate>
+            <guid>https://himalayas.app/companies/mindsquare-ag/jobs/senior-salesforce-technical-consultant-m-w-d-team-mit-400-umsatzwachstum</guid>
+        </item>
+<item>
+            <title><![CDATA[Property Data Specialist-1]]></title>
+            <description><![CDATA[Porch Group is a leading vertical software and insurance platform and is positioned to be the best partner to help homebuyers move, maintain, and fully protect their homes.]]></description>
+            <link>https://himalayas.app/companies/porch-group/jobs/property-data-specialist-1</link>
+            <guid isPermaLink="true">https://himalayas.app/companies/porch-group/jobs/property-data-specialist-1</guid>
+            <category><![CDATA[Real-Estate-Data-Analyst]]></category>
+            <category><![CDATA[Data-Entry-Specialist]]></category>
+            <category><![CDATA[Property-Research-Analyst]]></category>
+            <category><![CDATA[Insurance-Data-Specialist]]></category>
+            <category><![CDATA[Property-Records-Specialist]]></category>
+            <category><![CDATA[Property-Records-Analyst]]></category>
+            <category><![CDATA[Entry-Level-Data-Specialist]]></category>
+            <pubDate>Thu, 03 Sep 2026 16:57:02 GMT</pubDate>
+            <media:content url="https://cdn-images.himalayas.app/dvgshnmfe5efo4zcqlm2zlc7grd5" medium="image">
+            </media:content>
+            <himalayasJobs:companyName>Porch Group</himalayasJobs:companyName>
+            <himalayasJobs:companyLogo>https://cdn-images.himalayas.app/dvgshnmfe5efo4zcqlm2zlc7grd5</himalayasJobs:companyLogo>
+            <himalayasJobs:locationRestriction>India</himalayasJobs:locationRestriction>
+            <himalayasJobs:timezoneRestriction>5.5</himalayasJobs:timezoneRestriction>
+            <content:encoded><![CDATA[<p><a href="https://himalayas.app/companies/porch-group">Porch Group</a> is a leading vertical software and insurance platform and is positioned to be the best partner to help homebuyers move, maintain, and fully protect their homes. We offer differentiated products and services, with homeowners insurance at the center of this relationship. We differentiate and look to win in the massive and growing homeowners insurance opportunity by</p><p>1) providing the best services for homebuyers</p><p>2) led by advantaged underwriting in insurance</p><h3>3) to protect the whole home</h3><p>As a leader in the home services software-as-a-service (“SaaS”) space, we’ve built deep relationships with approximately 30 thousand companies that are key to the home-buying transaction, such as home inspectors, mortgage companies, and title companies.</p><p>In 2020, <a href="https://himalayas.app/companies/porch-group">Porch Group</a> rang the Nasdaq bell and began trading under the ticker symbol PRCH. We are looking to build a truly great company and are JUST GETTING STARTED.</p><p>Job Title<b>: Property Data Specialist</b></p><p>Location: <b>India</b></p><p>Workplace Type: <b>Remote</b></p><h3>Job Summary</h3><p>As a Property Data Specialist, you will be helping Porch build out an industry-leading understanding of residential properties. Your work will help identify and record important features of a property, track down details, and train our learning systems to better support you in this effort. You’ll need strong English reading and writing skills, solid ability to find information on the internet, and great attention to detail – even when performing the same task over and over we will need close to zero errors. You will also be working directly with our product and engineering teams to help improve our processes for property data discovery and ingestion, so solid written and spoken communication is a must.</p><h3>What you’ll do as a Property Data Specialist</h3><h3>Key Responsibilities:</h3><ul>
+<li>Examine property documents to identify key pieces of information about the property</li>
+<li>Validate the correctness of key information online, and search for more relevant details to add when possible</li>
+<li>Accurately and consistently add the information and associated details to our record of the property</li>
+<li>Manage caseloads and priorities to ensure a quick turnaround and positive customer experience on time-sensitive tasks</li>
+<li>Communicating and coordinating with colleagues as necessary</li>
+<li>Meet metrics for your given position</li>
+<li>Any other additional tasks assigned by management</li>
+</ul><h3>What You Will Bring As a Property Data Specialist</h3><ul>
+<li>You have strong time management skills and a committed work ethic</li>
+<li>You have a very positive attitude and are willing to learn from and accept mistakes</li>
+<li>You possess excellent written and verbal communication</li>
+<li>Detail-oriented</li>
+<li>Able to understand the priorities of different cases and manage your own workload</li>
+<li>You possess intermediate computer skills and can adapt to new technologies</li>
+<li>You learn quickly, are resourceful and have the ability to seek out appropriate points of contact to get all necessary information</li>
+<li>You're a team player (this is a team)</li>
+<li>A quiet space to work</li>
+<li>Reliable internet connection of at least 30 Mbps download and 10 Mbps upload</li>
+<li>Proven experience working with US based business teams.   </li>
+<li>Excellent written and communication skills in English language.</li>
+<li>This role requires full and ongoing overlap with Porch’s U.S. Central Time business hours (11:30 PM IST – 7:00 AM IST). A Night Shift Allowance is applicable for this position in line with company policy.</li>
+</ul><p>Workspace: A quiet space to work, an internet connection of at least 30 Mbps download | 10 Mbps upload</p><p><i>The application window for this position is anticipated to close in 2 weeks (10 business days) from Aug 28, 2026. Please know this may change based on business and interviewing needs.</i></p><h3>What You Will Get As a <a href="https://himalayas.app/companies/porch-group">Porch Group</a> Team Member</h3><h3>Pay Range*: 4, 00,000 INR – 4, 25,000 INR annually</h3><p><i>*Please know your actual pay at Porch will reflect a number of factors among which are your work experience and skillsets, job-related knowledge, alignment with market and our Porch employees, as well as your geographic location.</i></p><p>Our benefits package will provide you with comprehensive coverage for your health, life, and financial well-being.</p><p>●    Our benefits include medical insurance, accident insurance and retiral benefits.<br>●    Our wellness programs include 12 company-paid holidays, 2 flexible holidays, privilege/earned leave, casual/sick leave, paid maternity and paternity Leaves, and weekly wellness events.</p><h3>What’s next?</h3><p>Submit your application below and our Talent Acquisition team will be reviewing your application shortly! If your resume gets us intrigued, we will look to connect with you for a chat to learn more about your background, and then possibly invite you to have virtual interviews. What's important to call out is that we want to make sure not only that you're the right person for us, but also that we're the right next step for you, so come prepared with all the questions you have!</p><p>Porch is committed to building an inclusive culture of belonging that not only embraces the diversity of our people but also reflects the diversity of the communities in which we work and the customers we serve. We know that the happiest and highest performing teams include people with diverse perspectives that encourage new ways of solving problems, so we strive to attract and develop talent from all backgrounds and create workplaces where everyone feels seen, heard and empowered to bring their full, authentic selves to work.</p><p>Porch is an Equal Opportunity employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex including sexual orientation and gender identity, national origin, disability, protected veteran status, or any other characteristic protected by applicable laws, regulations, and ordinances.</p><p>Originally posted on <a href="https://himalayas.app">Himalayas</a></p>]]></content:encoded>
+            <himalayasJobs:expiryDate>Mon, 02 Nov 2026 16:57:01 GMT</himalayasJobs:expiryDate>
+            <guid>https://himalayas.app/companies/porch-group/jobs/property-data-specialist-1</guid>
+        </item>
+<item>
+            <title><![CDATA[Manager, Product - Digital]]></title>
+            <description><![CDATA[We are seeking a strategic, data-driven Manager of Product to lead Digital Exploration—Thrivent’s digital acquisition and conversion experience across thrivent.]]></description>
+            <link>https://himalayas.app/companies/thrivent-financial-for-lutherans/jobs/manager-product-digital</link>
+            <guid isPermaLink="true">https://himalayas.app/companies/thrivent-financial-for-lutherans/jobs/manager-product-digital</guid>
+            <category><![CDATA[Product-Management]]></category>
+            <category><![CDATA[Digital-Product-Management]]></category>
+            <category><![CDATA[Product-Leadership]]></category>
+            <category><![CDATA[Digital-Acquisition]]></category>
+            <category><![CDATA[Conversion-Rate-Optimization]]></category>
+            <category><![CDATA[Digital-Product-Manager]]></category>
+            <category><![CDATA[Manager-Product-Management]]></category>
+            <pubDate>Thu, 03 Sep 2026 16:56:00 GMT</pubDate>
+            <media:content url="" medium="image">
+            </media:content>
+            <himalayasJobs:companyName>Thrivent Financial for Lutherans</himalayasJobs:companyName>
+            <himalayasJobs:companyLogo></himalayasJobs:companyLogo>
+            <himalayasJobs:locationRestriction>United States</himalayasJobs:locationRestriction>
+            <himalayasJobs:timezoneRestriction>-10</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>-9</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>-8</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>-7</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>-6</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>-5</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>14</himalayasJobs:timezoneRestriction>
+            <content:encoded><![CDATA[We are seeking a strategic, data-driven Manager of Product to lead Digital Exploration—Thrivent’s digital acquisition and conversion experience across thrivent.com. This product owns a critical part of our growth funnel: turning digital visitors into engaged, qualified prospects by helping them discover Thrivent, understand how we can help, and take the right next step toward connecting with a financial advisor or another best fit Thrivent offer. <br><br>This is a digital growth and .com optimization leadership role. The Manager of Product will shape how we continuously improve the prospect journey, from entry and discovery through engagement, qualification, and connection. They will partner closely with design, engineering, research, analytics, marketing, SEO, content, and business teams to identify opportunities, test hypotheses, optimize experiences, and deliver measurable improvements in digital acquisition and conversion. <br><br>The ideal candidate brings a proven track record working in the Product Operation Model leading high-traffic consumer digital products, acquisition funnels, or .com experiences, along with experience leading and developing Product Owners. They understand how to use customer behavior, funnel analytics, experimentation, SEO/SEM insights, personalization, and conversion-rate optimization to improve digital journeys and generate high-quality leads and business growth. <br><br>We are particularly interested in candidates who have owned measurable digital growth outcomes, such as visitor-to-lead conversion, qualified lead generation, engagement, funnel progression, or digital acquisition performance, and who are comfortable making product decisions through a combination of quantitative data, customer insights, experimentation, and business strategy. <br><br>Experience in financial services is helpful but not required. More important is demonstrated success building and optimizing sophisticated consumer-facing digital experiences where acquisition, discovery, conversion, and customer trust are critical to business growth. <br><br>A Manager of Product is a product leader who manages the product team responsible for one or more complex products. A player-coach role, the Mgr, Product brings together the individual skillsets of a product manager with those of a leader of people. They are responsible for the long-term strategy and vision for a set of products as well as for the performance and growth of the product practitioners on the product team(s) they oversee.​  <br><br>Manager of Product is a critical leadership role for Thrivent’s operating model product teams. They lead product discovery efforts and are accountable for improving the performance of their product over time by overseeing effective delivery of product improvements and successfully marketing and promoting their product with users. They partner effectively with, and provide clarity and inspiration to, other disciplines on their team (business, design, engineering, analytics, etc.) and lead collaboration efforts with stakeholders from other teams across Thrivent to align on priorities and develop effective solutions to user challenges to optimize the end user experience.​ <br><br>Manager of Product typically will have deep experience as a product manager and aspire to manage both products and people.​ They play a key role across product stakeholders to actively engage, develop, coach and influence product team operations, practices, and talent. This role typically has direct supervision responsibilities for between 1 and 4 product owners.​<div><div><h3>DUTIES &amp; RESPONSIBILITIES: </h3></div></div><div><div><ul>
+<li><p>Responsible for the long-term product roadmap as part of a larger business strategy. Develops a compelling product strategy through analysis of personas, use cases, customer benefits, and solution value propositions. </p></li>
+<li><p>Consistently and iteratively ensures that business strategies are being executed through product roadmaps. </p></li>
+<li><p>Leads team collaboration to manage and prioritize product roadmap and releases across multiple products. </p></li>
+<li><p>Collaborates to resolve conflicts in a constructive manner when they arise. </p></li>
+<li><p>Accountable to ensure that product teams understand the business outcomes needed, and that business outcomes are tied to a broader business goal or objective. </p></li>
+<li><p>Identifies and tracks performance metrics both evergreen key performance indicators to monitor the overall health of the product and objectives to focus efforts on making specific, measurable improvements to experiences that drive positive outcomes.</p></li>
+<li><p>Facilitates conversations and coaching with product teams and relevant stakeholders to address gaps and necessary improvements to delivering specific improvements.</p></li>
+<li><p>Identifies and tracks Key Performance Metrics; accountable to ensure that KPIs are delivering the necessary business value. </p></li>
+<li><p>Ensures outcomes on the roadmap fit within capacity constraints and are prioritized and sequenced in order to maximize value to the customer. </p></li>
+<li><p>Engages with customers and users on a regular basis to uncover implicit and explicit needs and translate to product hypothesis which are tested and refined to deliver solutions. </p></li>
+<li><p>Collaborates across product teams to develop and roll out operational plans. </p></li>
+<li><p>Researches and identifies industry best practices and trends to increase effectiveness. </p></li>
+<li><p>Acquires, maintains and applies advanced knowledge of the business, its products and processes, and an academic understanding of Product Management. </p></li>
+<li><p>Recruits, develops, and sustains a high-performing team while promoting a culture of shared accountability, operational excellence, and partnership across the organization.</p></li>
+<li><p>Models Thrivent’s leadership competencies – Model the Way, Rally the Team, and Deliver Outcomes. ​</p></li>
+<li><p>Supports and/or develops an environment in which Thrivent employees and colleagues are focused on continuous improvement, exceptional employee engagement, and an unwavering commitment to our clients.  </p></li>
+<li><p>Shapes and/or supports a culture that represents the Thrivent purpose, promise and values, ensuring that Thrivent’s trust and reputation remain strong with its clients. </p></li>
+</ul></div></div><div><div><h3>QUALIFICATIONS &amp; SKILLS:  </h3></div></div><div>
+<div><p><i> Required:</i></p></div>
+<div><ul>
+<li><p>Bachelor's degree or equivalent work experience. </p></li>
+<li><p>10+ years relevant business experience, including in product manager role, product owner role or similar. </p></li>
+<li><p>Understand fundamentals of iterative development, software development process and procedures. </p></li>
+<li><p>Expertise in the principles of Agile Product Management, stakeholder management, market and user research, technology management, and process design. </p></li>
+<li><p>High-level of organization and attention to detail. </p></li>
+<li><p>Passion and understanding of new technology and trends. </p></li>
+<li><p>Excellent communication, collaboration and influence skills among all organizational levels; strong facilitation and executive communications skills. </p></li>
+</ul></div>
+</div><div>
+<div><p><i>Preferred:  </i></p></div>
+<div><div><ul>
+<li><p> Certified Product Manager or similar certification.   </p></li>
+<li><p>Experiencehighlypreferred in content management, data, A/B testing and digital consumer facing product experience. </p></li>
+<li><h3>May have prior supervisory experience. </h3></li>
+<li><p>Strong ability to effectively manage and resolve conflicting priorities.   </p></li>
+<li><p>Experience in developing and delivering product strategy, articulated in terms of value and outcomes with relevant and compelling metrics and measurements.   </p></li>
+<li><p>Expertise with foundational product management tools, techniques and principles across discovery, design, build, release, and measure cycle.   </p></li>
+<li><p>Proven experience in leading and influencing cross-functional teams.   </p></li>
+<li><p>Demonstrated experience with user interface design and best practices for usability.   </p></li>
+<li><p>Experience working in large, complex organizational initiatives.   </p></li>
+<li><p>Advanced skills in MS Office Suite with particular emphasis on Excel and Powerpoint.   </p></li>
+<li><p>Adept at financial management to administer budgets across multiple products and ensure the product meets its requirements for return on investment.   </p></li>
+</ul></div></div>
+</div>Pay TransparencyThrivent’s long-term growth depends on attracting, rewarding, and retaining people who are committed to helping others thrive with purpose. We accomplish this by offering a wide variety of market competitive compensation programs to attract, reward, and retain top talent.  The applicable salary or hourly wage range for this full-time role is $146,428.00 - $198,108.00 per year, which factors in various geographic regions.  The base pay actually offered will be determined by a variety of factors including, but not limited to, location, relevant experience, skills, and knowledge, business needs, market demand, and other factors Thrivent deems important.Thrivent is unique in our commitment to helping people to be wise with money and live balanced and generous lives.  That extends to our benefits.The following benefits may be offered:  various bonuses (including, for example, annual or long-term incentives); medical, dental, and vision insurance; health savings account; flexible spending account; 401k; pension; life and accidental death and dismemberment insurance; disability insurance; supplemental protection insurance; 20 days of Paid Time Off each year; Sick and Safe Time; 10 paid company holidays; Volunteer Time Off; paid parental leave; EAP; well-being benefits, and other employee benefits.  Eligibility for receipt of these benefits is subject to the applicable plan/policy documents.  Thrivent’s plans/policies are subject to change at any time at Thrivent’s discretion.<p><i>Thrivent provides Equal Employment Opportunity (EEO) without regard to race, religion, color, </i><i>sex, gender identity, sexual orientation, pregnancy, national origin, age, disability, marital status, citizenship status, military or veteran status,genetic information, or any otherstatus protected by applicable local, state, or federal law. This policy applies to all employees and job applicants.</i></p><p><i>Thrivent is committed to providing reasonable accommodation to individuals with disabilities. If you need a reasonable accommodation, please let us know by sending an email to  or call 800-847-4836 and request Human Resources.</i></p>#Remote<p>Originally posted on <a href="https://himalayas.app">Himalayas</a></p>]]></content:encoded>
+            <himalayasJobs:expiryDate>Mon, 02 Nov 2026 16:55:59 GMT</himalayasJobs:expiryDate>
+            <guid>https://himalayas.app/companies/thrivent-financial-for-lutherans/jobs/manager-product-digital</guid>
+        </item>
+<item>
+            <title><![CDATA[Data Engineer]]></title>
+            <description><![CDATA[We are looking for an experienced Data Engineer to design and maintain robust data infrastructure across our systems.]]></description>
+            <link>https://himalayas.app/companies/justmarkets/jobs/data-engineer-8919484033</link>
+            <guid isPermaLink="true">https://himalayas.app/companies/justmarkets/jobs/data-engineer-8919484033</guid>
+            <category><![CDATA[Data-Engineering]]></category>
+            <category><![CDATA[Data-Engineer]]></category>
+            <category><![CDATA[ETL-Development]]></category>
+            <category><![CDATA[Data-Warehouse-Engineering]]></category>
+            <category><![CDATA[Data-Pipeline-Development]]></category>
+            <category><![CDATA[Data-Engineer-Jobs]]></category>
+            <category><![CDATA[Data-Engineering-Specialist]]></category>
+            <category><![CDATA[Data-Engineering-Jobs]]></category>
+            <category><![CDATA[Data-Engineering-Positions]]></category>
+            <pubDate>Thu, 03 Sep 2026 16:56:00 GMT</pubDate>
+            <media:content url="https://cdn-images.himalayas.app/e68v9xxa46wdwb3uk5d54fom38nv" medium="image">
+            </media:content>
+            <himalayasJobs:companyName>JustMarkets</himalayasJobs:companyName>
+            <himalayasJobs:companyLogo>https://cdn-images.himalayas.app/e68v9xxa46wdwb3uk5d54fom38nv</himalayasJobs:companyLogo>
+            <himalayasJobs:locationRestriction>Ukraine</himalayasJobs:locationRestriction>
+            <himalayasJobs:timezoneRestriction>2</himalayasJobs:timezoneRestriction>
+            <himalayasJobs:timezoneRestriction>3</himalayasJobs:timezoneRestriction>
+            <content:encoded><![CDATA[<p>We are looking for an experienced<strong> Data Engineer </strong>to design and maintain robust data infrastructure across our systems. In this role, you will be responsible for building scalable data pipelines, ensuring data integrity, and integrating third-party data sources. Your primary focus will be to enable efficient data flow and support analytical capabilities across the organization. You will also contribute to the development of our data architecture, implement best engineering practices, and collaborate closely with cross-functional teams to turn raw data into actionable insights.</p><h3><strong>Responsibilities</strong></h3><ul>
+<li>Communicate with technical and non-technical stakeholders to gather and clarify business requirements</li>
+<li>Review and analyze data and business logic to ensure consistency, accuracy, and reliability</li>
+<li>Design, implement, and maintain data pipelines for efficient and scalable data processing</li>
+<li>Integrate, maintain, and support data solutions and third-party data sources</li>
+<li>Research and evaluate third-party tools, services, and components for potential use</li>
+<li>Follow engineering best practices, including code reviews, testing, refactoring, and continuous delivery</li>
+<li>Design, optimize, and maintain data storage solutions</li>
+</ul><h3><strong>Requirements</strong></h3><ul>
+<li>3+ years of commercial experience in Data Engineering</li>
+<li>Experience gathering business requirements and communicating with stakeholders</li>
+<li>Strong knowledge of Data Warehouse (DWH) architecture and principles</li>
+<li>Hands-on experience designing data warehouses and building ETL pipelines</li>
+<li>Deep practical experience with Python</li>
+<li>Hands-on experience in one or more of the following areas: data processing using PySpark, Apache Spark, Pandas, or similar frameworks; data scraping; integration of third-party data sources and APIs</li>
+<li>Proficiency in SQL and relational databases such as PostgreSQL and MySQL</li>
+<li>Hands-on experience with column-oriented databases such ClickHouse, Snowflake, Cassandra, BigQuery (many tables with millions of records and above each)</li>
+<li>Solid understanding of software design patterns, algorithms, and data structures</li>
+<li>Intermediate English proficiency</li>
+</ul><h3><strong>Will be a plus</strong></h3><ul>
+<li>Experience with messaging platforms such as RabbitMQ or Kafka</li>
+<li>Familiarity with DataOps practices and data pipeline automation</li>
+<li>Familiarity with CI/CD pipelines and Kubernetes environments</li>
+<li>Background in FinTech or Trading domains</li>
+</ul><h3><strong>We offer</strong></h3><ul>
+<li>Tax expenses coverage for private entrepreneurs in Ukraine</li>
+<li>Expert support and guidance for Ukrainian private entrepreneurs</li>
+<li>20 paid vacation days per year</li>
+<li>10 paid sick leave days per year</li>
+<li>Public holidays as per the company's approved Public holiday list</li>
+<li>Medical insurance</li>
+<li>Opportunity to work remotely</li>
+<li>Professional education budget</li>
+<li>Language learning budget</li>
+<li>Wellness budget (gym membership, sports gear and related expenses)</li>
+</ul><p>Originally posted on <a href="https://himalayas.app">Himalayas</a></p>]]></content:encoded>
+            <himalayasJobs:expiryDate>Mon, 02 Nov 2026 16:55:59 GMT</himalayasJobs:expiryDate>
+            <guid>https://himalayas.app/companies/justmarkets/jobs/data-engineer-8919484033</guid>
+        </item>
+    </channel>
+</rss>
