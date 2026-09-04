@@ -9,6 +9,7 @@ import { syncDou } from './pipeline/catalogs.js';
 import { discover } from './pipeline/discover.js';
 import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
+import { isOverdue, lastSuccessAt } from './lib/runs.js';
 
 /** Розклад з CLAUDE.md, розділ 8. Все всередині одного процесу, без черг і Docker. */
 export const SCHEDULE = {
@@ -39,6 +40,61 @@ async function runBoards(): Promise<void> {
   await safely('notify:broken', () => notify.broken());
 }
 
+/**
+ * Періоди завдань для наздоганяння. Мають відповідати `SCHEDULE` вище: якщо
+ * розклад змінили, а тут ні, наздоганяння або мовчатиме, або ганятиме зайве.
+ *
+ * `source` це те, під яким іменем завдання пише в таблицю `runs`. Для прогону
+ * бордів беремо greenhouse: він іде першим у пачці, і якщо відпрацював, значить
+ * пачка стартувала.
+ */
+const CATCH_UP: { name: string; source: string; periodMs: number; run: () => Promise<unknown> }[] = [
+  { name: 'boards', source: 'greenhouse', periodMs: 6 * 60 * 60 * 1000, run: runBoards },
+  {
+    name: 'catalog:dou',
+    source: 'dou',
+    periodMs: 7 * 24 * 60 * 60 * 1000,
+    run: () => syncDou({ limit: 60 }),
+  },
+  {
+    name: 'discover',
+    source: 'discover',
+    periodMs: 7 * 24 * 60 * 60 * 1000,
+    run: () => discover({ limit: 40 }),
+  },
+];
+
+/**
+ * Наздоганяння пропущеного.
+ *
+ * node-cron не відпрацьовує те, що пропустив, поки процес не працював, а він
+ * не працює щоночі і щоразу, коли ноут закритий. Без цього розклад "кожні 6 годин"
+ * на практиці означав "коли ноут випадково був увімкнений о рівній годині".
+ *
+ * Запускається по одному завданню за раз і з паузою: інакше після тижневої перерви
+ * усі три стартують одночасно і разом лізуть до чужих сайтів.
+ */
+export async function catchUp(delayBetweenMs = 30_000): Promise<string[]> {
+  const done: string[] = [];
+
+  for (const task of CATCH_UP) {
+    const last = await lastSuccessAt(task.source);
+    if (!isOverdue(last, task.periodMs)) continue;
+
+    log.info(
+      { task: task.name, lastAt: last ? new Date(last).toISOString() : 'ніколи' },
+      'наздоганяю пропущений запуск',
+    );
+    await safely(`catchUp:${task.name}`, task.run);
+    done.push(task.name);
+
+    if (delayBetweenMs > 0) await new Promise((resolve) => setTimeout(resolve, delayBetweenMs));
+  }
+
+  if (done.length === 0) log.info('наздоганяти нічого, розклад не відставав');
+  return done;
+}
+
 export function startScheduler(): void {
   const timezone = process.env.TZ ?? 'Europe/Kyiv';
 
@@ -52,4 +108,7 @@ export function startScheduler(): void {
     { timezone, schedule: SCHEDULE, llmLimit: config.llm.dailyCallLimit },
     'планувальник запущено',
   );
+
+  // Не блокуємо старт процесу: API має піднятись одразу, а наздоганяння почекає хвилину.
+  setTimeout(() => void catchUp(), 60_000).unref?.();
 }

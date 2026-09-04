@@ -8,11 +8,15 @@ import { greenhouse } from './boards/greenhouse.js';
 import { lever } from './boards/lever.js';
 import { ashby } from './boards/ashby.js';
 import { remoteok } from './boards/remoteok.js';
+import { getro } from './boards/getro.js';
+import { douBoard } from './boards/dou.js';
+import { djinni } from './boards/djinni.js';
 import { rssSources } from './boards/feeds.js';
 import { dou } from './catalogs/dou.js';
+import { awwwards } from './catalogs/awwwards.js';
 
-for (const source of [greenhouse, lever, ashby, remoteok, ...rssSources, dou]) {
+for (const source of [greenhouse, lever, ashby, remoteok, getro, douBoard, djinni, ...rssSources, dou, awwwards]) {
   registerSource(source);
 }
 
-export { greenhouse, lever, ashby, remoteok, rssSources, dou };
+export { greenhouse, lever, ashby, remoteok, getro, douBoard, djinni, rssSources, dou, awwwards };

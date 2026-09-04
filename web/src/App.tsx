@@ -25,6 +25,7 @@ import {
   FileText,
   Palette,
   Radar,
+  Rocket,
   Radio,
   Send,
   SlidersHorizontal,
@@ -36,6 +37,7 @@ import { QueuePage } from './pages/Queue';
 import { CompaniesPage } from './pages/Companies';
 import { OutreachPage } from './pages/Outreach';
 import { StudiosPage } from './pages/Studios';
+import { StartupsPage } from './pages/Startups';
 import { SourcesPage } from './pages/Sources';
 import { TemplatesPage } from './pages/Templates';
 import { RulesPage } from './pages/Rules';
@@ -46,6 +48,7 @@ const StatsPage = lazy(() => import('./pages/Stats').then((module) => ({ default
 const TABS = [
   { id: 'queue', label: 'Черга', icon: Inbox, hint: 'десять карток на день, по одному рішенню на кожну' },
   { id: 'studios', label: 'Студії', icon: Palette, hint: 'кому писати без вакансії: усе з каталогів, що пройшло поріг рахунку' },
+  { id: 'startups', label: 'Стартапи', icon: Rocket, hint: 'холодний лист стартапу: чи наймають видно з кількості знайдених вакансій' },
   { id: 'companies', label: 'Компанії', icon: Building2, hint: 'уся база як довідник: пошук, статуси, історія. Писати звідси не треба' },
   { id: 'outreach', label: 'Контакти', icon: Send, hint: 'кому писали і хто відповів' },
   { id: 'stats', label: 'Статистика', icon: BarChart3, hint: 'стек, вилки, час життя вакансій' },
@@ -57,7 +60,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id'];
 
 /** Сторінки з двома панелями керують скролом самі, решта скролиться цілком. */
-const FULL_HEIGHT: TabId[] = ['queue', 'studios', 'templates'];
+const FULL_HEIGHT: TabId[] = ['queue', 'studios', 'startups', 'templates'];
 
 function TokenGate() {
   const [value, setValue] = useState('');
@@ -216,7 +219,7 @@ export function App() {
                 <Text size="xs" c="dimmed">
                   ..
                 </Text>
-                <Kbd size="xs">8</Kbd>
+                <Kbd size="xs">9</Kbd>
                 <Text size="xs" c="dimmed">
                   перемикають розділи
                 </Text>
@@ -252,6 +255,7 @@ export function App() {
         <div className={fullHeight ? 'min-h-0 flex-1' : 'min-h-0 flex-1 overflow-auto'}>
           {tab === 'queue' && <QueuePage />}
           {tab === 'studios' && <StudiosPage />}
+          {tab === 'startups' && <StartupsPage />}
           {tab === 'companies' && <CompaniesPage />}
           {tab === 'outreach' && <OutreachPage />}
           {tab === 'sources' && <SourcesPage />}

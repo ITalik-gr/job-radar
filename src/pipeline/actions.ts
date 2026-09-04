@@ -25,6 +25,9 @@ export interface ActionInput {
   /** Тільки для contacted. */
   channel?: string;
   templateUsed?: string | null;
+  /** Знімок контакту на момент листа: через рік має бути видно, кому саме писали. */
+  contactName?: string | null;
+  contactEmail?: string | null;
 }
 
 export interface ActionResult {
@@ -69,6 +72,8 @@ export async function applyAction(input: ActionInput): Promise<ActionResult> {
         vacancyId: vacancy.id,
         channel: input.channel ?? 'email',
         templateUsed: input.templateUsed ?? null,
+        contactName: input.contactName ?? null,
+        contactEmail: input.contactEmail ?? null,
         note: input.note ?? null,
       })
       .returning({ id: outreach.id });
@@ -128,6 +133,9 @@ export interface OutreachRow {
   channel: string;
   sentAt: number;
   templateUsed: string | null;
+  /** Кому писали. Знімок на момент листа, а не звʼязок із таблицею контактів. */
+  contactName: string | null;
+  contactEmail: string | null;
   replyAt: number | null;
   replyType: string | null;
   note: string | null;
@@ -162,6 +170,8 @@ export async function listOutreach(): Promise<OutreachRow[]> {
     channel: row.channel,
     sentAt: row.sentAt,
     templateUsed: row.templateUsed,
+    contactName: row.contactName,
+    contactEmail: row.contactEmail,
     replyAt: row.replyAt,
     replyType: row.replyType,
     note: row.note,

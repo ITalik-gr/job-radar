@@ -15,9 +15,15 @@ import { remainingBudget, today } from '../pipeline/classify.js';
 import { classifyPending } from '../pipeline/reclassify.js';
 import { upsertCompany } from '../pipeline/companies.js';
 import { importCsvFile } from './commands.js';
-import { importFiles, syncDou } from '../pipeline/catalogs.js';
+import { importFiles, syncCatalog, syncDou } from '../pipeline/catalogs.js';
 import { BUSINESS_TYPES, DOMAINS } from '../sources/catalogs/dou.js';
 import { discover } from '../pipeline/discover.js';
+import { enrich } from '../pipeline/enrich.js';
+import { backfillKinds } from '../pipeline/company-kind.js';
+import { topUpQueue, getQueue, todayKey } from '../pipeline/queue.js';
+import { toCsv } from '../lib/csv.js';
+import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
+import { studioPage } from '../pipeline/studios.js';
 import { fullStats } from '../pipeline/stats.js';
 import { studioQueue } from '../pipeline/studios.js';
 import { explain, scoreVacancy } from '../pipeline/score.js';
@@ -278,6 +284,22 @@ program
   });
 
 program
+  .command('catalog:run')
+  .description('прогнати каталог компаній за id, напр. awwwards')
+  .argument('<id>', 'id каталогу')
+  .action(async (id: string) => {
+    const stats = await syncCatalog(id);
+    console.table({
+      'знайдено': stats.itemsFound,
+      'нових': stats.itemsNew,
+      'оновлено': stats.updated,
+      'пропущено': stats.skipped,
+      'помилок': stats.errors.length,
+    });
+    for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
   .command('catalog:dou')
   .description('зібрати компанії з каталогу DOU за фільтрами')
   .option('-n, --limit <number>', 'скільки компаній максимум', '40')
@@ -468,6 +490,129 @@ program
       'помилок': stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('enrich')
+  .description('зібрати контакти і ознаки живості з сайтів компаній')
+  .option('-n, --limit <number>', 'скільки компаній обійти', '25')
+  .option('--domain <domain>', 'конкретна компанія')
+  .option('--all', 'включно з тими, у кого контакти вже є')
+  .action(async (opts: { limit: string; domain?: string; all?: boolean }) => {
+    const stats = await enrich({ limit: Number(opts.limit), domain: opts.domain, all: opts.all });
+    console.table({
+      'обійдено компаній': stats.checked,
+      'сторінок завантажено': stats.pagesFetched,
+      'з іменними контактами': stats.withPeople,
+      'хоч з якоюсь поштою': stats.withEmail,
+      'контактів додано': stats.contactsAdded,
+      'помилок': stats.errors.length,
+    });
+    for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('export:csv')
+  .description('вивантажити чергу або студії у CSV для ручної роботи в таблиці')
+  .argument('<what>', 'queue або studios')
+  .option('-o, --out <file>', 'куди записати, за замовчуванням у stdout')
+  .option('--named', 'тільки студії з іменним контактом')
+  .action(async (what: string, opts: { out?: string; named?: boolean }) => {
+    let csv = '';
+
+    if (what === 'queue') {
+      const cards = await getQueue(todayKey());
+      csv = toCsv(
+        cards.map((card) => ({
+          компанія: card.company,
+          домен: card.domain,
+          вакансія: card.title,
+          рахунок: card.score,
+          грейд: card.seniority,
+          локація: card.location,
+          вилка: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
+          стек: card.stack.join(' '),
+          посилання: card.url,
+          рішення: card.decision ?? '',
+        })),
+      );
+    } else if (what === 'studios') {
+      const page = await studioPage({ limit: 1000, withNamedContact: opts.named });
+      csv = toCsv(
+        page.cards.map((card) => ({
+          компанія: card.name,
+          домен: card.domain,
+          тип: card.kind,
+          рахунок: card.score,
+          де: [card.city, card.country].filter(Boolean).join(', '),
+          контакт: card.contacts.find((contact) => contact.name)?.name ?? '',
+          посада: card.contacts.find((contact) => contact.name)?.role ?? '',
+          пошта:
+            card.contacts.find((contact) => contact.name && contact.email)?.email ??
+            card.contacts.find((contact) => contact.email)?.email ??
+            '',
+          вакансій: card.openVacancies,
+        })),
+      );
+    } else {
+      throw new Error(`невідомий тип вивантаження: ${what}. Доступні: queue, studios`);
+    }
+
+    if (!csv) {
+      console.log('нічого вивантажувати');
+      return;
+    }
+
+    if (opts.out) {
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(opts.out, csv, 'utf8');
+      console.log(`записано у ${opts.out}`);
+    } else {
+      process.stdout.write(csv);
+    }
+  });
+
+program
+  .command('queue:top-up')
+  .description('добрати картки в сьогоднішній зріз до денного ліміту')
+  .action(async () => {
+    const result = await topUpQueue();
+    console.log(`додано ${result.added}, у зрізі тепер ${result.total}`);
+  });
+
+program
+  .command('embed')
+  .description('порахувати вектори компаній через Workers AI, для пошуку схожих')
+  .option('-n, --limit <number>', 'скільки компаній обробити', '200')
+  .action(async (opts: { limit: string }) => {
+    const stats = await embedCompanies(Number(opts.limit));
+    console.table({
+      'без векторів було': stats.itemsFound,
+      'порахувано': stats.itemsNew,
+      'помилок': stats.errors.length,
+    });
+    for (const error of stats.errors.slice(0, 5)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('similar')
+  .description('схожі компанії за описом')
+  .argument('<id>', 'id компанії')
+  .action(async (id: string) => {
+    const rows = await similarCompanies(Number(id));
+    if (rows.length === 0) {
+      console.log('схожих не знайшлось, або в компанії ще немає вектора');
+      return;
+    }
+    console.table(rows);
+  });
+
+program
+  .command('kinds')
+  .description('проставити тип компаній: студія, дизайн, стартап, продукт, аутстаф')
+  .option('--force', 'перерахувати навіть тим, у кого тип уже стоїть')
+  .action(async (opts: { force?: boolean }) => {
+    console.table(await backfillKinds(Boolean(opts.force)));
   });
 
 program

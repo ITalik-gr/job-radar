@@ -106,6 +106,8 @@ export interface OutreachRow {
   channel: string;
   sentAt: number;
   templateUsed: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
   replyAt: number | null;
   replyType: string | null;
   note: string | null;
@@ -119,6 +121,9 @@ export interface StudioCard {
   country: string | null;
   city: string | null;
   sizeHint: string | null;
+  kind: string;
+  copyrightYear: number | null;
+  lastPostAt: number | null;
   tags: string[];
   techHints: string[];
   description: string | null;
@@ -180,6 +185,8 @@ export interface TemplateRow {
   slug: string;
   name: string;
   kind: string;
+  /** Тип компанії, під який заточений текст. Порожнє означає універсальний. */
+  forKind: string | null;
   subject: string | null;
   body: string;
   note: string | null;
@@ -284,6 +291,22 @@ export const api = {
   runSource: (id: string) => request<{ itemsFound: number }>(`/sources/${id}/run`, { method: 'POST', body: '{}' }),
   stats: () => request<Stats>('/stats'),
   fullStats: () => request<FullStats>('/stats/full'),
+  topUpQueue: () =>
+    request<{ added: number; total: number }>('/queue/top-up', { method: 'POST', body: '{}' }),
+  similar: (companyId: number) =>
+    request<{ companyId: number; name: string; domain: string; kind: string; similarity: number }[]>(
+      `/companies/${companyId}/similar`,
+    ),
+  embed: (limit = 200) =>
+    request<{ itemsFound: number; itemsNew: number; errors: string[] }>('/embed', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+  enrich: (limit = 25) =>
+    request<{ checked: number; withPeople: number; withEmail: number; contactsAdded: number }>(
+      '/enrich',
+      { method: 'POST', body: JSON.stringify({ limit }) },
+    ),
   discover: (limit = 25) =>
     request<{ checked: number; withAts: number; withHtml: number; itemsNew: number }>('/discover', {
       method: 'POST',

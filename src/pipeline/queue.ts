@@ -252,6 +252,43 @@ export async function getQueue(
     .filter((card) => card.decision !== null || (card.score ?? -100) >= threshold);
 }
 
+/**
+ * Добрати картки в сьогоднішній зріз до денного ліміту.
+ *
+ * Навіщо окрема дія, а не автоматика: зріз навмисно фіксований, це задокументоване
+ * рішення в STATUS.md. Без фіксації нова вакансія з вищим рахунком витісняла б ту,
+ * яку ще не встигли подивитись. Але буває й протилежне: вранці кандидатів було троє,
+ * зріз зафіксувався на трьох, а прогін джерел удень приніс ще двадцять, і власник
+ * бачить три картки при повній базі. Тому поповнення є, але тільки коли його попросили.
+ *
+ * Уже наявні картки не чіпаються: ні позиції, ні рішення.
+ */
+export async function topUpQueue(
+  day = todayKey(),
+  limit = config.pipeline.queueDailyLimit,
+): Promise<{ added: number; total: number }> {
+  const db = getDb();
+  const existing = await db.select().from(queueItems).where(eq(queueItems.day, day));
+
+  const free = limit - existing.length;
+  if (free <= 0) return { added: 0, total: existing.length };
+
+  const picks = await candidates(free, day);
+  if (picks.length === 0) return { added: 0, total: existing.length };
+
+  await db.insert(queueItems).values(
+    picks.map((pick, index) => ({
+      day,
+      vacancyId: pick.vacancy.id,
+      position: existing.length + index + 1,
+      scoreAtPick: pick.vacancy.score,
+    })),
+  );
+
+  log.info({ day, added: picks.length }, 'зріз черги поповнено вручну');
+  return { added: picks.length, total: existing.length + picks.length };
+}
+
 /** Скільки карток ще чекають рішення сьогодні. */
 export async function pendingCount(day = todayKey()): Promise<number> {
   const db = getDb();

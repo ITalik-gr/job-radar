@@ -12,6 +12,10 @@
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application"
 	},
+	// Workers AI: вектори компаній для пошуку схожих. Класифікація лишається на Anthropic.
+	"ai": {
+		"binding": "AI"
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",

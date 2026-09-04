@@ -20,10 +20,13 @@ import {
   type ReplyType,
 } from '../pipeline/actions.js';
 import { remainingBudget } from '../pipeline/classify.js';
-import { getQueue, pendingCount, todayKey } from '../pipeline/queue.js';
+import { getQueue, pendingCount, todayKey, topUpQueue } from '../pipeline/queue.js';
+import { toCsv } from '../lib/csv.js';
+import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
 import { syncSource } from '../pipeline/sync.js';
 import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
+import { enrich } from '../pipeline/enrich.js';
 import { syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes } from './companies.js';
 import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
@@ -135,6 +138,64 @@ app.get('/api/queue', async (c) => {
   });
 });
 
+/**
+ * Добрати картки в сьогоднішній зріз. Саме дія власника, а не автоматика:
+ * зріз навмисно фіксований, інакше нова вакансія з вищим рахунком витісняла б ту,
+ * яку ще не встигли подивитись.
+ */
+app.post('/api/queue/top-up', async (c) => c.json(await topUpQueue()));
+
+/**
+ * Вивантаження у CSV прямо з інтерфейсу. Віддається як файл, тому браузер його
+ * одразу зберігає, а не показує текстом.
+ */
+app.get('/api/export/:what', async (c) => {
+  const what = c.req.param('what');
+  const named = c.req.query('named') === '1';
+
+  let rows: Record<string, unknown>[] = [];
+
+  if (what === 'queue') {
+    rows = (await getQueue(todayKey())).map((card) => ({
+      компанія: card.company,
+      домен: card.domain,
+      вакансія: card.title,
+      рахунок: card.score,
+      грейд: card.seniority,
+      локація: card.location,
+      вилка: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
+      стек: card.stack.join(' '),
+      посилання: card.url,
+      рішення: card.decision ?? '',
+    }));
+  } else if (what === 'studios') {
+    const page = await studioPage({ limit: 1000, withNamedContact: named });
+    rows = page.cards.map((card) => ({
+      компанія: card.name,
+      домен: card.domain,
+      тип: card.kind,
+      рахунок: card.score,
+      де: [card.city, card.country].filter(Boolean).join(', '),
+      контакт: card.contacts.find((contact) => contact.name)?.name ?? '',
+      посада: card.contacts.find((contact) => contact.name)?.role ?? '',
+      пошта:
+        card.contacts.find((contact) => contact.name && contact.email)?.email ??
+        card.contacts.find((contact) => contact.email)?.email ??
+        '',
+      вакансій: card.openVacancies,
+    }));
+  } else {
+    return c.json({ error: `невідомий тип вивантаження: ${what}` }, 400);
+  }
+
+  return new Response(toCsv(rows), {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="job-radar-${what}-${todayKey()}.csv"`,
+    },
+  });
+});
+
 app.post('/api/vacancies/:id/action', async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json<{
@@ -143,6 +204,8 @@ app.post('/api/vacancies/:id/action', async (c) => {
     days?: number;
     channel?: string;
     templateUsed?: string;
+    contactName?: string;
+    contactEmail?: string;
   }>();
 
   if (!ACTIONS.includes(body.action as Action)) {
@@ -156,6 +219,8 @@ app.post('/api/vacancies/:id/action', async (c) => {
     days: body.days,
     channel: body.channel,
     templateUsed: body.templateUsed ?? null,
+    contactName: body.contactName ?? null,
+    contactEmail: body.contactEmail ?? null,
   });
 
   return c.json(result);
@@ -180,19 +245,30 @@ app.get('/api/studios', async (c) => {
     minScore: c.req.query('min') ? Number(c.req.query('min')) : undefined,
     country: c.req.query('country'),
     search: c.req.query('q'),
+    kind: c.req.query('kind'),
+    withNamedContact: c.req.query('named') === '1',
     includeContacted: c.req.query('all') === '1',
   });
   return c.json(page);
 });
 
 app.post('/api/companies/:id/action', async (c) => {
-  const body = await c.req.json<{ action: string; note?: string; days?: number; templateUsed?: string }>();
+  const body = await c.req.json<{
+    action: string;
+    note?: string;
+    days?: number;
+    templateUsed?: string;
+    contactName?: string;
+    contactEmail?: string;
+  }>();
   const result = await applyStudioAction({
     companyId: Number(c.req.param('id')),
     action: body.action as StudioActionInput['action'],
     note: body.note ?? null,
     days: body.days,
     templateUsed: body.templateUsed ?? null,
+    contactName: body.contactName ?? null,
+    contactEmail: body.contactEmail ?? null,
   });
   return c.json(result);
 });
@@ -352,6 +428,21 @@ app.post('/api/discover', async (c) => {
   return c.json(await discover({ limit: body.limit ?? 25 }));
 });
 
+/** Схожі компанії за описом. Порожній список означає, що вектора ще немає. */
+app.get('/api/companies/:id/similar', async (c) =>
+  c.json(await similarCompanies(Number(c.req.param('id')))),
+);
+
+app.post('/api/embed', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  return c.json(await embedCompanies(body.limit ?? 200));
+});
+
+app.post('/api/enrich', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number; domain?: string };
+  return c.json(await enrich({ limit: body.limit ?? 25, domain: body.domain }));
+});
+
 app.post('/api/catalogs/dou/run', async (c) => {
   const body: { limit?: number } = await c.req.json<{ limit?: number }>().catch(() => ({}));
   return c.json(await syncDou({ limit: body.limit ?? 40 }));
@@ -392,7 +483,16 @@ app.onError((error, c) => {
   return c.json({ error: message }, status as 401 | 500);
 });
 
+/*
+ * Прямий запуск цього файла (`pnpm dev:api`). Драйвер бази підключається саме тут,
+ * динамічним імпортом, а не зверху файла: цей самий модуль імпортує `worker.ts`
+ * для Cloudflare, а туди `better-sqlite3` тягнути не можна, там база це D1.
+ *
+ * Без цього рядка команда піднімала сервер, але кожен роут віддавав 500
+ * "база не підключена". У CLAUDE.md `dev:api` вказана як команда запуску.
+ */
 if (import.meta.url === `file://${process.argv[1]}`) {
+  await import('../db/client.node.js');
   const port = Number(process.env.API_PORT ?? 3000);
   serve({ fetch: app.fetch, port });
   log.info({ port }, 'API запущено');

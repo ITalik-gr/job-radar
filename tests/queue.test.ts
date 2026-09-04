@@ -7,7 +7,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { companyState, outreach, queueItems, vacancies, type Company } from '../src/db/schema.js';
 import { upsertCompany } from '../src/pipeline/companies.js';
 import { applyAction, followUps, funnel, listOutreach, markReply } from '../src/pipeline/actions.js';
-import { getQueue, pendingCount, todayKey } from '../src/pipeline/queue.js';
+import { getQueue, pendingCount, todayKey, topUpQueue } from '../src/pipeline/queue.js';
 
 let acme: Company;
 let other: Company;
@@ -236,5 +236,69 @@ describe('pendingCount', () => {
 
   it('сьогоднішній ключ це дата ISO', () => {
     expect(todayKey(new Date('2026-09-03T22:10:00Z'))).toBe('2026-09-03');
+  });
+});
+
+/*
+ * Блок навмисно останній у файлі: він створює нову компанію з вакансіями,
+ * і ці записи потрапили б у чергу тестів вище, які перевіряють точний склад зрізу.
+ */
+describe('topUpQueue', () => {
+  it('добирає картки до денного ліміту, не чіпаючи наявні', async () => {
+    const day = '2026-09-20';
+    const before = await getQueue(day);
+    const positionsBefore = before.map((card) => `${card.vacancyId}:${card.position}`);
+
+    // Своя компанія: у acme і other статуси вже змінені попередніми тестами,
+    // і їхні вакансії відсіювались би як приховані.
+    const fresh = (await upsertCompany({ name: 'Fresh Co', domain: 'freshco.dev', source: 'test' })).company;
+    for (let i = 0; i < 5; i += 1) await addVacancy(fresh.id, `Свіжа знахідка ${i}`, 11);
+
+    const result = await topUpQueue(day);
+    expect(result.added).toBeGreaterThan(0);
+    expect(result.total).toBeLessThanOrEqual(config.pipeline.queueDailyLimit);
+
+    const after = await getQueue(day);
+    // Наявні картки лишились на своїх місцях: зріз фіксований, це рішення зі STATUS.md.
+    expect(after.map((card) => `${card.vacancyId}:${card.position}`).slice(0, before.length)).toEqual(
+      positionsBefore,
+    );
+  });
+
+  it('повний зріз не поповнюється: денний ліміт це ліміт', async () => {
+    const day = '2026-09-21';
+    await getQueue(day);
+    await topUpQueue(day);
+
+    const full = await getDb().select().from(queueItems).where(eq(queueItems.day, day));
+    if (full.length >= config.pipeline.queueDailyLimit) {
+      expect((await topUpQueue(day)).added).toBe(0);
+    }
+  });
+});
+
+/*
+ * Блок навмисно останній: він додає ще один запис "написав", а тести воронки
+ * вище перевіряють точні числа.
+ */
+describe('кому писали', () => {
+  it('"написав" зберігає, кому саме писали', async () => {
+    // Через рік у Контактах має бути видно людину, а не тільки компанію.
+    const cards = await getQueue(LAST_DAY);
+    const card = cards.find((c) => !c.decision)!;
+    if (!card) return;
+
+    await applyAction({
+      vacancyId: card.vacancyId,
+      action: 'contacted',
+      channel: 'email',
+      templateUsed: 'fullstack_ai',
+      contactName: 'Марія Технічна',
+      contactEmail: 'maria@example.com',
+    });
+
+    const [row] = await listOutreach();
+    expect(row!.contactName).toBe('Марія Технічна');
+    expect(row!.contactEmail).toBe('maria@example.com');
   });
 });

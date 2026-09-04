@@ -110,6 +110,18 @@ describe('шаблони', () => {
     expect(rows[0]!.archived).toBe(true);
   });
 
+  it('шаблон можна прив язати до типу компанії і відвʼязати назад', async () => {
+    const created = await createTemplate({ name: 'Під дизайн', kind: 'studio', forKind: 'design' });
+    expect(created.forKind).toBe('design');
+
+    const universal = await updateTemplate(created.id, { forKind: null });
+    expect(universal.forKind).toBeNull();
+  });
+
+  it('без привʼязки шаблон універсальний', async () => {
+    expect((await createTemplate({ name: 'Універсальний' })).forKind).toBeNull();
+  });
+
   it('фільтр за типом віддає лише свій вид', async () => {
     await seedTemplates();
     const studio = await listTemplates('studio');

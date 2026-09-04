@@ -1,0 +1,1 @@
+ALTER TABLE `companies` ADD `kind` text DEFAULT 'unknown' NOT NULL;

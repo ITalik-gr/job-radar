@@ -1,0 +1,746 @@
+{
+  "companies": [
+    {
+      "id": 38061,
+      "name": "Maritime",
+      "slug": "maritime",
+      "website": "https://maritime.sh/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/d8ff801ef7e9094077a292c8bed3e86ce7e01f00.png",
+      "oneLiner": "The managed cloud for AI agents.",
+      "longDescription": "Maritime is cloud infrastructure for AI agents. We help companies give every customer an agent running in its own isolated, persistent computer, starting at $1 per agent per month. Maritime handles hosting, scaling, and sleep/wake automatically, so developers can run thousands of agents without managing the infrastructure.",
+      "teamSize": 3,
+      "url": "https://www.ycombinator.com/companies/maritime",
+      "batch": "F26",
+      "tags": [
+        "Developer Tools",
+        "Cloud Computing",
+        "Infrastructure"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Infrastructure"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": [
+        "highlightWomen"
+      ]
+    },
+    {
+      "id": 37600,
+      "name": "Redoubt Insurance",
+      "slug": "redoubt-insurance",
+      "website": "https://www.redoubt.agency",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/1ee4cc24084cdd9a8a0fe0d70982248244d6fd3a.png",
+      "oneLiner": "Commercial insurance for small businesses",
+      "longDescription": "Redoubt is a commercial insurance agency for small businesses. We believe our customers are our most important business partners, and they deserve our full attention. Machines can already handle the boring parts, the next step is to continually learn from experience. ",
+      "teamSize": 0,
+      "url": "https://www.ycombinator.com/companies/redoubt-insurance",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Insurance"
+      ],
+      "status": "Active",
+      "industries": [
+        "Fintech",
+        "Insurance"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "Salt Lake City, UT, USA"
+      ],
+      "badges": []
+    },
+    {
+      "id": 37272,
+      "name": "The Subvocal Company",
+      "slug": "the-subvocal-company",
+      "website": "https://subvocal.company",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/cacc4ab40596ece6b5c77c3f350ee25ddf5cb079.png",
+      "oneLiner": "Talk to your computer without talking",
+      "longDescription": "We're building a silent speech wearable that lets you talk to your computer at the speed of voice, but silently and completely imperceptibly to everyone around you.",
+      "teamSize": 3,
+      "url": "https://www.ycombinator.com/companies/the-subvocal-company",
+      "batch": "F26",
+      "tags": [
+        "Hard Tech"
+      ],
+      "status": "Active",
+      "industries": [
+        "Consumer",
+        "Consumer Electronics"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": [
+        "isHiring"
+      ]
+    },
+    {
+      "id": 36940,
+      "name": "Quippy",
+      "slug": "quippy",
+      "website": "https://quippyapp.com",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/97c02b937035318f812614d4d9362e5c060a6f72.png",
+      "oneLiner": "Helps build social skills through daily practice",
+      "longDescription": "Quippy is a daily practice app for your social life. You run short, realistic practice conversations, like pushing back on a boss or talking during a first date, and get line-by-line feedback on what landed and what backfired. The curriculum adapts to each person's patterns, reshaping itself around their weak spots, ensuring steady improvement in the conversations that matter most.",
+      "teamSize": 1,
+      "url": "https://www.ycombinator.com/companies/quippy",
+      "batch": "F26",
+      "tags": [
+        "AI-Enhanced Learning",
+        "Social",
+        "Health & Wellness"
+      ],
+      "status": "Active",
+      "industries": [
+        "Consumer"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada",
+        "Remote",
+        "Partly Remote"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 36348,
+      "name": "antimattr",
+      "slug": "antimattr",
+      "website": "https://antimattr.one/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/3266646a9815f7e3ed31c088c4008df6e8fb0101.png",
+      "oneLiner": "voice-first hardware interface for human-agent interaction",
+      "longDescription": "antimattr builds a voice-first hardware interface for human-agent interaction that includes a ring and a pair of earphones. Designed to make more of your voice, the ring can record and summarise your conversations, capture thoughts on the go, or control your agents. The earphones use proprietary voice isolation technology to block out background noise entirely, so you can take a clear call from a loud pub or dictate with real accuracy.\r\n\r\nReserve early access at https://www.antimattr.one/project-mnemosyne\r\n[use code YC at checkout]",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/antimattr",
+      "batch": "F26",
+      "tags": [
+        "Hardware",
+        "Consumer",
+        "AI"
+      ],
+      "status": "Active",
+      "industries": [
+        "Consumer",
+        "Consumer Electronics"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada",
+        "Remote",
+        "Partly Remote"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 36084,
+      "name": "Covera",
+      "slug": "covera",
+      "website": "https://www.covera-agents.com/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/e711e58f600a9ea3c53a45d934c825989e9b5b57.png",
+      "oneLiner": "AI-native OS for insurance brokers",
+      "longDescription": "Covera builds AI agents for insurance brokers. Our ready-to-use agents take over the day-to-day servicing work: submission intake, carrier quoting, quote comparison, claims handling, past-due collections, and account rounding. That means brokers can spend their time advising and selling clients instead of doing data entry. We work with agencies of every size and connect natively to the tools they already use.",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/covera",
+      "batch": "F26",
+      "tags": [
+        "AIOps"
+      ],
+      "status": "Active",
+      "industries": [
+        "Fintech",
+        "Insurance"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": [
+        "isHiring"
+      ]
+    },
+    {
+      "id": 35784,
+      "name": "Vorelios",
+      "slug": "vorelios",
+      "website": "https://vorelios.com",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/c02b36f4ca2283601c8f20e89597a38768ae9db9.png",
+      "oneLiner": "AI that simulates physics 1000x faster",
+      "longDescription": "Engineering is bottlenecked by slow, costly simulations. We're fixing that by building foundation models that learn physics end-to-end and deliver the same results in seconds, at a fraction of the cost.",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/vorelios",
+      "batch": "F26",
+      "tags": [
+        "Hard Tech",
+        "B2B",
+        "AI"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35525,
+      "name": "Orca Aerospace",
+      "slug": "orca-aerospace",
+      "website": "https://orcaaerospace.com/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/afa6ce6fe3345bb9e7b6296e9877371ada8e2155.png",
+      "oneLiner": "AI spacecraft operators that lives onboard the vehicle",
+      "longDescription": "At Orca, we are focused on creating the future of spacecraft operations by moving control onto the vehicle. By allowing LLMs to control the satellite using deterministic tooling, we are able to achieve the same holistic, high-quality decisions on \"what\" to do to carry out a mission while maintaining the safety of systems that decide \"how\" to execute it. ",
+      "teamSize": 3,
+      "url": "https://www.ycombinator.com/companies/orca-aerospace",
+      "batch": "F26",
+      "tags": [
+        "AIOps",
+        "Space Exploration",
+        "Satellites"
+      ],
+      "status": "Active",
+      "industries": [
+        "Industrials",
+        "Aviation and Space"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": [
+        "isHiring"
+      ]
+    },
+    {
+      "id": 35522,
+      "name": "Hemlock",
+      "slug": "hemlock",
+      "website": "https://hemlock.info",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/bbacf68d8da77e7a11ad346712dd48cf4d50347d.png",
+      "oneLiner": "Force-sensing wristband for training robotic AI",
+      "longDescription": "Every serious robotics lab is bottlenecked on the same thing: demonstration data. The field has converged on egocentric video and hand pose as the substrate, and both are now cheap to collect at scale. What neither of them contains is force. A video of someone picking up an egg and a video of someone picking up a rock are nearly identical in pixel space and nearly identical in joint angles. They differ almost entirely in a quantity nobody is recording. Policies trained without it learn geometry and inherit no sense of touch.\r\n\r\nHemlock closes that gap at the source. Our device, the Bracelet, is a wrist-worn surface EMG band that reads the electrical activity of the forearm muscles that actually drive the hand, which means it recovers contraction force directly rather than inferring it from motion. This distinction is the whole thesis: force cannot be reconstructed downstream of kinematics, because a hand squeezing hard isometrically and a hand resting can occupy the identical pose. Muscle signal is the only non-invasive channel that separates them.",
+      "teamSize": 1,
+      "url": "https://www.ycombinator.com/companies/hemlock",
+      "batch": "F26",
+      "tags": [
+        "Hard Tech",
+        "Hardware"
+      ],
+      "status": "Active",
+      "industries": [
+        "Industrials",
+        "Manufacturing and Robotics"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "Los Angeles"
+      ],
+      "badges": [
+        "isHiring"
+      ]
+    },
+    {
+      "id": 35395,
+      "name": "Workers IO",
+      "slug": "workers-io",
+      "website": "https://workers.io",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/12ec3720a247bad2e5a39d162b68e217ed6b74bd.png",
+      "oneLiner": "Deterministic Virtual Machines",
+      "longDescription": "Workers IO makes sure everything you ship works. Our platform maps every scenario your software can face in production and verifies each release against all of them in simulation environments, every failure comes back as an exact, replayable run.\r\n\r\nEngineering teams stop chasing bugs and ship at agent speed, with certainty that used to be impossible.",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/workers-io",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Developer Tools",
+        "B2B",
+        "Infrastructure"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Engineering, Product and Design"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35290,
+      "name": "Antropi Robotics",
+      "slug": "antropi-robotics",
+      "website": "https://www.antropi.world/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/b8c101f20a3b29a6ae368d81297168e49391e75a.png",
+      "oneLiner": "Autonomous CNC factories for faster hardware",
+      "longDescription": "",
+      "teamSize": 0,
+      "url": "https://www.ycombinator.com/companies/antropi-robotics",
+      "batch": "F26",
+      "tags": [
+        "Robotics",
+        "Manufacturing"
+      ],
+      "status": "Active",
+      "industries": [
+        "Industrials",
+        "Manufacturing and Robotics"
+      ],
+      "regions": [
+        "India",
+        "South Asia"
+      ],
+      "locations": [
+        "Bengaluru"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35261,
+      "name": "Asakana",
+      "slug": "asakana",
+      "website": "https://www.asakana.co/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/582ebf9f01453d95f2c02b9bac341aff365af875.png",
+      "oneLiner": "AI order entry for food distributors: emails and texts to ERP",
+      "longDescription": "Restaurants send orders to food distributors by email, text, and photo. Someone at the distributor retypes every one of them into the ERP. Asakana does that entry instead: orders land in the ERP already entered, and anything unclear goes to a person before it goes in. Live at US seafood distributors today, returning 40%+ of order-desk time to selling. Founded by a seafood distributor and a Gemini builder.",
+      "teamSize": 0,
+      "url": "https://www.ycombinator.com/companies/asakana",
+      "batch": "F26",
+      "tags": [
+        "SaaS",
+        "Food & Beverage"
+      ],
+      "status": "Active",
+      "industries": [
+        "Consumer",
+        "Food and Beverage"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35260,
+      "name": "OnePatch",
+      "slug": "onepatch",
+      "website": "https://onepatch.dev",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/7832df887d718a7dbfbcec376ef2b160c31b16da.png",
+      "oneLiner": "Automate on-call at agent-scale.",
+      "longDescription": "OnePatch is a forward-deployed AI SRE. It instruments your services, watches how they actually behave in prod, catches incidents, and drives each one to resolution. Think Datadog, except it doesn't stop at telling you something broke: it keeps going until the fix is shipped.",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/onepatch",
+      "batch": "F26",
+      "tags": [
+        "DevOps",
+        "Automation",
+        "AI"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Engineering, Product and Design"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35257,
+      "name": "Nodus Compute",
+      "slug": "nodus-compute",
+      "website": "https://www.nodus-compute.ai/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/cf5d37476e8f7b170957ddb85fd0254d52fa2634.png",
+      "oneLiner": "Intelligent execution layer for AI workloads",
+      "longDescription": "Intelligent execution layer for AI workloads",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/nodus-compute",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Infrastructure"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B"
+      ],
+      "regions": [],
+      "locations": [],
+      "badges": []
+    },
+    {
+      "id": 35190,
+      "name": "Lantern AI",
+      "slug": "lantern-ai",
+      "website": "https://www.lantern.md",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/b98395722e26f62e5f8c6de59c2dd27361270ec7.png",
+      "oneLiner": "Turn Your Taste Into Hires",
+      "longDescription": "Lantern learns what exceptional looks like for your team, pressure-tests the role against the real talent market, then runs the hiring loop: sourcing, inbound applications, interviews, assessments, candidate communication, and offers.",
+      "teamSize": 4,
+      "url": "https://www.ycombinator.com/companies/lantern-ai",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Human Resources",
+        "Recruiting",
+        "HR Tech",
+        "Talent Acquisition"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Human Resources"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35128,
+      "name": "Talos",
+      "slug": "talos-us",
+      "website": "https://www.talos-us.com/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/adf2f2d3e67de554b1df8a77cdc1d6dd943928ec.png",
+      "oneLiner": "Predictive maintenance for power infrastructure.",
+      "longDescription": "At Talos, we are building better, more modern predictive maintenance for the power industry with a focus on large transformers. Our devices continuously monitor critical power equipment and detect problems early on using anomaly-detection models. For each fault, we provide detailed analyses of the problem, exactly where and why it happened, as well as next steps teams should take. ",
+      "teamSize": 3,
+      "url": "https://www.ycombinator.com/companies/talos-us",
+      "batch": "F26",
+      "tags": [
+        "Deep Learning",
+        "IoT",
+        "Energy"
+      ],
+      "status": "Active",
+      "industries": [
+        "Industrials",
+        "Energy"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "Baltimore, MD, USA"
+      ],
+      "badges": [
+        "highlightWomen"
+      ]
+    },
+    {
+      "id": 35094,
+      "name": "Forward",
+      "slug": "useforward",
+      "website": "https://www.useforward.co/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/717ea600e14829731cf877a194aca957195d9b27.png",
+      "oneLiner": "Unifying Global Private Credit",
+      "longDescription": "An AI platform that connects commercial debt advisors with mandate matching private credit funds. ",
+      "teamSize": 5,
+      "url": "https://www.ycombinator.com/companies/useforward",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Fintech",
+        "B2B"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 35058,
+      "name": "Capveon",
+      "slug": "capveon",
+      "website": "https://capveon.ai",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/55acb7275a696cdf957737bce96b338f2da2d45f.png",
+      "oneLiner": "Turning infrastructure demand into action ",
+      "longDescription": "",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/capveon",
+      "batch": "F26",
+      "tags": [
+        "GovTech"
+      ],
+      "status": "Active",
+      "industries": [
+        "Government"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 34928,
+      "name": "Ascii",
+      "slug": "ascii",
+      "website": "https://box.ascii.dev",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/7ab4963f9bacc76a0a31b94f8773cad5138d2dc3.png",
+      "oneLiner": "The best cloud VMs for billions of agents",
+      "longDescription": "**Problem**\r\n\r\nHumans used to need laptops to do their work. Now they prompt agents instead, and those agents need computers too: always-on, in large quantities, and with unlimited capabilities. \r\n\r\nBuilding and maintaining that yourself is far from trivial.\r\n\r\n**Solution**\r\n\r\nBox provides powerful, simple, permissive Ubuntu VMs in the cloud. In a box, an agent can work for long periods on code or on knowledge work like legal, research, reporting, and auditing.\r\n\r\n**Why Box and not any other cloud VM?**\r\n\r\n1. It is ready out of the box: every box ships with a desktop, chrome, languages, docker, snapshots, and templates, plus a CLI, SDK, API, and control pane for your fleet.\r\n2. It is permissive and paradigm agnostic: any number of agents can use any number of boxes. Agents can run inside or use boxes as an external tool.\r\n3. It is expertly crafted: we manage everything from the individual CPU to the orchestration software, which makes boxes stable, persistent, scalable, and secure.\r\n4. It is the best performance and price in town: our CPUs rank first on HPC benchmarks, and boxes are typically 9x to 18x cheaper than other leading sandboxes.\r\n\r\n**Further notes**\r\n\r\nBoxes are hosted in Europe, which keeps prices low, and more regions are coming. Unless compliance requires it, agents don't notice the region they run in.",
+      "teamSize": 3,
+      "url": "https://www.ycombinator.com/companies/ascii",
+      "batch": "F26",
+      "tags": [
+        "Developer Tools",
+        "Cloud Computing"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Infrastructure"
+      ],
+      "regions": [
+        "Remote",
+        "Fully Remote"
+      ],
+      "locations": [],
+      "badges": []
+    },
+    {
+      "id": 34794,
+      "name": "Qokedas",
+      "slug": "qokedas",
+      "website": "https://qokedas.com/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/db2b316be3ecf24cfbcfc09074b3e2b8a1f3bb05.png",
+      "oneLiner": "Data for AI Science",
+      "longDescription": "Models are trained on the entire internet, but most of what happens on Earth is never written down. We turn those signals into training data so labs can make models better at science",
+      "teamSize": 3,
+      "url": "https://www.ycombinator.com/companies/qokedas",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Deep Learning"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 34761,
+      "name": "Veeza AI",
+      "slug": "veeza-ai",
+      "website": "https://veeza.ai",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/1ff98253605935aaa53bb31e8330be6a74309c6d.png",
+      "oneLiner": "AI travel agent for people with weak passports, starting with visas.",
+      "longDescription": "Billions of people need tourist visas to travel the world. We use AI agents to prepare applications, verify documents, secure appointments, and handle the visa process end to end.\r\n",
+      "teamSize": 1,
+      "url": "https://www.ycombinator.com/companies/veeza-ai",
+      "batch": "F26",
+      "tags": [
+        "AIOps",
+        "Consumer",
+        "AI"
+      ],
+      "status": "Active",
+      "industries": [
+        "Consumer",
+        "Travel, Leisure and Tourism"
+      ],
+      "regions": [],
+      "locations": [],
+      "badges": []
+    },
+    {
+      "id": 34629,
+      "name": "Simulithic",
+      "slug": "simulithic",
+      "website": "https://simulithic.com",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/58a972cb3cb171dd4300267d241cc6705539f906.png",
+      "oneLiner": "Simulate how any product change will perform before shipping.",
+      "longDescription": "We build simulations of your real users, grounded in your session data, so you can predict how any product change will perform before you ship it.",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/simulithic",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Engineering, Product and Design"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 34597,
+      "name": "Sentient OS",
+      "slug": "sentient-os",
+      "website": "https://sentient-os.ai",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/597c9491c6951c83af2828c9a596ca67477a0157.png",
+      "oneLiner": "On-device AI that knows your entire life and does your work overnight.",
+      "longDescription": "Nobody's built truly proactive AI, because it requires running inference on your entire life. In the cloud, that's insanely expensive and a privacy nightmare. But not on your own chip.\r\n\r\nEvery night, Sentient's on-device LLM wakes your Mac and understands what's new in your life (email, messages, files, Granola transcripts...), entirely locally, and distills it into a knowledge base.\r\n\r\nYou wake up to your work already prepared: the reply you forgot, drafted from your own context; the subscription you never use renewing tomorrow, caught; the report you promised in the group chat, ready to send. Everything is one click from firing through computer use, and nothing fires until you click.\r\n\r\nOr click your Mac notch anytime and say \"finish this for me.\" Sidekick takes over the thing you were doing with its own cursor while you move on.\r\n\r\nOn-device inference at this scale was supposed to be impossible: devices too slow, and models too dumb. So we built the stack ourselves: a custom LiteRT-LM fork (KV-cache reuse, speculative decoding, custom k-quants) that runs nightly on 8 GB Macs. The user's hardware does ~90% of the compute, and their own ChatGPT or Claude subscription does the rest, so our marginal cost is ~$0, and our servers store nothing.\r\n\r\nWe soft-launched late July with one Reddit post: top of r/macapps, 2,000+ users in 48 hours, $0 marketing. Free and open source for consumers; the same engine on the work stack (Slack, Granola, Linear, Notion) becomes the enterprise business.",
+      "teamSize": 2,
+      "url": "https://www.ycombinator.com/companies/sentient-os",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Productivity",
+        "AI"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Productivity"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": []
+    },
+    {
+      "id": 34464,
+      "name": "herdr",
+      "slug": "herdr",
+      "website": "https://herdr.dev/",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/16f63118d9ed1edf6a055497860b53107c37b334.png",
+      "oneLiner": "building the open agent runtime",
+      "longDescription": "Developers don't run one coding agent anymore. They run fleets of them — for hours, sometimes days — across laptops, servers, and sandboxes. Keeping track of that work is the new bottleneck: which agent is blocked, which one finished, which terminal is it in, and why did everything die when the laptop closed.\r\n\r\nHerdr is the open-source home for that work. A background server owns the agents' terminal sessions on each machine, so the work survives disconnects, closed lids, and dropped SSH. Herdr detects each agent and turns the chaos into an attention queue — working, blocked, done, across every project — so you look only when an agent needs you. Every client is just a view: the bundled terminal UI, SSH from another machine, your phone. Close one, open another; the work never stops.\r\n\r\nSoftware can drive it too: a CLI, a socket API, and a plugin marketplace that passed 500 community plugins in its first month. The runtime is Apache-2.0 and stays open. Four months after launch: 25k GitHub stars, 340k downloads.",
+      "teamSize": 1,
+      "url": "https://www.ycombinator.com/companies/herdr",
+      "batch": "F26",
+      "tags": [
+        "Artificial Intelligence",
+        "Developer Tools",
+        "AI Assistant"
+      ],
+      "status": "Active",
+      "industries": [
+        "B2B",
+        "Engineering, Product and Design"
+      ],
+      "regions": [
+        "Turkey",
+        "Middle East and North Africa"
+      ],
+      "locations": [
+        "Ankara, Turkey"
+      ],
+      "badges": []
+    },
+    {
+      "id": 34365,
+      "name": "Lambda Robotics",
+      "slug": "lambda-robotics",
+      "website": "https://lambdarobotics.ai",
+      "smallLogoUrl": "https://bookface-images.s3.amazonaws.com/small_logos/751b6f5898f8cb0549b80d5a13c551d0c7c0e12f.png",
+      "oneLiner": "Robotics for AI Infrastructure",
+      "longDescription": "Lambda Robotics builds and deploys robots for the infrastructure powering frontier AI.",
+      "teamSize": 6,
+      "url": "https://www.ycombinator.com/companies/lambda-robotics",
+      "batch": "F26",
+      "tags": [
+        "Robotics",
+        "Infrastructure",
+        "AI"
+      ],
+      "status": "Active",
+      "industries": [
+        "Industrials",
+        "Manufacturing and Robotics"
+      ],
+      "regions": [
+        "United States of America",
+        "America / Canada"
+      ],
+      "locations": [
+        "San Francisco"
+      ],
+      "badges": [
+        "highlightWomen",
+        "isHiring"
+      ]
+    }
+  ],
+  "nextPage": "https://api.ycombinator.com/v0.1/companies?page=2",
+  "page": 1,
+  "totalPages": 249
+}

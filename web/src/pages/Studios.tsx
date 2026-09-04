@@ -40,6 +40,27 @@ import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { TemplateSelect } from '../components/TemplateSelect';
 import { Score } from '../components/Score';
+import { LetterBlock } from '../components/LetterBlock';
+import { SimilarBlock } from '../components/SimilarBlock';
+
+/** Підписи типів компаній. Той самий перелік, що в `src/pipeline/company-kind.ts`. */
+const KIND_LABELS: Record<string, string> = {
+  studio: 'студія',
+  design: 'дизайн-студія',
+  startup: 'стартап',
+  product: 'продукт',
+  outstaff: 'аутстаф',
+  unknown: 'тип невідомий',
+};
+
+const KIND_COLORS: Record<string, string> = {
+  studio: 'brand',
+  design: 'grape',
+  startup: 'green',
+  product: 'gray',
+  outstaff: 'yellow',
+  unknown: 'gray',
+};
 
 /** Стек, знятий із сайту студії. WordPress і Tilda означають, що фронт там навряд чи наймають. */
 const WEAK_STACK = ['wordpress', 'tilda', 'wix', 'squarespace', 'drupal'];
@@ -143,6 +164,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             <Text size="sm" c="dimmed">
               {card.domain}
             </Text>
+            <Badge color={KIND_COLORS[card.kind] ?? 'gray'}>{KIND_LABELS[card.kind] ?? card.kind}</Badge>
             {card.sizeHint && <Badge color="gray">{card.sizeHint}</Badge>}
             {card.lastContactedAt && (
               <Badge color="yellow" leftSection={<Clock size={11} />}>
@@ -158,6 +180,26 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               {card.description}
             </Text>
           )}
+
+          {/*
+            Мертвий сайт видно одразу, ще до того як власник почне писати лист.
+            Рік береться з копірайту футера, дата з найсвіжішої публікації.
+          */}
+          {(() => {
+            const yearsBehind = card.copyrightYear ? new Date().getFullYear() - card.copyrightYear : 0;
+            const silentDays = card.lastPostAt
+              ? Math.round((Date.now() - card.lastPostAt) / 86_400_000)
+              : 0;
+            if (yearsBehind < 2 && silentDays < 540) return null;
+
+            return (
+              <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="Схоже, сайт покинутий">
+                {yearsBehind >= 2 && `Копірайт ${card.copyrightYear} року. `}
+                {silentDays >= 540 && `Останній пост ${silentDays} днів тому. `}
+                Такі студії рідко відповідають на листи.
+              </Alert>
+            );
+          })()}
 
           {weak.length > 0 && (
             <Alert color="yellow" mt="md" title="Стек сайту слабкий">
@@ -175,7 +217,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               variant="light"
               leftSection={<ExternalLink size={14} />}
             >
-              Сайт студії
+              {card.kind === 'startup' ? 'Сайт стартапу' : 'Сайт студії'}
             </Button>
             {card.careersUrl && (
               <Button component="a" href={card.careersUrl} target="_blank" rel="noreferrer" variant="subtle">
@@ -269,6 +311,22 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             </Stack>
           )}
 
+          <SimilarBlock companyId={card.companyId} />
+
+          <LetterBlock
+            company={card.name}
+            domain={card.domain}
+            kind={card.kind}
+            stack={card.techHints}
+            contactName={card.contacts.find((contact) => contact.name)?.name ?? null}
+            contactEmail={
+              card.contacts.find((contact) => contact.name && contact.email)?.email ??
+              card.contacts.find((contact) => contact.email)?.email ??
+              null
+            }
+            templateKind="studio"
+          />
+
           <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
             звідки такий рахунок
           </Text>
@@ -343,7 +401,18 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               leftSection={<Send size={15} />}
               rightSection={<Kbd size="xs">e</Kbd>}
               disabled={!template}
-              onClick={() => onAct({ action: 'contacted', templateUsed: template })}
+              onClick={() =>
+              onAct({
+                action: 'contacted',
+                templateUsed: template,
+                // Знімок контакту: через рік у Контактах має бути видно, кому саме писали.
+                contactName: card.contacts.find((contact) => contact.name)?.name ?? null,
+                contactEmail:
+                  card.contacts.find((contact) => contact.name && contact.email)?.email ??
+                  card.contacts.find((contact) => contact.email)?.email ??
+                  null,
+              })
+            }
             >
               Написав
             </Button>
@@ -354,15 +423,28 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
   );
 }
 
-export function StudiosPage() {
+export interface CompanyListProps {
+  /** Порожнє означає всі, крім продуктових. */
+  kind?: string;
+  emptyTitle?: string;
+  emptyHint?: string;
+}
+
+/**
+ * Студії і Стартапи це той самий екран з різним зрізом бази, тому сторінка
+ * параметризована типом, а не скопійована вдруге на триста рядків.
+ */
+export function StudiosPage({ kind, emptyTitle, emptyHint }: CompanyListProps = {}) {
   const client = useQueryClient();
-  const [filters, setFilters] = useState({ q: '', country: '', min: '', all: '' });
+  const [filters, setFilters] = useState({ q: '', country: '', min: '', all: '', named: '' });
   const [cursor, setCursor] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const query = useMemo(() => ({ ...filters, ...(kind ? { kind } : {}) }), [filters, kind]);
+
   const { data, error, isLoading } = useQuery({
-    queryKey: ['studios', filters],
-    queryFn: () => api.studios(filters),
+    queryKey: ['studios', query],
+    queryFn: () => api.studios(query),
   });
 
   const act = useMutation({
@@ -447,6 +529,14 @@ export function StudiosPage() {
                 checked={filters.all === '1'}
                 onChange={(event) => setFilters({ ...filters, all: event.currentTarget.checked ? '1' : '' })}
               />
+              {/* Головний робочий фільтр: лист на hello@ читає менеджер, не техлід. */}
+              <Checkbox
+                label="тільки з іменним контактом"
+                checked={filters.named === '1'}
+                onChange={(event) =>
+                  setFilters({ ...filters, named: event.currentTarget.checked ? '1' : '' })
+                }
+              />
             </Stack>
           )}
 
@@ -464,7 +554,19 @@ export function StudiosPage() {
                 </Tooltip>
               )}
             </Text>
-            <Text size="xs" c="dimmed" ml="auto">
+            {/*
+              Вивантаження звичайним посиланням, а не через fetch: браузер сам
+              збереже файл за заголовком content-disposition, і не треба возитись з blob.
+            */}
+            <Anchor
+              href={`/api/export/studios${filters.named === '1' ? '?named=1' : ''}`}
+              size="xs"
+              ml="auto"
+              download
+            >
+              CSV
+            </Anchor>
+            <Text size="xs" c="dimmed">
               <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> перехід
             </Text>
           </Group>
@@ -495,8 +597,11 @@ export function StudiosPage() {
             <EmptyState
               icon={<Palette size={28} />}
               withIndicatorBackground
-              title={isLoading ? 'Читаю каталог' : 'Під ці фільтри нічого не підпало'}
-              description="Знизь мінімальний рахунок або збери ще сторінок каталогу розширенням у браузері."
+              title={isLoading ? 'Читаю каталог' : (emptyTitle ?? 'Під ці фільтри нічого не підпало')}
+              description={
+                emptyHint ??
+                'Знизь мінімальний рахунок або збери ще сторінок каталогу розширенням у браузері.'
+              }
             />
           </Box>
         )

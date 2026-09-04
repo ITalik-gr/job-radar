@@ -29,6 +29,26 @@ export const companies = sqliteTable(
     techHints: text('tech_hints', { mode: 'json' }).$type<string[]>().notNull().default([]),
     // Теги з каталогів: тип бізнесу, домен, послуги. Не стек, стек живе в tech_hints.
     tags: text('tags', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    /**
+     * Тип компанії: studio | design | startup | product | outstaff | unknown.
+     * Потрібен, щоб розвести сторінки Студії і Стартапи і щоб шаблон листа
+     * підбирався сам: дизайн-студії пишеться зовсім не те, що стартапу.
+     */
+    kind: text('kind').notNull().default('unknown'),
+    /**
+     * Ознаки живості сайту, зібрані enrichment. Агенція з копірайтом 2019 року
+     * і мертвим блогом не наймає і не відповідає на листи, і це видно ще до того,
+     * як власник витратить вечір на лист.
+     */
+    copyrightYear: integer('copyright_year'),
+    lastPostAt: integer('last_post_at'),
+    /**
+     * Вектор опису компанії для пошуку схожих. JSON-масив, а не окрема база
+     * векторів: компаній сотні, повний перебір у памʼяті займає мілісекунди,
+     * і Vectorize тут був би зайвою залежністю.
+     */
+    embedding: text('embedding'),
+    embeddedAt: integer('embedded_at'),
     description: text('description'),
     // Сторінка компанії в каталозі, звідки вона прийшла: Clutch, DOU тощо.
     sourceUrl: text('source_url'),
@@ -148,6 +168,13 @@ export const outreach = sqliteTable(
     channel: text('channel').notNull(),
     sentAt: integer('sent_at').notNull().default(now),
     templateUsed: text('template_used'),
+    /**
+     * Кому саме писали. Не звʼязок із `contacts`, а знімок імені і пошти на момент
+     * листа: контакт може змінитись або зникнути з сайту, а історія має лишитись
+     * читабельною через рік.
+     */
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
     replyAt: integer('reply_at'),
     // positive | rejection | auto
     replyType: text('reply_type'),
@@ -253,8 +280,14 @@ export const templates = sqliteTable(
     /** Стабільний ключ, який лягає в outreach.template_used. */
     slug: text('slug').notNull(),
     name: text('name').notNull(),
-    /** vacancy | studio | resume */
+    /** vacancy | studio | resume. Визначає, де шаблон пропонується. */
     kind: text('kind').notNull().default('vacancy'),
+    /**
+     * Тип компанії, під який заточений текст: design | startup | studio | outstaff.
+     * Порожнє означає універсальний. Дизайн-студії і стартапу пишеться зовсім різне,
+     * і вибирати шаблон руками щоразу це те саме тертя, через яке листи не пишуться.
+     */
+    forKind: text('for_kind'),
     subject: text('subject'),
     body: text('body').notNull().default(''),
     note: text('note'),

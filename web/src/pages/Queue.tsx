@@ -40,6 +40,7 @@ import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { TemplateSelect } from '../components/TemplateSelect';
 import { TagMenu } from '../components/TagMenu';
+import { LetterBlock } from '../components/LetterBlock';
 import { Score } from '../components/Score';
 
 const DONE: Record<string, string> = {
@@ -259,6 +260,14 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
               {card.why}
             </Alert>
           )}
+
+          <LetterBlock
+            company={card.company}
+            domain={card.domain}
+            stack={card.stack}
+            vacancyTitle={card.title}
+            templateKind="vacancy"
+          />
 
           <Group gap="sm" mt="lg" mb="xs">
             <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>

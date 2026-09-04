@@ -43,6 +43,41 @@
       "when": 1788481567886,
       "tag": "0005_powerful_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788488922996,
+      "tag": "0006_overjoyed_rawhide_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788506813511,
+      "tag": "0007_ambiguous_mulholland_black",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788506943552,
+      "tag": "0008_clear_firedrake",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788507393016,
+      "tag": "0009_sad_sentinels",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788515651094,
+      "tag": "0010_giant_tusk",
+      "breakpoints": true
     }
   ]
 }

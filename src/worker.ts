@@ -11,6 +11,7 @@ import { discover } from './pipeline/discover.js';
 import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
+import { setAiBinding } from './lib/embeddings.js';
 
 /**
  * Точка входу для Cloudflare Workers. Той самий Hono-застосунок, що й локально,
@@ -21,6 +22,8 @@ import { refreshRulesFromDb } from './pipeline/rules.js';
  */
 export interface Env {
   DB: D1Database;
+  /** Workers AI. Використовується для векторів компаній, класифікація лишається на Anthropic. */
+  AI?: { run: (model: string, input: unknown) => Promise<unknown> };
   RADAR_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
@@ -35,6 +38,8 @@ function prepare(env: Env): void {
   setRuntimeEnv(env as unknown as Record<string, unknown>);
   if (!env.DB) throw new Error('немає біндінгу D1 з іменем DB, перевір wrangler.jsonc');
   setDb(drizzle(env.DB, { schema }));
+  // На Workers вектори рахуються біндінгом, без токена і без виходу назовні.
+  if (env.AI) setAiBinding(env.AI);
 }
 
 async function safely(name: string, task: () => Promise<unknown>): Promise<void> {

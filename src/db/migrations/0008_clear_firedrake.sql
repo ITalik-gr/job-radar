@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `for_kind` text;

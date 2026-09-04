@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { companyState, vacancies, type Company } from '../src/db/schema.js';
+import { companies, companyState, vacancies, type Company } from '../src/db/schema.js';
 import { upsertCompany } from '../src/pipeline/companies.js';
 import { dedupeKey, mergeSources } from '../src/pipeline/dedupe.js';
 import { closeMissing, ingestVacancies, queue } from '../src/pipeline/ingest.js';
@@ -53,6 +53,66 @@ beforeAll(async () => {
   for (const suffix of ['', '-wal', '-shm']) rmSync(`${config.dbPath}${suffix}`, { force: true });
   runMigrations().sqlite.close();
   acme = (await upsertCompany({ name: 'Acme', domain: 'acme.com', source: 'test' })).company;
+});
+
+describe('невідома компанія', () => {
+  it('вакансія з назвою і доменом створює компанію, а не відкидається', async () => {
+    /*
+     * Раніше такий запис мовчки зникав у debug-лозі. Це зʼїдало всю видачу джерел,
+     * які приносять нові компанії разом з вакансіями: борди акселераторів, DOU, Djinni.
+     */
+    const before = await getDb().select().from(companies);
+
+    await ingestVacancies(
+      [
+        {
+          source: 'getro',
+          externalId: 'new-1',
+          url: 'https://jobs.example.com/companies/newco/jobs/1',
+          title: 'Frontend Engineer',
+          rawText: 'react typescript next.js remote',
+          companyName: 'NewCo',
+          companyDomain: 'newco.dev',
+          location: 'Remote',
+          remote: true,
+          postedAt: null,
+        },
+      ],
+      { skipLlm: true },
+    );
+
+    const after = await getDb().select().from(companies);
+    expect(after.length).toBe(before.length + 1);
+    expect(after.some((row) => row.domain === 'newco.dev')).toBe(true);
+
+    // Прибираємо за собою: файл тестів ділить одну базу, і зайва вакансія
+    // вище порогу поламала б перевірки черги нижче.
+    await getDb().delete(companies).where(eq(companies.domain, 'newco.dev'));
+  });
+
+  it('без домену компанія не вигадується: інакше всі вакансії борду стануть однією', async () => {
+    const before = await getDb().select().from(companies);
+
+    await ingestVacancies(
+      [
+        {
+          source: 'djinni',
+          externalId: 'anon-1',
+          url: 'https://djinni.co/jobs/999-frontend/',
+          title: 'Frontend Developer',
+          rawText: 'react typescript',
+          companyName: 'Прихована компанія',
+          companyDomain: null,
+          location: 'Kyiv',
+          remote: false,
+          postedAt: null,
+        },
+      ],
+      { skipLlm: true },
+    );
+
+    expect((await getDb().select().from(companies)).length).toBe(before.length);
+  });
 });
 
 describe('dedupeKey', () => {

@@ -77,6 +77,8 @@
 ```ts
 companies
   id, name, domain (unique), country, city, size_hint,
+  kind,                       // studio | design | startup | product | outstaff | unknown
+  copyright_year, last_post_at, // ознаки живості сайту, збирає enrichment
   sources: string[],          // з яких каталогів прийшла
   careers_url, careers_kind,  // html | greenhouse | lever | rss | none
   tech_hints: string[],       // з евристики по HTML сайту
@@ -103,7 +105,9 @@ vacancies
 
 outreach
   id, company_id, vacancy_id, channel, sent_at,
-  template_used, reply_at, reply_type, note
+  template_used, contact_name, contact_email, reply_at, reply_type, note
+  // contact_* це знімок на момент листа, а не звʼязок із contacts:
+  // контакт може зникнути з сайту, а історія має лишитись читабельною
 
 runs
   id, started_at, finished_at, source, items_found, items_new, errors, status
@@ -114,8 +118,10 @@ settings
   // Потрібні тому, що на Workers файлової системи немає і конфіг вшитий у бандл
 
 templates
-  id, slug (unique), name, kind, subject, body, note, archived, created_at, updated_at
-  // kind: vacancy | studio | resume
+  id, slug (unique), name, kind, for_kind, subject, body, note, archived,
+  created_at, updated_at
+  // kind: vacancy | studio | resume, визначає де шаблон пропонується
+  // for_kind: під який тип компанії заточений текст. Порожнє означає універсальний
   // slug лягає в outreach.template_used і не змінюється при перейменуванні,
   // інакше історія листування посилалась би в нікуди
 ```
@@ -145,10 +151,19 @@ templates
 - TechBehemoths, GoodFirms, DesignRush, Sortlist
 - YC companies (публічний JSON)
 - Wellfound
-- Awwwards, Dribbble teams (дизайн-студії, часто шукають фронт)
+- **Awwwards** підключений як каталог `awwwards`. robots дозволяє `/directory/`,
+  але забороняє пошук і `/websites/?`, тому ходимо тільки на каталог і на профілі.
+  Домен студії лежить на третьому рівні: каталог, профіль, сайт
+- Dribbble teams (дизайн-студії, часто шукають фронт)
 
 ### Пріоритет 3: борди вакансій
-- Djinni, DOU (стабільний HTML)
+- Djinni, DOU (стабільний HTML). Обидва підключені як **борди вакансій**:
+  `djinni` і `dou:vacancies`. Каталог компаній DOU лишається окремим джерелом `dou`
+- **Getro**, рушій дошок акселераторів і фондів. Один адаптер відкриває вісім мереж
+  (Techstars, Accel, Lerer Hippeau, Craft Ventures, Uncork, Greycroft, Primary,
+  Underscore). Список рендериться на клієнті, але **пошук працює на сервері**,
+  тому беремо вузькими запитами `?q=frontend`. Домен компанії доважується
+  зі сторінки компанії окремим запитом
 - Otta
 
 ### Пріоритет 4: власні career-сторінки

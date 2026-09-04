@@ -7,6 +7,8 @@ import { normalizeDomain } from '../lib/normalize.js';
 import type { RawVacancy } from '../sources/registry.js';
 import { classifyText, type ClassifyOptions } from './classify.js';
 import { dedupeKey, mergeSources } from './dedupe.js';
+import { affixesForCompany, stripBoilerplate } from './boilerplate.js';
+import { upsertCompany } from './companies.js';
 import { hasStopWord, scoreVacancy, STOP_WORD_SCORE } from './score.js';
 import { rules } from './rules.js';
 
@@ -47,6 +49,27 @@ async function resolveCompany(item: RawVacancy, fallback?: Company): Promise<Com
     const [byName] = await db.select().from(companies).where(eq(companies.name, item.companyName));
     if (byName) return byName;
   }
+
+  /*
+   * Компанії ще немає в базі. Раніше вакансія тут мовчки відкидалась, і це з'їдало
+   * всю видачу джерел, які приносять нові компанії разом з вакансіями: борди
+   * акселераторів, DOU, Djinni. У логах було лише debug "компанію не впізнано".
+   *
+   * Створюємо тільки коли є і назва, і домен: без домену запис однаково не
+   * зберігся б, а вигадувати домен з адреси борду не можна, бо тоді всі вакансії
+   * з Djinni стали б однією компанією "djinni.co".
+   */
+  if (domain && item.companyName) {
+    const { company } = await upsertCompany({
+      name: item.companyName,
+      domain,
+      source: item.source,
+      sourceUrl: item.url,
+    });
+    log.info({ domain, name: item.companyName, source: item.source }, 'нова компанія з вакансії');
+    return company;
+  }
+
   return null;
 }
 
@@ -183,9 +206,17 @@ export async function ingestVacancies(
       continue;
     }
 
+    /*
+     * Перед моделлю вирізаємо блок "про компанію": у всіх вакансій однієї компанії
+     * він однаковий, і на живих даних це половина тексту. Скоринг і збереження
+     * працюють з повним текстом, урізаний іде **тільки** в модель.
+     */
+    const affixes = await affixesForCompany(owner.id);
+    const forModel = stripBoilerplate(text, affixes).slice(0, config.llm.maxInputChars);
+
     const result = options.skipLlm
       ? { classification: null, reason: 'budget' as const, needsReview: false }
-      : await classifyText(text.slice(0, config.llm.maxInputChars), options);
+      : await classifyText(forModel, options);
 
     if (result.classification) stats.classified += 1;
     if (result.needsReview) stats.needsReview += 1;

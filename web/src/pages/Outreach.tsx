@@ -141,6 +141,7 @@ export function OutreachPage() {
               <Table.Tr>
                 <Table.Th w={90}>коли</Table.Th>
                 <Table.Th w={200}>компанія</Table.Th>
+                <Table.Th w={170}>кому</Table.Th>
                 <Table.Th>вакансія</Table.Th>
                 <Table.Th w={100}>канал</Table.Th>
                 <Table.Th w={150}>шаблон</Table.Th>
@@ -162,6 +163,17 @@ export function OutreachPage() {
                       <Text size="sm" fw={500} truncate>
                         {row.company}
                       </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {row.contactName ? (
+                        <Text size="sm" truncate title={row.contactEmail ?? undefined}>
+                          {row.contactName}
+                        </Text>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          {row.contactEmail ?? 'не вказано'}
+                        </Text>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       {row.vacancyUrl ? (

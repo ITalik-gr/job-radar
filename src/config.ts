@@ -62,12 +62,33 @@ export const config = {
       return num('HTTP_RETRIES', 3);
     },
   },
+  /** Доступ до Workers AI поза Workers: локальний CLI і тести. */
+  cloudflare: {
+    get accountId() {
+      return str('CLOUDFLARE_ACCOUNT_ID', '');
+    },
+    get apiToken() {
+      return str('CLOUDFLARE_API_TOKEN', '');
+    },
+  },
+
   llm: {
     get apiKey() {
       return str('ANTHROPIC_API_KEY', '');
     },
     get model() {
       return str('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001');
+    },
+    /**
+     * Базова адреса Anthropic. Порожня означає прямий виклик.
+     *
+     * Якщо вказати шлюз AI Gateway, усі виклики йдуть через нього і зʼявляються
+     * кеш, жорсткий ліміт витрат і лог кожного запиту. Зараз видно лише лічильник
+     * у `llm_usage`, тобто скільки викликів, але не що саме і чому.
+     * Формат: https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic
+     */
+    get baseUrl() {
+      return str('ANTHROPIC_BASE_URL', '');
     },
     get dailyCallLimit() {
       return num('LLM_DAILY_CALL_LIMIT', 500);

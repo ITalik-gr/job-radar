@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
+import { detectKind } from './company-kind.js';
 import { companies, companyState, type Company } from '../db/schema.js';
 import { normalizeDomain, normalizeUrl } from '../lib/normalize.js';
 
@@ -51,6 +52,12 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
         tags: input.tags ?? [],
         description: input.description ?? null,
         sourceUrl: input.sourceUrl ? normalizeUrl(input.sourceUrl) : null,
+        kind: detectKind({
+          tags: input.tags ?? [],
+          sources: [input.source],
+          description: input.description ?? null,
+          sizeHint: input.sizeHint ?? null,
+        }),
       })
       .returning();
 
@@ -66,11 +73,21 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
     : [...existing.sources, input.source];
   const tags = [...new Set([...existing.tags, ...(input.tags ?? [])])];
 
+  /*
+   * Тип перераховується на кожному оновленні: компанія могла прийти спершу з ATS
+   * без тегів, а потім з каталогу з тегами, і тільки тоді стає видно, що це студія.
+   */
   const [updated] = await db
     .update(companies)
     .set({
       sources,
       tags,
+      kind: detectKind({
+        tags,
+        sources,
+        description: existing.description ?? input.description ?? null,
+        sizeHint: existing.sizeHint ?? input.sizeHint ?? null,
+      }),
       description: existing.description ?? input.description ?? null,
       sourceUrl: existing.sourceUrl ?? (input.sourceUrl ? normalizeUrl(input.sourceUrl) : null),
       country: existing.country ?? input.country ?? null,

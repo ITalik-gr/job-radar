@@ -13,6 +13,8 @@ export interface CompanyScoreInput {
   company: Company;
   openVacancies?: number;
   status?: string | null;
+  /** Поточний час. Окремим полем, щоб штраф за давність можна було перевірити тестом. */
+  now?: number;
 }
 
 export interface CompanyBreakdown {
@@ -83,6 +85,29 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   if (company.country) {
     const weight = config.countryWeights[company.country];
     if (weight) push(`країна ${company.country}`, weight);
+  }
+
+  const kindWeight = config.kindWeights?.[company.kind];
+  if (kindWeight) push(`тип: ${company.kind}`, kindWeight);
+
+  /*
+   * Мертвий сайт. Ідея власника зі STATUS.md: агенція з останньою публікацією
+   * 2019 року не наймає і не відповідає. Ознаки збирає enrichment, тому штраф
+   * зʼявляється тільки після проходу по сайту, а не вгадується з повітря.
+   */
+  const stale = config.stale;
+  if (stale) {
+    const thisYear = new Date(input.now ?? Date.now()).getFullYear();
+    if (company.copyrightYear && thisYear - company.copyrightYear >= stale.copyrightYearsBehind) {
+      push(`копірайт ${company.copyrightYear}`, stale.copyrightPenalty);
+    }
+
+    if (company.lastPostAt) {
+      const silentDays = ((input.now ?? Date.now()) - company.lastPostAt) / 86_400_000;
+      if (silentDays >= stale.blogSilentDays) {
+        push(`без публікацій ${Math.round(silentDays)} днів`, stale.blogPenalty);
+      }
+    }
   }
 
   if (company.careersUrl) push('є сторінка вакансій', config.hasCareersPage);

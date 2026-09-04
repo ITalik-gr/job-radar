@@ -10,3 +10,4 @@ imports/**/*.csv
 !imports/seed-companies.csv
 .DS_Store
 dist/
+imports/statrups

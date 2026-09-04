@@ -20,6 +20,7 @@ export interface TemplateInput {
   slug?: string;
   name: string;
   kind?: string;
+  forKind?: string | null;
   subject?: string | null;
   body?: string;
   note?: string | null;
@@ -63,6 +64,7 @@ export async function createTemplate(input: TemplateInput): Promise<Template> {
       slug: input.slug?.trim() || slugify(input.name),
       name: input.name.trim(),
       kind: input.kind ?? 'vacancy',
+      forKind: input.forKind ?? null,
       subject: input.subject ?? null,
       body: input.body ?? '',
       note: input.note ?? null,
@@ -79,6 +81,7 @@ export async function updateTemplate(id: number, input: Partial<TemplateInput>):
   // і перейменування розірвало б звʼязок з історією.
   if (input.name !== undefined) patch.name = input.name.trim();
   if (input.kind !== undefined) patch.kind = input.kind;
+  if (input.forKind !== undefined) patch.forKind = input.forKind || null;
   if (input.subject !== undefined) patch.subject = input.subject;
   if (input.body !== undefined) patch.body = input.body;
   if (input.note !== undefined) patch.note = input.note;

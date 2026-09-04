@@ -23,6 +23,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { Archive, FileText, Plus, Save } from 'lucide-react';
 import { api, formatDate, type TemplateRow } from '../lib/api';
+import { LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 
 const KIND_LABELS: Record<string, string> = {
@@ -32,6 +33,15 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 const KIND_OPTIONS = Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }));
+
+/** Типи компаній із `src/pipeline/company-kind.ts`. Порожнє означає універсальний шаблон. */
+const FOR_KIND_OPTIONS = [
+  { value: 'design', label: 'дизайн-студія' },
+  { value: 'studio', label: 'студія розробки' },
+  { value: 'startup', label: 'стартап' },
+  { value: 'outstaff', label: 'аутстаф' },
+  { value: 'product', label: 'продуктова компанія' },
+];
 
 function Row({
   row,
@@ -89,6 +99,7 @@ function Editor({ row }: { row: TemplateRow }) {
       api.updateTemplate(row.id, {
         name: draft.name,
         kind: draft.kind,
+        forKind: draft.forKind,
         subject: draft.subject,
         body: draft.body,
         note: draft.note,
@@ -116,6 +127,7 @@ function Editor({ row }: { row: TemplateRow }) {
   const dirty =
     draft.name !== row.name ||
     draft.kind !== row.kind ||
+    draft.forKind !== row.forKind ||
     (draft.subject ?? '') !== (row.subject ?? '') ||
     draft.body !== row.body ||
     (draft.note ?? '') !== (row.note ?? '');
@@ -152,6 +164,15 @@ function Editor({ row }: { row: TemplateRow }) {
                 onChange={(kind) => kind && setDraft({ ...draft, kind })}
                 allowDeselect={false}
               />
+              <Select
+                label="Під який тип компанії"
+                description="цей шаблон пропонуватиметься першим"
+                data={FOR_KIND_OPTIONS}
+                value={draft.forKind}
+                onChange={(forKind) => setDraft({ ...draft, forKind })}
+                placeholder="універсальний"
+                clearable
+              />
             </Group>
 
             <TextInput
@@ -171,6 +192,33 @@ function Editor({ row }: { row: TemplateRow }) {
               onChange={(event) => setDraft({ ...draft, body: event.currentTarget.value })}
               styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
             />
+
+            {/*
+              Плейсхолдери мусять бути перед очима під час написання: інакше власник
+              або не знає, що вони є, або друкує з помилкою і бачить порожнє місце.
+            */}
+            <Box>
+              <Text size="sm" fw={500} mb={6}>
+                Що можна вставити в текст і в тему
+              </Text>
+              <Group gap={6}>
+                {LETTER_PLACEHOLDERS.map((item) => (
+                  <Tooltip key={item.token} label={item.hint}>
+                    <Badge
+                      color="gray"
+                      style={{ cursor: 'pointer', fontFamily: 'var(--mantine-font-family-monospace)' }}
+                      onClick={() => setDraft({ ...draft, body: `${draft.body}{{${item.token}}}` })}
+                    >
+                      {`{{${item.token}}}`}
+                    </Badge>
+                  </Tooltip>
+                ))}
+              </Group>
+              <Text size="xs" c="dimmed" mt={6}>
+                Натисни, щоб додати в кінець тексту. Порожні значення підставляться як
+                порожнє місце, і перед відправкою радар про це попередить.
+              </Text>
+            </Box>
 
             <Textarea
               label="Примітка для себе"

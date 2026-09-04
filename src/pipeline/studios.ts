@@ -17,6 +17,10 @@ export interface StudioCard {
   country: string | null;
   city: string | null;
   sizeHint: string | null;
+  kind: string;
+  /** Ознаки живості сайту. null означає, що enrichment ще не ходив. */
+  copyrightYear: number | null;
+  lastPostAt: number | null;
   tags: string[];
   techHints: string[];
   description: string | null;
@@ -39,6 +43,10 @@ export interface StudioFilters {
   includeContacted?: boolean;
   country?: string;
   search?: string;
+  /** studio | design | startup | product | outstaff. Порожнє означає всі, крім продуктових. */
+  kind?: string;
+  /** Тільки ті, де є контакт з іменем. Лист на hello@ читає менеджер, не техлід. */
+  withNamedContact?: boolean;
 }
 
 export interface StudioPage {
@@ -81,7 +89,14 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     );
 
   const now = Date.now();
-  const contactRows = await db.select().from(contacts);
+  /*
+   * Іменні контакти йдуть перед загальними скриньками. Лист на hello@ читає менеджер,
+   * тому власник має бачити людину першою, а info@ як запасний варіант.
+   */
+  const contactRows = (await db.select().from(contacts)).sort((a, b) => {
+    const named = Number(Boolean(b.name)) - Number(Boolean(a.name));
+    return named !== 0 ? named : (a.name ?? '').localeCompare(b.name ?? '');
+  });
   const byCompany = new Map<number, typeof contactRows>();
   for (const row of contactRows) {
     byCompany.set(row.companyId, [...(byCompany.get(row.companyId) ?? []), row]);
@@ -93,6 +108,14 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
       if (row.snoozedUntil && row.snoozedUntil > now) return false;
       if (filters.includeContacted) return status !== 'blacklist';
       return !HIDDEN_STATUSES.includes(status);
+    })
+    .filter((row) => {
+      if (filters.kind) return row.company.kind === filters.kind;
+      /*
+       * Без явного типу продуктові компанії зі списку прибираються: у них холодний
+       * лист "можу допомогти з проєктом" не працює, для них є Черга з вакансіями.
+       */
+      return row.company.kind !== 'product';
     })
     .filter((row) => {
       if (!filters.search) return true;
@@ -117,6 +140,9 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         country: row.company.country,
         city: row.company.city,
         sizeHint: row.company.sizeHint,
+        kind: row.company.kind,
+        copyrightYear: row.company.copyrightYear,
+        lastPostAt: row.company.lastPostAt,
         tags: row.company.tags,
         techHints: row.company.techHints,
         description: row.company.description,
@@ -144,7 +170,9 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
 export async function studioPage(filters: StudioFilters = {}): Promise<StudioPage> {
   const threshold = filters.minScore ?? rules().companies.threshold;
   const all = await scoreAll(filters);
-  const passing = all.filter((card) => card.score >= threshold);
+  const passing = all
+    .filter((card) => card.score >= threshold)
+    .filter((card) => !filters.withNamedContact || card.contacts.some((contact) => contact.name));
 
   return {
     cards: passing.slice(0, filters.limit ?? 1000),
@@ -165,6 +193,9 @@ export interface StudioActionInput {
   note?: string | null;
   days?: number;
   channel?: string;
+  /** Знімок контакту на момент листа. Потрібен, щоб через рік було видно, кому писали. */
+  contactName?: string | null;
+  contactEmail?: string | null;
   templateUsed?: string | null;
 }
 
@@ -205,6 +236,8 @@ export async function applyStudioAction(input: StudioActionInput): Promise<{ sta
         vacancyId: null,
         channel: input.channel ?? 'email',
         templateUsed: input.templateUsed ?? 'studio_pitch',
+        contactName: input.contactName ?? null,
+        contactEmail: input.contactEmail ?? null,
         note: input.note ?? null,
       })
       .returning({ id: outreach.id });

@@ -64,7 +64,11 @@ let client: Anthropic | null = null;
 
 function anthropic(): Anthropic {
   if (!config.llm.apiKey) throw new Error('немає ANTHROPIC_API_KEY у .env');
-  client ??= new Anthropic({ apiKey: config.llm.apiKey });
+  client ??= new Anthropic({
+    apiKey: config.llm.apiKey,
+    // Порожній baseUrl означає прямий виклик. Заданий це шлюз AI Gateway.
+    ...(config.llm.baseUrl ? { baseURL: config.llm.baseUrl } : {}),
+  });
   return client;
 }
 

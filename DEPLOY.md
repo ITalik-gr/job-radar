@@ -93,10 +93,19 @@ Settings (read). Шаблон Edit Cloudflare Workers дає це все.
 pnpm wrangler d1 migrations apply job-radar --remote
 ```
 
-## Після цієї зміни схеми
+## Після нічної сесії 04.09: обовʼязкова міграція
 
-Зʼявились таблиці `settings` (правила з інтерфейсу) і `templates` (шаблони листів).
-Без міграції сторінки Шаблони і Правила на проді віддадуть 500:
+Зʼявились нові таблиці і колонки. **Без міграції прод зламається**, і не частково,
+а на будь-якому запиті до компаній: код читає `companies.kind`, `copyright_year`
+і `last_post_at`, а їх там ще немає.
+
+| міграція | що додає |
+| --- | --- |
+| `0005` | таблиці `settings` (правила з інтерфейсу) і `templates` (шаблони листів) |
+| `0006` | `companies.kind`: studio, design, startup, product, outstaff |
+| `0007` | `companies.copyright_year`, `last_post_at`: ознаки живості сайту |
+| `0008` | `templates.for_kind`: під який тип компанії заточений шаблон |
+| `0009` | `outreach.contact_name`, `contact_email`: кому саме писали |
 
 ```bash
 pnpm wrangler d1 migrations apply job-radar --remote
@@ -104,6 +113,10 @@ pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
 ```
 
 `doctor` мусить показати 12 таблиць.
+
+Після міграції один раз проставити типи наявним компаніям, локально або через
+інтерфейс не вийде, тільки CLI по локальній базі: `pnpm cli kinds`. На проді типи
+проставляться самі при наступному прогоні джерел, бо `upsertCompany` рахує їх щоразу.
 
 ## Workers Builds, вбудований білдер Cloudflare
 
@@ -133,6 +146,50 @@ pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
 Секрети (`RADAR_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
 задаються один раз через `wrangler secret put` або в дашборді, Settings, Variables and Secrets.
 Вони не в репозиторії і не перезаписуються деплоєм.
+
+## AI Gateway перед Anthropic
+
+Виклики моделі можуть іти через шлюз Cloudflare. Це безкоштовно і дає три речі,
+яких зараз немає: кеш поверх наявного `llm_cache`, жорсткий ліміт витрат
+і лог кожного запиту з відповіддю. Зараз у `llm_usage` видно лише лічильник,
+тобто скільки викликів, але не що саме пішло в модель і чому.
+
+Якість класифікації не змінюється: модель та сама, змінюється тільки адреса.
+
+1. Дашборд Cloudflare, розділ AI, AI Gateway, Create Gateway, імʼя `job-radar`
+2. Локально в `.env`:
+   ```
+   ANTHROPIC_BASE_URL=https://gateway.ai.cloudflare.com/v1/your-cloudflare-account-id/job-radar/anthropic
+   ```
+3. На проді те саме змінною воркера:
+   ```bash
+   pnpm wrangler secret put ANTHROPIC_BASE_URL
+   ```
+
+Порожня змінна означає прямий виклик, тому нічого не ламається, якщо шлюз не створений.
+
+## Пошук схожих компаній через Workers AI
+
+Вектори описів компаній рахуються моделлю `@cf/baai/bge-m3`. Вона багатомовна,
+і це тут головне: у базі поруч англійські описи студій і українські вакансії з DOU.
+
+На проді нічого налаштовувати не треба: у `wrangler.jsonc` є біндінг `AI`,
+токен і вихід назовні не потрібні. Кнопка "Порахувати схожість" у меню Запустити.
+
+Локально потрібен токен, бо біндінга поза Workers не буває:
+
+```
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+CLOUDFLARE_API_TOKEN=<токен з правами Workers AI Read і Run>
+```
+
+Далі `pnpm cli embed --limit 200` і `pnpm cli similar <id>`.
+
+Вартість: безкоштовна квота Workers AI це 10 тисяч нейронів на добу, і вся база
+з чотирьохсот компаній у неї вкладається з запасом. Класифікація вакансій
+лишається на Anthropic: там потрібен строгий JSON і поведінка "чого немає
+в тексті, те null", і міняти перевірену модель заради двох доларів на місяць
+сенсу немає.
 
 ## Корисні команди
 

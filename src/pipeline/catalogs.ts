@@ -168,3 +168,17 @@ export async function syncDou(options: FetchCatalogOptions = {}): Promise<Catalo
     return saveCompanies(items, 'dou');
   });
 }
+
+/**
+ * Прогін будь-якого зареєстрованого каталогу. DOU має власну функцію через свої
+ * параметри (типи бізнесу, домени), решта каталогів працює за спільним контрактом
+ * `CatalogSource` і не потребує окремого коду на кожен.
+ */
+export async function syncCatalog(id: string): Promise<CatalogStats> {
+  const { getSource } = await import('../sources/registry.js');
+  const source = getSource(id);
+  if (!source) throw new Error(`невідоме джерело: ${id}`);
+  if (source.kind !== 'catalog') throw new Error(`джерело ${id} не є каталогом компаній`);
+
+  return withRun(id, async () => saveCompanies(await source.fetch({}), id));
+}

@@ -1,7 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Menu, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Building2, Calculator, ChevronDown, Compass, Play, RefreshCw } from 'lucide-react';
+import {
+  Building2,
+  Calculator,
+  ChevronDown,
+  Compass,
+  Inbox,
+  Play,
+  RefreshCw,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { api } from '../lib/api';
 
 interface Task {
@@ -43,6 +53,35 @@ const TASKS: Task[] = [
     run: () => api.runDou(),
     describe: (result: { itemsFound: number; itemsNew: number }) =>
       `знайдено ${result.itemsFound}, нових ${result.itemsNew}`,
+  },
+  {
+    id: 'top-up',
+    label: 'Добрати картки в чергу',
+    hint: 'коли зріз зафіксувався до прогону джерел',
+    icon: Inbox,
+    run: () => api.topUpQueue(),
+    describe: (result: { added: number; total: number }) =>
+      result.added > 0 ? `додано ${result.added}, у зрізі ${result.total}` : 'нових кандидатів немає',
+  },
+  {
+    id: 'enrich',
+    label: 'Зібрати контакти',
+    hint: 'імена і пошта зі сторінок команди',
+    icon: Users,
+    run: () => api.enrich(25),
+    describe: (result: { checked: number; withPeople: number; contactsAdded: number }) =>
+      `обійдено ${result.checked}, з іменами ${result.withPeople}, контактів ${result.contactsAdded}`,
+  },
+  {
+    id: 'embed',
+    label: 'Порахувати схожість',
+    hint: 'вектори компаній через Workers AI',
+    icon: Sparkles,
+    run: () => api.embed(200),
+    describe: (result: { itemsFound: number; itemsNew: number; errors: string[] }) =>
+      result.errors.length > 0
+        ? `порахувано ${result.itemsNew}, помилок ${result.errors.length}: ${result.errors[0]}`
+        : `порахувано ${result.itemsNew} з ${result.itemsFound}`,
   },
   {
     id: 'discover',

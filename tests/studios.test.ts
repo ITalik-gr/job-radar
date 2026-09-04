@@ -92,6 +92,127 @@ describe('scoreCompany', () => {
   });
 });
 
+describe('вага за типом компанії', () => {
+  it('стартап без тегів каталогу все одно набирає бали', async () => {
+    /*
+     * Getro не дає тегів і розміру, тому без ваги за типом стартап набирав майже
+     * нуль і не проходив поріг, тобто сторінка Стартапи була б порожньою при повній базі.
+     */
+    const { scoreCompany } = await import('../src/pipeline/company-score.js');
+    const bare = {
+      id: 0,
+      name: 'Bare Startup',
+      domain: 'bare.dev',
+      country: null,
+      city: null,
+      sizeHint: null,
+      kind: 'startup',
+      sources: ['getro'],
+      careersUrl: null,
+      careersKind: 'unknown',
+      careersSlug: null,
+      techHints: [],
+      tags: [],
+      description: null,
+      sourceUrl: null,
+      firstSeen: 0,
+      lastChecked: null,
+      lastChangeAt: null,
+    } as never;
+
+    expect(scoreCompany({ company: bare }).score).toBeGreaterThan(0);
+  });
+
+  it('аутстаф отримує мінус, туди писати сенсу немає', async () => {
+    const { scoreCompany } = await import('../src/pipeline/company-score.js');
+    const base = {
+      id: 0,
+      name: 'Middleman',
+      domain: 'middleman.com',
+      country: null,
+      city: null,
+      sizeHint: null,
+      sources: [],
+      careersUrl: null,
+      careersKind: 'unknown',
+      careersSlug: null,
+      techHints: [],
+      tags: [],
+      description: null,
+      sourceUrl: null,
+      firstSeen: 0,
+      lastChecked: null,
+      lastChangeAt: null,
+    };
+
+    const outstaff = scoreCompany({ company: { ...base, kind: 'outstaff' } as never }).score;
+    const studio = scoreCompany({ company: { ...base, kind: 'studio' } as never }).score;
+    expect(outstaff).toBeLessThan(studio);
+  });
+});
+
+describe('фільтр за іменним контактом', () => {
+  it('без фільтра показуються всі, з фільтром лише ті, де є людина', async () => {
+    const { contacts } = await import('../src/db/schema.js');
+    const all = await studioQueue({ includeContacted: true, minScore: -100 });
+    expect(all.length).toBeGreaterThan(0);
+
+    // Жодного іменного контакту ще немає, тому фільтр має віддати порожньо.
+    expect(
+      await studioQueue({ includeContacted: true, minScore: -100, withNamedContact: true }),
+    ).toHaveLength(0);
+
+    await getDb().insert(contacts).values({
+      companyId: all[0]!.companyId,
+      name: 'Марія Технічна',
+      role: 'CTO',
+      email: 'maria@studio.ua',
+    });
+
+    const named = await studioQueue({
+      includeContacted: true,
+      minScore: -100,
+      withNamedContact: true,
+    });
+    expect(named).toHaveLength(1);
+    expect(named[0]!.companyId).toBe(all[0]!.companyId);
+  });
+
+  it('загальна скринька без імені не рахується за контакт', async () => {
+    const { contacts } = await import('../src/db/schema.js');
+    const all = await studioQueue({ includeContacted: true, minScore: -100 });
+    const target = all.find((card) => card.contacts.length === 0);
+    if (!target) return;
+
+    await getDb().insert(contacts).values({
+      companyId: target.companyId,
+      name: null,
+      role: 'general',
+      email: 'hello@example.com',
+    });
+
+    const named = await studioQueue({
+      includeContacted: true,
+      minScore: -100,
+      withNamedContact: true,
+    });
+    expect(named.some((card) => card.companyId === target.companyId)).toBe(false);
+  });
+});
+
+describe('тип компанії у списку', () => {
+  it('продуктові компанії не показуються без явного фільтра', async () => {
+    // Холодний лист "можу допомогти з проєктом" у Stripe не працює, для них є Черга.
+    const cards = await studioQueue({ includeContacted: true, minScore: -100 });
+    expect(cards.every((card) => card.kind !== 'product')).toBe(true);
+  });
+
+  it('фільтр за типом віддає рівно свій тип', async () => {
+    const cards = await studioQueue({ kind: 'startup', includeContacted: true, minScore: -100 });
+    expect(cards.every((card) => card.kind === 'startup')).toBe(true);
+  });
+});
+
 describe('studioQueue', () => {
   it('сортує за рахунком і відсікає нижче порогу', async () => {
     const cards = await studioQueue();

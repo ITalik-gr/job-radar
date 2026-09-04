@@ -64,6 +64,26 @@ export const rulesSchema = z.object({
     countryWeights: numberMap,
     hasCareersPage: z.number(),
     hasOpenVacancies: z.number(),
+    /*
+     * Вага за типом компанії. Необовʼязкове поле з дефолтом навмисно: без цього
+     * конфіг, збережений з інтерфейсу до появи поля, перестав би проходити Zod
+     * і скоринг мовчки відкотився б до вшитого.
+     */
+    kindWeights: numberMap.default({}),
+    /*
+     * Штраф за мертвий сайт. Необовʼязковий з дефолтом, як і kindWeights:
+     * конфіг, збережений з інтерфейсу до появи поля, мусить лишатись валідним.
+     */
+    stale: z
+      .object({
+        /** На скільки років копірайт має відстати від поточного, щоб це рахувалось. */
+        copyrightYearsBehind: z.number().default(2),
+        copyrightPenalty: z.number().default(-4),
+        /** Скільки днів без нового поста означає мертвий блог. */
+        blogSilentDays: z.number().default(540),
+        blogPenalty: z.number().default(-2),
+      })
+      .default({}),
     hourlyRateBonus: numberMap,
   }),
 });
