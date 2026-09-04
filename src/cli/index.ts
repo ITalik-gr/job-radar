@@ -762,6 +762,7 @@ program
       db?: string;
       tables?: string[];
       missing?: string[];
+      columns?: string | null;
       hint?: string | null;
       error?: string;
     };
@@ -774,6 +775,8 @@ program
     );
     if (body.tables) console.log(`таблиць: ${body.tables.length}`);
     if (body.missing?.length) console.log(`бракує таблиць: ${body.missing.join(', ')}`);
+    // Міграція з новими колонками лишає перелік таблиць незмінним, тому проба окремо.
+    if (body.columns) console.log(`бракує колонок: ${body.columns}`);
     if (body.hint) console.log(`що робити: ${body.hint}`);
     if (body.error) console.log(`помилка: ${body.error}`);
 

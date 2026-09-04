@@ -44,13 +44,19 @@ describe('runWorkersAi', () => {
 
   // Ключі з реального .env тут не потрібні: тест не має ходити в мережу.
   it('без біндінга і без токена падає, а не мовчить', async () => {
-    setRuntimeEnv({ CLOUDFLARE_ACCOUNT_ID: '', CLOUDFLARE_API_TOKEN: '' });
+    setRuntimeEnv({ CF_AI_ACCOUNT_ID: '', CF_AI_API_TOKEN: '', CLOUDFLARE_ACCOUNT_ID: '', CLOUDFLARE_API_TOKEN: '' });
     expect(aiAvailable()).toBe(false);
-    await expect(runWorkersAi('@cf/test', {})).rejects.toThrow(/CLOUDFLARE_ACCOUNT_ID/);
+    await expect(runWorkersAi('@cf/test', {})).rejects.toThrow(/CF_AI_ACCOUNT_ID/);
+  });
+
+  // Старі імена лишаються робочими: чужий локальний .env не має ламатись від перейменування.
+  it('старі імена CLOUDFLARE_* читаються далі', async () => {
+    setRuntimeEnv({ CF_AI_ACCOUNT_ID: '', CF_AI_API_TOKEN: '', CLOUDFLARE_ACCOUNT_ID: 'acc', CLOUDFLARE_API_TOKEN: 'token' });
+    expect(aiAvailable()).toBe(true);
   });
 
   it('через REST розгортає обгортку success/result', async () => {
-    setRuntimeEnv({ CLOUDFLARE_ACCOUNT_ID: 'acc', CLOUDFLARE_API_TOKEN: 'token' });
+    setRuntimeEnv({ CF_AI_ACCOUNT_ID: 'acc', CF_AI_API_TOKEN: 'token' });
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(

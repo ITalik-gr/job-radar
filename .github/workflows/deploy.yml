@@ -54,3 +54,17 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Деплой воркера міграції не запускає, і схема на проді може відстати від коду.
+      # Тоді таблиці на місці, а колонки немає, і сторінка Компанії віддає 500.
+      # Крок нічого не міняє в базі, лише голосно каже, що треба зробити pnpm cf:migrate.
+      - name: Перевірити схему на проді
+        run: |
+          body=$(curl -s --max-time 20 "$WEB_URL/api/health?deep=1")
+          echo "$body"
+          echo "$body" | grep -q '"db":"ok"' || {
+            echo "::error::схема на проді відстає від коду, зроби pnpm cf:migrate"
+            exit 1
+          }
+        env:
+          WEB_URL: https://job-radar.example.workers.dev

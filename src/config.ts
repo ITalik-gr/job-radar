@@ -62,13 +62,21 @@ export const config = {
       return num('HTTP_RETRIES', 3);
     },
   },
-  /** Доступ до Workers AI поза Workers: локальний CLI і тести. */
+  /**
+   * Доступ до Workers AI поза Workers: локальний CLI і тести.
+   *
+   * Імена навмисно свої, а не `CLOUDFLARE_API_TOKEN`. Wrangler читає `.env` і бере
+   * звідти саме `CLOUDFLARE_API_TOKEN` як свій ключ авторизації, тобто токен,
+   * виданий лише на Workers AI, підмінював логін власника і ламав усе інше:
+   * `wrangler d1 migrations apply` падав з 7403 "account is not authorized".
+   * Старі імена читаються далі, щоб нічий локальний .env не зламався.
+   */
   cloudflare: {
     get accountId() {
-      return str('CLOUDFLARE_ACCOUNT_ID', '');
+      return str('CF_AI_ACCOUNT_ID', str('CLOUDFLARE_ACCOUNT_ID', ''));
     },
     get apiToken() {
-      return str('CLOUDFLARE_API_TOKEN', '');
+      return str('CF_AI_API_TOKEN', str('CLOUDFLARE_API_TOKEN', ''));
     },
   },
 

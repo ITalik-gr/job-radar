@@ -36,7 +36,7 @@ export async function runWorkersAi(model: string, input: unknown): Promise<unkno
   const { accountId, apiToken } = config.cloudflare;
   if (!accountId || !apiToken) {
     throw new Error(
-      'немає CLOUDFLARE_ACCOUNT_ID або CLOUDFLARE_API_TOKEN у .env, а біндінга AI поза Workers не буває',
+      'немає CF_AI_ACCOUNT_ID або CF_AI_API_TOKEN у .env, а біндінга AI поза Workers не буває',
     );
   }
 

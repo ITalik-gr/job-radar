@@ -432,6 +432,25 @@ export async function candidatesForEnrichment(options: EnrichOptions = {}): Prom
 
   const withContacts = db.select({ id: contacts.companyId }).from(contacts);
 
+  /*
+   * Порядок тут важить більше, ніж здається. Без нього бралися просто перші рядки
+   * таблиці, а це Vercel, Anthropic і Stripe: у продуктових гігантів сторінки команди
+   * з іменами і поштою немає, тому прохід по 120 компаніях дав рівно нуль контактів
+   * і виглядав як поламаний enrichment. Насправді він шукав не там.
+   *
+   * Тому спершу ті, кому власник реально пише холодні листи: студії, дизайн-агенції
+   * і стартапи. Продуктові йдуть останніми, а компанія з профілем у каталозі
+   * попереду тієї, що прийшла лише з ATS: у каталозі майже завжди справжня агенція.
+   */
+  const priority = sql`case ${companies.kind}
+      when 'studio' then 0
+      when 'design' then 0
+      when 'startup' then 1
+      when 'outstaff' then 2
+      when 'product' then 4
+      else 3
+    end`;
+
   const rows = await db
     .select()
     .from(companies)
@@ -440,6 +459,7 @@ export async function candidatesForEnrichment(options: EnrichOptions = {}): Prom
         ? sql`${companies.domain} <> ''`
         : and(sql`${companies.domain} <> ''`, sql`${companies.id} not in ${withContacts}`),
     )
+    .orderBy(priority, sql`case when ${companies.sourceUrl} is null then 1 else 0 end`, companies.id)
     .limit(options.limit ?? 25);
 
   return rows;
@@ -490,7 +510,20 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
       }
     }
 
-    log.info(stats, 'enrichment завершено');
+    /*
+     * Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх. Прохід по
+     * сотні доменів без жодного контакту означає або зламаний парсер, або те, що
+     * шукали не в тих компаніях. Мовчати про це не можна, інакше наступний прохід
+     * так само згорить у нікуди.
+     */
+    if (stats.checked >= 10 && stats.contactsAdded === 0) {
+      const message = `перевірено ${stats.checked} доменів і не знайдено жодного контакту`;
+      stats.errors.push(message);
+      log.warn(stats, message);
+    } else {
+      log.info(stats, 'enrichment завершено');
+    }
+
     return stats;
   });
 }

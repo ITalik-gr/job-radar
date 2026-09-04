@@ -113,12 +113,29 @@ app.get('/api/health', async (c) => {
     ];
     const missing = expected.filter((name) => !tables.includes(name));
 
+    /*
+     * Наявності таблиці мало. Міграція, що лише додає колонки, лишає перелік таблиць
+     * незмінним, тому воркер з новим кодом і старою схемою виглядав тут здоровим,
+     * а на сторінці Компанії віддавав 500 "no such column: companies.rating".
+     * Тому ще й проба на найновіші колонки: дешевий запит, який ловить саме цей випадок.
+     */
+    let columns: string | null = null;
+    try {
+      await getDb().all(sql`select rating, reviews_count, extra from companies limit 1`);
+    } catch (error) {
+      columns = describe(error);
+    }
+
+    const ok = missing.length === 0 && columns === null;
+
     return c.json({
       ...base,
-      db: missing.length === 0 ? 'ok' : 'міграції не застосовані',
+      ok: base.ok && ok,
+      db: ok ? 'ok' : 'міграції не застосовані',
       tables,
       missing,
-      hint: missing.length === 0 ? null : 'pnpm wrangler d1 migrations apply job-radar --remote',
+      columns,
+      hint: ok ? null : 'pnpm cf:migrate',
     });
   } catch (error) {
     return c.json({ ...base, ok: false, db: 'помилка', error: describe(error) }, 500);

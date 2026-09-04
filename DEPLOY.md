@@ -179,8 +179,13 @@ pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
 Локально потрібен токен, бо біндінга поза Workers не буває:
 
 ```
-CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
-CLOUDFLARE_API_TOKEN=<токен з правами Workers AI Read і Run>
+CF_AI_ACCOUNT_ID=your-cloudflare-account-id
+CF_AI_API_TOKEN=<токен з правами Workers AI Read і Run>
+
+# Імена саме CF_AI_*, а не CLOUDFLARE_*. Wrangler читає .env і бере звідти
+# CLOUDFLARE_API_TOKEN як свій ключ авторизації, тому токен, виданий лише на
+# Workers AI, підміняв логін і ламав pnpm cf:migrate з 7403
+# "account is not authorized to access this service".
 ```
 
 Далі `pnpm cli embed --limit 200` і `pnpm cli similar <id>`.

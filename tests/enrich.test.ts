@@ -1,5 +1,10 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { rmSync } from 'node:fs';
+import { config } from '../src/config.js';
+import { runMigrations } from '../src/db/migrate.js';
+import { upsertCompany } from '../src/pipeline/companies.js';
+import { candidatesForEnrichment } from '../src/pipeline/enrich.js';
 import {
   extractEmails,
   extractPeople,
@@ -167,5 +172,30 @@ describe('обхід сайту', () => {
   it('сплощення html викидає скрипти і стилі', () => {
     const lines = toLines('<style>.a{color:red}</style><script>var x=1</script><p>Текст</p>');
     expect(lines).toEqual(['Текст']);
+  });
+});
+
+describe('кого enrichment бере першим', () => {
+  beforeAll(async () => {
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${config.dbPath}${suffix}`, { force: true });
+    const { sqlite } = runMigrations();
+    sqlite.close();
+
+    // Порядок створення навмисно поганий: гігант першим, як воно й лежало в базі.
+    await upsertCompany({ name: 'Giant', domain: 'giant.com', source: 'greenhouse' });
+    await upsertCompany({ name: 'Agency', domain: 'agency.com', source: 'clutch', tags: ['Web Design'] });
+    await upsertCompany({ name: 'Seed', domain: 'seed.com', source: 'getro', tags: ['startup'] });
+  });
+
+  /*
+   * Без сортування прохід брав перші рядки таблиці, тобто продуктових гігантів,
+   * у яких сторінки команди з контактами немає, і давав нуль контактів на сотню
+   * доменів. Це виглядало як зламаний enrichment, хоча він просто шукав не там.
+   */
+  it('студії і стартапи йдуть попереду продуктових', async () => {
+    const order = (await candidatesForEnrichment({ limit: 10 })).map((company) => company.domain);
+
+    expect(order[0]).toBe('agency.com');
+    expect(order.indexOf('seed.com')).toBeLessThan(order.indexOf('giant.com'));
   });
 });
