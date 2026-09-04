@@ -18,6 +18,12 @@ export interface CompanyInput {
   tags?: string[];
   description?: string | null;
   sourceUrl?: string | null;
+  rating?: number | null;
+  reviewsCount?: number | null;
+  minProject?: string | null;
+  hourlyRate?: string | null;
+  foundedYear?: number | null;
+  extra?: Record<string, string> | null;
 }
 
 export interface UpsertResult {
@@ -50,6 +56,12 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
         careersKind: input.careersKind ?? 'unknown',
         careersSlug: input.careersSlug ?? null,
         tags: input.tags ?? [],
+        rating: input.rating ?? null,
+        reviewsCount: input.reviewsCount ?? null,
+        minProject: input.minProject ?? null,
+        hourlyRate: input.hourlyRate ?? null,
+        foundedYear: input.foundedYear ?? null,
+        extra: input.extra ?? {},
         description: input.description ?? null,
         sourceUrl: input.sourceUrl ? normalizeUrl(input.sourceUrl) : null,
         kind: detectKind({
@@ -97,6 +109,19 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
       careersKind:
         existing.careersKind !== 'unknown' ? existing.careersKind : input.careersKind ?? 'unknown',
       careersSlug: existing.careersSlug ?? input.careersSlug ?? null,
+      /*
+       * Оцінка і кількість відгуків це поточний стан, а не факт першої зустрічі,
+       * тому свіже значення перезаписує старе. Решта полів лише доповнює порожнє:
+       * рік заснування і вилка проєкту не змінюються, а перезапис зіпсував би їх,
+       * коли інший каталог показує ту саму студію коротшою карткою.
+       */
+      rating: input.rating ?? existing.rating,
+      reviewsCount: input.reviewsCount ?? existing.reviewsCount,
+      minProject: existing.minProject ?? input.minProject ?? null,
+      hourlyRate: existing.hourlyRate ?? input.hourlyRate ?? null,
+      foundedYear: existing.foundedYear ?? input.foundedYear ?? null,
+      // Уже збережене має перевагу: два каталоги пишуть те саме поле по-різному.
+      extra: { ...(input.extra ?? {}), ...existing.extra },
     })
     .where(eq(companies.id, existing.id))
     .returning();

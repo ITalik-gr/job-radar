@@ -20,6 +20,7 @@ import { BUSINESS_TYPES, DOMAINS } from '../sources/catalogs/dou.js';
 import { discover } from '../pipeline/discover.js';
 import { enrich } from '../pipeline/enrich.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
+import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
 import { topUpQueue, getQueue, todayKey } from '../pipeline/queue.js';
 import { toCsv } from '../lib/csv.js';
 import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
@@ -613,6 +614,13 @@ program
   .option('--force', 'перерахувати навіть тим, у кого тип уже стоїть')
   .action(async (opts: { force?: boolean }) => {
     console.table(await backfillKinds(Boolean(opts.force)));
+  });
+
+program
+  .command('backfill:catalog')
+  .description('розкласти ставку, мінімальний проєкт і рік заснування з тегів по колонках')
+  .action(async () => {
+    console.table(await backfillCatalogFields());
   });
 
 program

@@ -72,3 +72,45 @@ describe('companiesForAts', () => {
     expect((await companiesForAts('lever')).map((c) => c.domain)).toEqual(['lev.com']);
   });
 });
+
+describe('репутація і блок "Інше"', () => {
+  it('оцінка і відгуки оновлюються свіжими, решта лише доповнює порожнє', async () => {
+    await upsertCompany({
+      name: 'Rated',
+      domain: 'rated.com',
+      source: 'clutch',
+      rating: 4.4,
+      reviewsCount: 8,
+      hourlyRate: '$50 - $99 / hr',
+      minProject: '$10,000+',
+      foundedYear: 2015,
+      extra: { 'Перевірений профіль': 'так' },
+    });
+
+    const { company } = await upsertCompany({
+      name: 'Rated',
+      domain: 'rated.com',
+      source: 'goodfirms',
+      rating: 4.8,
+      reviewsCount: 21,
+      // Інший каталог показує коротшу картку. Затерти нею вже зібране не можна.
+      hourlyRate: null,
+      foundedYear: 1999,
+      extra: { 'Перевірений профіль': 'ні', Мови: 'English, Ukrainian' },
+    });
+
+    expect(company.rating).toBe(4.8);
+    expect(company.reviewsCount).toBe(21);
+    expect(company.hourlyRate).toBe('$50 - $99 / hr');
+    expect(company.foundedYear).toBe(2015);
+    expect(company.extra['Перевірений профіль']).toBe('так');
+    expect(company.extra.Мови).toBe('English, Ukrainian');
+  });
+
+  it('компанія без репутації зберігається з порожніми полями, а не з нулями', async () => {
+    const { company } = await upsertCompany({ name: 'Plain', domain: 'plain.com', source: 'csv' });
+    expect(company.rating).toBeNull();
+    expect(company.reviewsCount).toBeNull();
+    expect(company.extra).toEqual({});
+  });
+});

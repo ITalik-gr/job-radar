@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { normalizeDomain, normalizeUrl } from '../../lib/normalize.js';
 import type { RawCompany } from '../registry.js';
+import { cleanTags } from '../../pipeline/backfill-catalog.js';
 
 const SOURCE = 'clutch';
 
@@ -59,7 +60,32 @@ export function parse(html: string): RawCompany[] {
       .get()
       .filter(Boolean);
 
-    const tags = [...new Set([...services, rate, minProject].filter((tag): tag is string => Boolean(tag)))];
+    // Оцінка і кількість відгуків лежать у мікророзмітці, а не в тексті картки.
+    const ratingValue = Number(card.find('[itemprop="ratingValue"]').first().attr('content'));
+    const reviewCount = Number(card.find('[itemprop="reviewCount"]').first().attr('content'));
+
+    /*
+     * Блок "Інше". Кожен highlight підписаний у тултипі ("Min. project size",
+     * "Employees"), тому підпис береться звідти, а не вгадується з класу. Відомі
+     * підписи вже мають свої колонки, решта осідає сюди, і новий рядок у картці
+     * Clutch більше не вимагає ні колонки, ні правки парсера.
+     */
+    const extra: Record<string, string> = {};
+    card.find('.provider__highlights-item').each((_, item) => {
+      const node = $(item);
+      const label = clean(cheerio.load(`<i>${node.attr('data-tooltip-content') ?? ''}</i>`).text());
+      const value = clean(node.text());
+      if (!label || !value) return;
+      if (/min\.? project|hourly rate|employees|location/i.test(label)) return;
+      extra[label] = value;
+    });
+
+    if (/verified/i.test(clean(card.find('[class*="verification"], [class*="verified"]').text()))) {
+      extra['Перевірений профіль'] = 'так';
+    }
+
+    // Той самий чистильник, що і в беквілі: частки діаграм і підписи тегами не є.
+    const tags = cleanTags(services);
     const profile = card.find('.provider__title-link').first().attr('href') ?? null;
 
     companies.push({
@@ -74,6 +100,12 @@ export function parse(html: string): RawCompany[] {
       tags,
       description: clean(card.find('.provider__description-text-item, .provider__description').first().text()) || null,
       openVacancies: null,
+      rating: Number.isFinite(ratingValue) ? ratingValue : null,
+      reviewsCount: Number.isFinite(reviewCount) ? reviewCount : null,
+      minProject,
+      hourlyRate: rate,
+      foundedYear: null,
+      extra,
     });
   });
 

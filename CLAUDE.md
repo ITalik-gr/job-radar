@@ -33,7 +33,12 @@
 - **БД:** SQLite через Drizzle ORM (файл `data/radar.db`). Схема пишеться так, щоб потім переїхати в Postgres без переробки
 - **HTTP:** `undici` fetch, `p-limit` для конкурентності, `p-retry` для ретраїв
 - **Парсинг:** `cheerio` за замовчуванням. `playwright` тільки там, де без JS сторінка порожня, і це має бути явно позначено в конфізі адаптера
-- **LLM:** Anthropic API, модель `claude-haiku-4-5-20251001`, тільки для класифікації тексту
+- **LLM:** Anthropic API, модель `claude-haiku-4-5-20251001`, тільки для класифікації тексту.
+  Альтернатива, вмикається `LLM_PROVIDER=workers-ai`: Cloudflare Workers AI
+  (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`). Той самий промпт і та сама Zod-схема,
+  але рахунок іде нейронами вже оплаченого плану, а не токенами. Кеш ключується
+  моделлю, тому відповіді двох провайдерів не змішуються.
+  Вектори компаній для пошуку схожих завжди на Workers AI (`@cf/baai/bge-m3`)
 - **Бекенд API:** Hono (той самий, що у власника в інших проєктах)
 - **Фронт:** React + Vite + TypeScript, компоненти з **Mantine** (`@mantine/core`, `hooks`,
   `notifications`), графіки `recharts`, іконки `lucide-react`, TanStack Query.
@@ -77,6 +82,9 @@
 ```ts
 companies
   id, name, domain (unique), country, city, size_hint,
+  rating, reviews_count, min_project, hourly_rate, founded_year,
+  extra,                      // блок "Інше": пари підпис-значення з каталогу,
+                              // під які немає колонки. Скоринг їх не читає
   kind,                       // studio | design | startup | product | outstaff | unknown
   copyright_year, last_post_at, // ознаки живості сайту, збирає enrichment
   sources: string[],          // з яких каталогів прийшла

@@ -11,7 +11,7 @@ import { discover } from './pipeline/discover.js';
 import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
-import { setAiBinding } from './lib/embeddings.js';
+import { setAiBinding } from './lib/workers-ai.js';
 
 /**
  * Точка входу для Cloudflare Workers. Той самий Hono-застосунок, що й локально,
@@ -22,11 +22,17 @@ import { setAiBinding } from './lib/embeddings.js';
  */
 export interface Env {
   DB: D1Database;
-  /** Workers AI. Використовується для векторів компаній, класифікація лишається на Anthropic. */
+  /**
+   * Workers AI. Вектори компаній рахуються тут завжди, а класифікація тоді,
+   * коли `LLM_PROVIDER=workers-ai`: це включена квота платного плану замість
+   * окремого рахунку за токени Anthropic.
+   */
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
   RADAR_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
+  LLM_PROVIDER?: string;
+  WORKERS_AI_MODEL?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   WEB_URL?: string;
@@ -38,7 +44,7 @@ function prepare(env: Env): void {
   setRuntimeEnv(env as unknown as Record<string, unknown>);
   if (!env.DB) throw new Error('немає біндінгу D1 з іменем DB, перевір wrangler.jsonc');
   setDb(drizzle(env.DB, { schema }));
-  // На Workers вектори рахуються біндінгом, без токена і без виходу назовні.
+  // На Workers і вектори, і класифікація йдуть біндінгом, без токена і без виходу назовні.
   if (env.AI) setAiBinding(env.AI);
 }
 

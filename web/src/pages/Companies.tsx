@@ -385,6 +385,7 @@ export function CompaniesPage() {
                   <Table.Th w={90}>рахунок</Table.Th>
                   <Table.Th>компанія</Table.Th>
                   <Table.Th w={110}>розмір</Table.Th>
+                  <Table.Th w={110}>оцінка</Table.Th>
                   <Table.Th w={190}>де</Table.Th>
                   <Table.Th w={130}>ats</Table.Th>
                   <Table.Th w={150}>статус</Table.Th>
@@ -430,6 +431,14 @@ export function CompaniesPage() {
                     <Table.Td>
                       <Text size="sm" c="dimmed">
                         {row.sizeHint ?? ''}
+                      </Text>
+                    </Table.Td>
+                    {/* Оцінка і відгуки з каталогу: найшвидша ознака живої студії. */}
+                    <Table.Td>
+                      <Text size="sm" c="dimmed" className="tabular">
+                        {row.rating === null
+                          ? ''
+                          : `${row.rating.toFixed(1)}${row.reviewsCount ? ` · ${row.reviewsCount}` : ''}`}
                       </Text>
                     </Table.Td>
                     <Table.Td>

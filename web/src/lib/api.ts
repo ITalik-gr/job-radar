@@ -43,6 +43,9 @@ export interface CompanyRow {
   tags: string[];
   sourceUrl: string | null;
   score: number;
+  /** Репутація в каталозі. null означає, що каталог її не показував. */
+  rating: number | null;
+  reviewsCount: number | null;
   careersKind: string;
   careersUrl: string | null;
   techHints: string[];
@@ -126,6 +129,14 @@ export interface StudioCard {
   lastPostAt: number | null;
   tags: string[];
   techHints: string[];
+  /** Репутація в каталозі. null означає, що каталог її не показував. */
+  rating: number | null;
+  reviewsCount: number | null;
+  minProject: string | null;
+  hourlyRate: string | null;
+  foundedYear: number | null;
+  /** Блок "Інше": усе, що каталог показав понад перелічені поля. */
+  extra: Record<string, string>;
   description: string | null;
   careersUrl: string | null;
   sourceUrl: string | null;
@@ -176,7 +187,19 @@ export interface Rules {
   weights: { titleMultiplier: number; bodyCap: number; terms: Record<string, number> };
   roleGate: { enabled: boolean; mustMatch: string[]; neverMatch: string[] };
   geo: { enabled: boolean; homeCity: string[]; blockedRegions: string[] } & Record<string, unknown>;
-  companies: { threshold: number } & Record<string, unknown>;
+  companies: {
+    threshold: number;
+    /** Репутація з каталогу. Може бути відсутня в конфізі, збереженому до її появи. */
+    reputation?: {
+      goodRating: number;
+      goodRatingBonus: number;
+      weakRating: number;
+      weakRatingPenalty: number;
+      reviewsFrom: number;
+      reviewsBonus: number;
+      noReviewsPenalty: number;
+    };
+  } & Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -199,6 +222,9 @@ export interface Stats {
   vacancies: { total: number; open: number; aboveThreshold: number; stopped: number; needsReview: number };
   funnel: Record<string, number>;
   llmBudgetLeft: number;
+  /** anthropic або workers-ai. Видно, за що саме платиться класифікація. */
+  llmProvider: string;
+  llmModel: string;
   threshold: number;
 }
 

@@ -71,7 +71,107 @@
   const RATE = /\$\s?\d+\s*(?:[-\u2013\u2014]|to)\s*\$?\d+\s*\/?\s*hr/i;
   const MIN_PROJECT = /\$\s?[\d,]+\+/;
 
-  const TAG_NOISE = /(allocation|expertise by|read more|see profile|\+\d+\s*service|^\d+%$|view profile|visit website)/i;
+  /*
+   * Репутація в картці каталогу. Спершу мікророзмітка schema.org: її дають Clutch,
+   * GoodFirms і TheManifest, і вона не ламається від зміни верстки. Далі текст,
+   * бо DesignRush і Sortlist розмітки не ставлять.
+   */
+  const REVIEWS = /(\d[\d,]*)\s*(?:reviews?|відгук\w*|отзыв\w*)/i;
+  const RATING_TEXT = /\b([0-5](?:[.,]\d)?)\s*(?:\/\s*5|out of 5|stars?|зірок)/i;
+  const FOUNDED = /(?:founded|established|since|засновано|заснована)\D{0,12}(19\d{2}|20\d{2})/i;
+
+  function numberFrom(value) {
+    if (!value) return null;
+    const parsed = Number(String(value).replace(/[\s,]/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function ratingFrom(card, cardText) {
+    const meta = card.querySelector('[itemprop="ratingValue"]');
+    const fromMeta = numberFrom(meta?.getAttribute('content') || meta?.textContent);
+    if (fromMeta !== null && fromMeta >= 0 && fromMeta <= 5) return fromMeta;
+
+    const node = text(card, ['[class*="rating__number" i]', '[class*="rating-number" i]', '[class*="score" i]']);
+    const fromNode = numberFrom((node || '').replace(',', '.'));
+    if (fromNode !== null && fromNode > 0 && fromNode <= 5) return fromNode;
+
+    const match = RATING_TEXT.exec(cardText);
+    return match ? numberFrom(match[1].replace(',', '.')) : null;
+  }
+
+  function reviewsFrom(card, cardText) {
+    const meta = card.querySelector('[itemprop="reviewCount"], [itemprop="ratingCount"]');
+    const fromMeta = numberFrom(meta?.getAttribute('content') || meta?.textContent);
+    if (fromMeta !== null) return fromMeta;
+
+    const match = REVIEWS.exec(cardText);
+    return match ? numberFrom(match[1]) : null;
+  }
+
+  /**
+   * Блок "Інше": усе, що каталог показав понад відомі поля.
+   *
+   * Беруться два джерела. Перше це підписані елементи: тултип або aria-label дає
+   * підпис, текст елемента значення ("Min. project size" плюс "$10,000+"). Друге це
+   * пари "Підпис: значення" в тексті картки. Відомі підписи пропускаються, бо в них
+   * уже є свої колонки, а решта осідає сюди без правки коду під кожен новий каталог.
+   */
+  const KNOWN_LABEL = /(min\.? project|hourly rate|employees|location|company size|team size)/i;
+  /*
+   * Підписи кнопок і посилань це не дані. Без цього фільтра в "Інше" сипалось
+   * "See X Reviews", "Show more about provider" і лічильники послуг з тултипів
+   * діаграми, тобто блок ставав нечитабельним рівно там, де він мав допомагати.
+   */
+  const LABEL_NOISE = /^(see|show|view|open|close|read|visit|hide|more|less|next|prev|\d+%)\b/i;
+  const VALUE_NOISE = /^(\+\d+\s*services?|show more|read more|\d[\d,]*\s*(reviews?|відгук\w*))$/i;
+  const EXTRA_NOISE = /(cookie|privacy|sponsored|advertis)/i;
+
+  function extraFrom(card) {
+    const extra = {};
+
+    const put = (label, value) => {
+      const key = clean(label).replace(/[:\s]+$/, '');
+      const text = clean(value);
+      if (!key || !text || key.length > 40 || text.length > 120) return;
+      if (key.toLowerCase() === text.toLowerCase()) return;
+      if (KNOWN_LABEL.test(key) || LABEL_NOISE.test(key) || EXTRA_NOISE.test(key)) return;
+      if (VALUE_NOISE.test(text) || EXTRA_NOISE.test(text)) return;
+      if (Object.keys(extra).length >= 12 || extra[key]) return;
+      extra[key] = text;
+    };
+
+    /*
+     * Тільки підписані елементи: тултип каталогу і списки означень. `aria-label`
+     * навмисно не читається, бо ним підписані кнопки, а не поля картки.
+     */
+    for (const node of card.querySelectorAll('[data-tooltip-content], dt')) {
+      const label = clean(
+        (node.getAttribute?.('data-tooltip-content') || node.textContent || '').replace(/<[^>]*>/g, ' '),
+      );
+      const value =
+        node.tagName === 'DT' ? clean(node.nextElementSibling?.textContent) : clean(node.textContent);
+      put(label, value);
+    }
+
+    for (const match of clean(card.textContent).matchAll(/([A-ZА-ЯІЇЄҐ][\w .'-]{2,28}):\s*([^:•|]{2,60}?)(?=\s{2,}|$|[•|])/g)) {
+      put(match[1], match[2]);
+    }
+
+    // Значок перевіреного профілю це окремий сигнал: такі студії відповідають частіше.
+    if (/\bverified\b/i.test(clean(card.querySelector('[class*="verif" i]')?.textContent))) {
+      extra['Перевірений профіль'] = 'так';
+    }
+
+    return extra;
+  }
+
+  /*
+   * Каталоги мішають у ті самі вузли підписи діаграм, оцінки і кнопки. У фільтрі
+   * за тегами вони заважають, у скорингу не важать нічого, тому відсіюються тут,
+   * а не осідають у базі. Той самий перелік продубльований у backfill-catalog.ts
+   * для вже зібраних компаній.
+   */
+  const TAG_NOISE = /(allocation|expertise by|read more|see profile|\+\d+\s*service|^\d+%$|view profile|visit website|was this helpful|^service focus|^\d+(?:\.\d+)?\/\d+\b|reviews? mention|^\d[\d,]*\s*reviews?$|^(see|show|read|view)\b|\d+%)/i;
 
   function tagsFrom(card) {
     const nodes = card.querySelectorAll(
@@ -110,10 +210,16 @@
       '[class*="company-size" i]',
     ]);
 
+    const founded = FOUNDED.exec(cardText);
+
     return {
       sizeHint: (sizeNode && (sizeNode.match(SIZE) || [])[0]) || (cardText.match(SIZE) || [])[0] || null,
       rate: (cardText.match(RATE) || [])[0] || null,
       minProject: (cardText.match(MIN_PROJECT) || [])[0] || null,
+      rating: ratingFrom(card, cardText),
+      reviewsCount: reviewsFrom(card, cardText),
+      foundedYear: founded ? Number(founded[1]) : null,
+      extra: extraFrom(card),
       description: text(card, ['[class*="description" i]', '[class*="summary" i]', '[class*="tagline" i]', 'p']),
       city:
         text(card, [
@@ -263,9 +369,17 @@
           city: base.city,
           country: base.country,
           sizeHint: base.sizeHint,
-          tags: [...new Set([...tagsFrom(card), base.rate, base.minProject].filter(Boolean))],
+          // Ставка і мінімальний проєкт більше не теги: у них свої поля, і в тегах
+          // вони лише засмічували фільтр за послугами.
+          tags: tagsFrom(card),
           description: base.description,
           sourceUrl: absolute(profile),
+          rating: base.rating,
+          reviewsCount: base.reviewsCount,
+          minProject: base.minProject,
+          hourlyRate: base.rate,
+          foundedYear: base.foundedYear,
+          extra: base.extra,
         };
       })
       .filter(Boolean);
@@ -287,6 +401,8 @@
         if (!org || typeof org !== 'object') continue;
         if (!['Organization', 'LocalBusiness', 'ProfessionalService'].includes(org['@type'])) continue;
 
+        const aggregate = org.aggregateRating ?? {};
+
         items.push({
           name: clean(org.name),
           domain: domainFrom(Array.isArray(org.sameAs) ? org.sameAs[0] : org.sameAs || org.url),
@@ -296,6 +412,12 @@
           tags: [],
           description: clean(org.description) || null,
           sourceUrl: org.url ?? null,
+          rating: numberFrom(aggregate.ratingValue),
+          reviewsCount: numberFrom(aggregate.reviewCount ?? aggregate.ratingCount),
+          minProject: null,
+          hourlyRate: clean(org.priceRange) || null,
+          foundedYear: numberFrom(String(org.foundingDate ?? '').slice(0, 4)),
+          extra: {},
         });
       }
     }

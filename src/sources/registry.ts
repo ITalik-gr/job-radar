@@ -30,6 +30,14 @@ export interface RawCompany {
   description: string | null;
   /** Скільки вакансій каталог показує в картці. Підказка, а не факт. */
   openVacancies: number | null;
+  /** Репутація в каталозі. Порожнє означає, що каталог її не показав. */
+  rating?: number | null;
+  reviewsCount?: number | null;
+  minProject?: string | null;
+  hourlyRate?: string | null;
+  foundedYear?: number | null;
+  /** Усе інше, що каталог показав: нагороди, мови, галузі, перевірений профіль. */
+  extra?: Record<string, string>;
 }
 
 export interface SourceContext {

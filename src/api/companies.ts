@@ -51,6 +51,19 @@ companiesRoutes.get('/', async (c) => {
       techHints: companies.techHints,
       sources: companies.sources,
       lastChecked: companies.lastChecked,
+      /*
+       * Поля, які читає скоринг компаній. Без них рахунок на цій сторінці рахувався
+       * за неповною компанією і не збігався з тим самим рахунком у Студіях: тип,
+       * ознаки покинутого сайту і репутація з каталогу просто не доїжджали сюди.
+       */
+      kind: companies.kind,
+      copyrightYear: companies.copyrightYear,
+      lastPostAt: companies.lastPostAt,
+      rating: companies.rating,
+      reviewsCount: companies.reviewsCount,
+      hourlyRate: companies.hourlyRate,
+      minProject: companies.minProject,
+      foundedYear: companies.foundedYear,
       status: companyState.status,
       snoozedUntil: companyState.snoozedUntil,
       openVacancies: openVacancies.as('open_vacancies'),
@@ -65,15 +78,9 @@ companiesRoutes.get('/', async (c) => {
   const scored = rows.map((row) => ({
     ...row,
     score: scoreCompany({
-      company: {
-        ...row,
-        id: row.id,
-        techHints: row.techHints,
-        tags: row.tags,
-        sizeHint: row.sizeHint,
-        careersUrl: row.careersUrl,
-        country: row.country,
-      } as never,
+      // Рядок уже містить усі колонки, які читає скоринг, тому перелічувати
+      // їх удруге не треба: саме той перелік і розʼїхався зі схемою.
+      company: row as never,
       openVacancies: row.openVacancies,
       status: row.status,
     }).score,

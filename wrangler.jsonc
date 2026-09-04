@@ -12,7 +12,7 @@
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application"
 	},
-	// Workers AI: вектори компаній для пошуку схожих. Класифікація лишається на Anthropic.
+	// Workers AI: вектори компаній і, за LLM_PROVIDER=workers-ai, класифікація вакансій.
 	"ai": {
 		"binding": "AI"
 	},
@@ -39,7 +39,10 @@
 		]
 	},
 	"vars": {
-		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001"
+		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001",
+		// anthropic | workers-ai. Друге це включена квота платного плану замість рахунку за токени.
+		"LLM_PROVIDER": "anthropic",
+		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 	},
 	"observability": {
 		"enabled": true

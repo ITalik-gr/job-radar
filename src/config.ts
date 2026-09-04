@@ -73,11 +73,33 @@ export const config = {
   },
 
   llm: {
+    /**
+     * Хто класифікує: `anthropic` або `workers-ai`.
+     *
+     * Workers AI входить у платний план Cloudflare, який власник уже оплачує,
+     * тому класифікація там коштує нейрони з включеної квоти, а не окремі долари.
+     * Anthropic лишається за замовчуванням: якість вища, і саме на ній зібрано кеш.
+     */
+    get provider(): 'anthropic' | 'workers-ai' {
+      return str('LLM_PROVIDER', 'anthropic') === 'workers-ai' ? 'workers-ai' : 'anthropic';
+    },
     get apiKey() {
       return str('ANTHROPIC_API_KEY', '');
     },
     get model() {
       return str('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001');
+    },
+    /** Модель Workers AI. Llama 3.3 обрана як найдешевша з тих, що тримають строгий JSON. */
+    get workersModel() {
+      return str('WORKERS_AI_MODEL', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    },
+    /**
+     * Модель, яка реально працюватиме. Ключ кешу будується саме з неї: відповіді
+     * різних моделей не можна змішувати в одному кеші, інакше зміна провайдера
+     * мовчки віддавала б чужі класифікації.
+     */
+    get activeModel() {
+      return this.provider === 'workers-ai' ? this.workersModel : this.model;
     },
     /**
      * Базова адреса Anthropic. Порожня означає прямий виклик.
@@ -90,8 +112,16 @@ export const config = {
     get baseUrl() {
       return str('ANTHROPIC_BASE_URL', '');
     },
+    /**
+     * Стеля викликів на добу. Різна для двох провайдерів навмисно: у Anthropic
+     * кожен виклик це гроші за токени, і 500 на добу це запобіжник від тихо
+     * спаленого бюджету. У Workers AI це нейрони вже оплаченого плану, тому
+     * та сама стеля означала б просто недороблену роботу.
+     */
     get dailyCallLimit() {
-      return num('LLM_DAILY_CALL_LIMIT', 500);
+      return this.provider === 'workers-ai'
+        ? num('WORKERS_AI_DAILY_CALL_LIMIT', 5000)
+        : num('LLM_DAILY_CALL_LIMIT', 500);
     },
     /** Скільки символів тексту вакансії йде в модель. Довший хвіст майже не додає користі. */
     get maxInputChars() {

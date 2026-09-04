@@ -183,6 +183,10 @@ app.get('/api/export/:what', async (c) => {
         card.contacts.find((contact) => contact.email)?.email ??
         '',
       вакансій: card.openVacancies,
+      оцінка: card.rating ?? '',
+      відгуків: card.reviewsCount ?? '',
+      ставка: card.hourlyRate ?? '',
+      мінімальний_проєкт: card.minProject ?? '',
     }));
   } else {
     return c.json({ error: `невідомий тип вивантаження: ${what}` }, 400);
@@ -247,6 +251,7 @@ app.get('/api/studios', async (c) => {
     search: c.req.query('q'),
     kind: c.req.query('kind'),
     withNamedContact: c.req.query('named') === '1',
+    minRating: c.req.query('rating') ? Number(c.req.query('rating')) : undefined,
     includeContacted: c.req.query('all') === '1',
   });
   return c.json(page);
@@ -417,6 +422,9 @@ app.get('/api/stats', async (c) => {
     vacancies: scores,
     funnel: await funnel(),
     llmBudgetLeft: await remainingBudget(),
+    // Видно, хто саме класифікує: рахунок за токени Anthropic чи квота Workers AI.
+    llmProvider: config.llm.provider,
+    llmModel: config.llm.activeModel,
     threshold: config.pipeline.scoreThreshold,
   });
 });

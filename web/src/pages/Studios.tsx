@@ -100,6 +100,13 @@ function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; on
                 вакансій {card.openVacancies}
               </Badge>
             )}
+            {/* Оцінка видно вже у списку: інакше репутацію треба відкривати по одній картці. */}
+            {card.rating !== null && (
+              <Badge size="xs" color={card.rating >= 4.5 ? 'green' : card.rating >= 4 ? 'gray' : 'yellow'}>
+                {card.rating.toFixed(1)}
+                {card.reviewsCount ? ` · ${card.reviewsCount}` : ''}
+              </Badge>
+            )}
             {card.techHints.slice(0, 3).map((tech) => (
               <Badge key={tech} size="xs" color={WEAK_STACK.includes(tech) ? 'red' : 'brand'}>
                 {tech}
@@ -166,6 +173,19 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             </Text>
             <Badge color={KIND_COLORS[card.kind] ?? 'gray'}>{KIND_LABELS[card.kind] ?? card.kind}</Badge>
             {card.sizeHint && <Badge color="gray">{card.sizeHint}</Badge>}
+            {/*
+              Оцінка і відгуки поруч із назвою навмисно: це найшвидша відповідь на
+              питання "чи є там кому читати лист", і заради неї не треба розкривати картку.
+            */}
+            {card.rating !== null && (
+              <Badge color={card.rating >= 4.5 ? 'green' : card.rating >= 4 ? 'gray' : 'yellow'}>
+                {card.rating.toFixed(1)}
+                {card.reviewsCount !== null && ` · ${card.reviewsCount} відгуків`}
+              </Badge>
+            )}
+            {card.rating === null && card.reviewsCount !== null && (
+              <Badge color="gray">{card.reviewsCount} відгуків</Badge>
+            )}
             {card.lastContactedAt && (
               <Badge color="yellow" leftSection={<Clock size={11} />}>
                 писали {formatDate(card.lastContactedAt)}
@@ -248,6 +268,19 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               </DataList.ItemValue>
             </DataList.Item>
 
+            {(card.hourlyRate || card.minProject || card.foundedYear) && (
+              <DataList.Item>
+                <DataList.ItemLabel>каталог</DataList.ItemLabel>
+                <DataList.ItemValue>
+                  <Group gap={6}>
+                    {card.hourlyRate && <Badge color="gray">ставка {card.hourlyRate}</Badge>}
+                    {card.minProject && <Badge color="gray">проєкт від {card.minProject}</Badge>}
+                    {card.foundedYear && <Badge color="gray">з {card.foundedYear}</Badge>}
+                  </Group>
+                </DataList.ItemValue>
+              </DataList.Item>
+            )}
+
             <DataList.Item>
               <DataList.ItemLabel>стек із сайту</DataList.ItemLabel>
               <DataList.ItemValue>
@@ -280,6 +313,17 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               <DataList.ItemLabel>джерела</DataList.ItemLabel>
               <DataList.ItemValue>{card.sources.join(', ') || <Text c="dimmed">невідомо</Text>}</DataList.ItemValue>
             </DataList.Item>
+
+            {/*
+              Блок "Інше": усе, що каталог показав понад відомі поля. Набір різний
+              у кожного каталогу, тому це просто пари підпис-значення, без колонок.
+            */}
+            {Object.entries(card.extra ?? {}).map(([label, value]) => (
+              <DataList.Item key={label}>
+                <DataList.ItemLabel>{label.toLowerCase()}</DataList.ItemLabel>
+                <DataList.ItemValue>{value}</DataList.ItemValue>
+              </DataList.Item>
+            ))}
           </DataList>
 
           {/* Іменні контакти цінніші за hello@, тому вони окремим блоком і вище за розбір рахунку. */}
@@ -436,7 +480,7 @@ export interface CompanyListProps {
  */
 export function StudiosPage({ kind, emptyTitle, emptyHint }: CompanyListProps = {}) {
   const client = useQueryClient();
-  const [filters, setFilters] = useState({ q: '', country: '', min: '', all: '', named: '' });
+  const [filters, setFilters] = useState({ q: '', country: '', min: '', all: '', named: '', rating: '' });
   const [cursor, setCursor] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -524,6 +568,16 @@ export function StudiosPage({ kind, emptyTitle, emptyHint }: CompanyListProps = 
                   onChange={(value) => setFilters({ ...filters, min: value === '' ? '' : String(value) })}
                 />
               </Group>
+              <NumberInput
+                label="Мін. оцінка в каталозі"
+                description="компанії без оцінки не показуються"
+                placeholder="4.5"
+                step={0.1}
+                min={0}
+                max={5}
+                value={filters.rating}
+                onChange={(value) => setFilters({ ...filters, rating: value === '' ? '' : String(value) })}
+              />
               <Checkbox
                 label="показати тих, кому вже писали"
                 checked={filters.all === '1'}

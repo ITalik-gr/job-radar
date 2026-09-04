@@ -73,8 +73,32 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
     if (tags.some((value) => value.includes(normalize(tag)))) push(tag, weight);
   }
 
+  /*
+   * Ставка тепер має власну колонку, але в компаніях, зібраних раніше, вона лежить
+   * серед тегів. Читаються обидва місця, інакше беквіл коштував би перезбір каталогів.
+   */
+  const rateCandidates = [company.hourlyRate, ...tags].filter((value): value is string => Boolean(value));
   for (const [tag, weight] of Object.entries(config.hourlyRateBonus)) {
-    if (tags.some((value) => normalize(value) === normalize(tag))) push(`ставка ${tag}`, weight);
+    if (rateCandidates.some((value) => normalize(value) === normalize(tag))) push(`ставка ${tag}`, weight);
+  }
+
+  /*
+   * Репутація в каталозі. Студія з десятками відгуків і високою оцінкою реально
+   * працює з клієнтами, тобто там є кому читати лист. Картка без жодного відгуку
+   * часто просто заповнена і покинута, тому це окремий, невеликий штраф.
+   */
+  const reputation = config.reputation;
+  if (reputation) {
+    if (company.rating !== null && company.rating >= reputation.goodRating) {
+      push(`оцінка ${company.rating}`, reputation.goodRatingBonus);
+    }
+    if (company.rating !== null && company.rating > 0 && company.rating < reputation.weakRating) {
+      push(`низька оцінка ${company.rating}`, reputation.weakRatingPenalty);
+    }
+    if ((company.reviewsCount ?? 0) >= reputation.reviewsFrom) {
+      push(`відгуків ${company.reviewsCount}`, reputation.reviewsBonus);
+    }
+    if (company.reviewsCount === 0) push('жодного відгуку', reputation.noReviewsPenalty);
   }
 
   const tech = company.techHints.map(normalize);

@@ -6,6 +6,7 @@ import { getDb } from '../db/client.js';
 import { llmCache, llmUsage } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { hash } from './normalize.js';
+import { runWorkersAi, textFromAi } from '../lib/workers-ai.js';
 
 export const PROMPT_VERSION = 'v1';
 
@@ -72,7 +73,7 @@ function anthropic(): Anthropic {
   return client;
 }
 
-async function callModel(text: string) {
+async function callAnthropic(text: string) {
   const response = await anthropic().messages.create({
     model: config.llm.model,
     max_tokens: 1024,
@@ -90,6 +91,30 @@ async function callModel(text: string) {
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
   };
+}
+
+/**
+ * Той самий промпт через Workers AI. Модель менша за Haiku, тому вимога до JSON
+ * дублюється в самому запиті полем `response_format`: без нього llama регулярно
+ * додає пояснення перед обʼєктом, і кожна така відповідь коштувала б ретрай.
+ */
+async function callWorkersAi(text: string) {
+  const payload = await runWorkersAi(config.llm.workersModel, {
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: text },
+    ],
+    max_tokens: 1024,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+  });
+
+  return textFromAi(payload);
+}
+
+/** Виклик моделі за поточним провайдером. */
+async function callModel(text: string) {
+  return config.llm.provider === 'workers-ai' ? callWorkersAi(text) : callAnthropic(text);
 }
 
 export function today(now = new Date()): string {
@@ -139,7 +164,7 @@ export function extractJson(raw: string): unknown {
 }
 
 export function cacheKey(text: string): string {
-  return hash(`${config.llm.model}|${PROMPT_VERSION}|${text}`);
+  return hash(`${config.llm.activeModel}|${PROMPT_VERSION}|${text}`);
 }
 
 export async function classifyText(text: string, options: ClassifyOptions = {}): Promise<ClassifyResult> {
@@ -166,7 +191,7 @@ export async function classifyText(text: string, options: ClassifyOptions = {}):
 
   // Один ретрай, як вимагає CLAUDE.md: невалідний JSON це не привід ганяти модель по колу.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    let raw: Awaited<ReturnType<typeof callModel>>;
+    let raw: Awaited<ReturnType<typeof callAnthropic>>;
     try {
       raw = await caller(text);
     } catch (error) {
@@ -182,7 +207,7 @@ export async function classifyText(text: string, options: ClassifyOptions = {}):
       const parsed = classificationSchema.parse(extractJson(raw.text));
       await db
         .insert(llmCache)
-        .values({ key, model: config.llm.model, promptVersion: PROMPT_VERSION, response: parsed })
+        .values({ key, model: config.llm.activeModel, promptVersion: PROMPT_VERSION, response: parsed })
         .onConflictDoNothing();
       return { classification: parsed, reason: 'llm', needsReview: false };
     } catch (error) {

@@ -46,8 +46,27 @@ describe('clutch', () => {
     expect(first.sizeHint).toBe('10 - 49');
     expect(first.country).toBe('US');
     expect(first.city).toBe('Raleigh');
-    expect(first.tags).toContain('$50 - $99 / hr');
     expect(first.tags.some((tag) => /Web Development/i.test(tag))).toBe(true);
+    // Ставка і мінімальний проєкт мають власні поля, у тегах їм більше не місце.
+    expect(first.tags).not.toContain('$50 - $99 / hr');
+  });
+
+  it('бере оцінку, відгуки, ставку і мінімальний проєкт окремими полями', () => {
+    const first = items[0]!;
+    expect(first.rating).toBe(4.9);
+    expect(first.reviewsCount).toBe(16);
+    expect(first.hourlyRate).toBe('$50 - $99 / hr');
+    expect(first.minProject).toBe('$10,000+');
+  });
+
+  it('усе інше з картки складає в блок "Інше", без підписів, у яких є свої колонки', () => {
+    const extra = items[0]!.extra ?? {};
+    // Відомі підписи мають колонки і сюди не потрапляють.
+    expect(Object.keys(extra).join(' ')).not.toMatch(/min\.? project|employees|location/i);
+    for (const [label, value] of Object.entries(extra)) {
+      expect(label.length).toBeGreaterThan(0);
+      expect(value.length).toBeGreaterThan(0);
+    }
   });
 
   it('порожня сторінка це порожній масив, а не виняток', () => {

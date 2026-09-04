@@ -23,6 +23,14 @@ export interface StudioCard {
   lastPostAt: number | null;
   tags: string[];
   techHints: string[];
+  /** Репутація в каталозі. null означає, що каталог її не показував. */
+  rating: number | null;
+  reviewsCount: number | null;
+  minProject: string | null;
+  hourlyRate: string | null;
+  foundedYear: number | null;
+  /** Блок "Інше": усе, що каталог показав понад перелічені поля. */
+  extra: Record<string, string>;
   description: string | null;
   careersUrl: string | null;
   /** Сторінка компанії в каталозі, звідки вона прийшла. */
@@ -47,6 +55,8 @@ export interface StudioFilters {
   kind?: string;
   /** Тільки ті, де є контакт з іменем. Лист на hello@ читає менеджер, не техлід. */
   withNamedContact?: boolean;
+  /** Мінімальна оцінка в каталозі. Компанії без оцінки вважаються такими, що не проходять. */
+  minRating?: number;
 }
 
 export interface StudioPage {
@@ -117,6 +127,7 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
        */
       return row.company.kind !== 'product';
     })
+    .filter((row) => filters.minRating === undefined || (row.company.rating ?? 0) >= filters.minRating)
     .filter((row) => {
       if (!filters.search) return true;
       const needle = filters.search.toLowerCase();
@@ -145,6 +156,12 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         lastPostAt: row.company.lastPostAt,
         tags: row.company.tags,
         techHints: row.company.techHints,
+        rating: row.company.rating,
+        reviewsCount: row.company.reviewsCount,
+        minProject: row.company.minProject,
+        hourlyRate: row.company.hourlyRate,
+        foundedYear: row.company.foundedYear,
+        extra: row.company.extra ?? {},
         description: row.company.description,
         careersUrl: row.company.careersUrl,
         sourceUrl: row.company.sourceUrl,

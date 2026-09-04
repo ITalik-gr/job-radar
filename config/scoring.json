@@ -342,6 +342,16 @@
     },
     "hasCareersPage": 2,
     "hasOpenVacancies": 3,
+    "reputation": {
+      "_": "Репутація в каталозі. Студія з відгуками реально працює з клієнтами, порожня картка часто покинута.",
+      "goodRating": 4.5,
+      "goodRatingBonus": 2,
+      "weakRating": 4,
+      "weakRatingPenalty": -1,
+      "reviewsFrom": 5,
+      "reviewsBonus": 1,
+      "noReviewsPenalty": -1
+    },
     "hourlyRateBonus": {
       "_": "Ставка агенції натякає на бюджет. Дуже дешеві не платитимуть, дуже дорогі не візьмуть чужого.",
       "$25 - $49 / hr": 1,

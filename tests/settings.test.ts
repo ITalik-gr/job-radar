@@ -54,6 +54,25 @@ describe('правила з бази', () => {
     expect(rules().threshold).toBe(42);
   });
 
+  /*
+   * Секція репутації зʼявилась пізніше за конфіг. Конфіг, збережений з інтерфейсу
+   * до її появи, мусить лишатись валідним, інакше скоринг мовчки відкотився б
+   * до вшитого, і правки порогів з інтерфейсу перестали б діяти.
+   */
+  it('репутація студій зберігається з інтерфейсу і має дефолти в старому конфізі', async () => {
+    const base = loadRules();
+    const withoutReputation = { ...base, companies: { ...base.companies, reputation: undefined } };
+
+    await saveRules(withoutReputation);
+    expect(rules().companies.reputation.goodRating).toBe(4.5);
+
+    await saveRules({
+      ...base,
+      companies: { ...base.companies, reputation: { ...base.companies.reputation, goodRatingBonus: 7 } },
+    });
+    expect(rules().companies.reputation.goodRatingBonus).toBe(7);
+  });
+
   it('невалідний конфіг не потрапляє в базу', async () => {
     await expect(saveRules({ threshold: 'багато' })).rejects.toThrow();
 

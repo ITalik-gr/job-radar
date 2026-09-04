@@ -5,7 +5,8 @@ import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { llmCache, llmUsage } from '../src/db/schema.js';
-import { classifyText, extractJson, remainingBudget, today } from '../src/pipeline/classify.js';
+import { cacheKey, classifyText, extractJson, remainingBudget, today } from '../src/pipeline/classify.js';
+import { setRuntimeEnv } from '../src/config.js';
 
 const VALID = {
   is_vacancy: true,
@@ -133,5 +134,30 @@ describe('classifyText', () => {
     expect(result.reason).toBe('invalid');
     const [row] = await getDb().select().from(llmUsage).where(eq(llmUsage.day, today()));
     expect(row!.failures).toBe(2);
+  });
+
+  /*
+   * Кеш ключується моделлю, а не лише текстом. Без цього перемикання на Workers AI
+   * мовчки віддавало б класифікації Haiku, і зміну провайдера не було б видно взагалі.
+   */
+  it('стеля викликів у Workers AI своя, бо це квота плану, а не рахунок', () => {
+    setRuntimeEnv({ LLM_PROVIDER: 'anthropic' });
+    const paid = config.llm.dailyCallLimit;
+
+    setRuntimeEnv({ LLM_PROVIDER: 'workers-ai' });
+    expect(config.llm.dailyCallLimit).toBeGreaterThan(paid);
+
+    setRuntimeEnv({ LLM_PROVIDER: 'anthropic' });
+  });
+
+  it('ключ кешу різний у Anthropic і Workers AI', () => {
+    setRuntimeEnv({ LLM_PROVIDER: 'anthropic' });
+    const anthropicKey = cacheKey('той самий текст');
+
+    setRuntimeEnv({ LLM_PROVIDER: 'workers-ai' });
+    expect(config.llm.activeModel).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    expect(cacheKey('той самий текст')).not.toBe(anthropicKey);
+
+    setRuntimeEnv({ LLM_PROVIDER: 'anthropic' });
   });
 });

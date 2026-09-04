@@ -240,6 +240,20 @@ export function App() {
                   {stats.llmBudgetLeft}
                 </Text>
               </Group>
+              {/*
+                Хто класифікує, видно одразу: Anthropic це рахунок за токени,
+                Workers AI це квота вже оплаченого плану Cloudflare.
+              */}
+              <Group justify="space-between" gap="xs">
+                <Text size="xs" c="dimmed">
+                  класифікує
+                </Text>
+                <Tooltip label={stats.llmModel}>
+                  <Text size="xs" className="tabular">
+                    {stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
+                  </Text>
+                </Tooltip>
+              </Group>
               {stats.vacancies.needsReview > 0 && (
                 <Group gap={6} c="yellow.8">
                   <CircleAlert size={14} />

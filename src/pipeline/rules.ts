@@ -85,6 +85,21 @@ export const rulesSchema = z.object({
       })
       .default({}),
     hourlyRateBonus: numberMap,
+    /*
+     * Репутація з каталогу. Необовʼязкова з дефолтами, як kindWeights і stale:
+     * конфіг, збережений з інтерфейсу до появи поля, мусить лишатись валідним.
+     */
+    reputation: z
+      .object({
+        goodRating: z.number().default(4.5),
+        goodRatingBonus: z.number().default(2),
+        weakRating: z.number().default(4),
+        weakRatingPenalty: z.number().default(-1),
+        reviewsFrom: z.number().default(5),
+        reviewsBonus: z.number().default(1),
+        noReviewsPenalty: z.number().default(-1),
+      })
+      .default({}),
   }),
 });
 

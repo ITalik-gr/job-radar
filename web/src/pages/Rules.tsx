@@ -294,6 +294,19 @@ export function RulesPage() {
   }
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(data.rules);
+  /*
+   * Секція репутації зʼявилась пізніше за конфіг, тому в уже збереженому з інтерфейсу
+   * її може не бути. Дефолти тут ті самі, що в Zod-схемі на сервері.
+   */
+  const reputation = draft.companies.reputation ?? {
+    goodRating: 4.5,
+    goodRatingBonus: 2,
+    weakRating: 4,
+    weakRatingPenalty: -1,
+    reviewsFrom: 5,
+    reviewsBonus: 1,
+    noReviewsPenalty: -1,
+  };
   const patch = (part: Partial<Rules>) => setDraft({ ...draft, ...part });
 
   return (
@@ -358,6 +371,48 @@ export function RulesPage() {
             w={200}
             allowDecimal
           />
+        </Group>
+      </Card>
+
+      {/*
+        Репутація студій. Раніше ці ваги правились тільки у config/scoring.json,
+        а на Workers файлової системи немає, тобто на проді їх не змінити взагалі.
+      */}
+      <Card>
+        <SectionTitle
+          title="Репутація студій"
+          hint="оцінка і відгуки з каталогу. Порожня картка без жодного відгуку часто означає покинуту студію"
+        />
+        <Group gap="lg" align="flex-end" wrap="wrap">
+          {(
+            [
+              ['goodRating', 'Висока оцінка від', 'з якої починається плюс'],
+              ['goodRatingBonus', 'Плюс за оцінку', ''],
+              ['weakRating', 'Низька оцінка до', 'нижче цієї йде мінус'],
+              ['weakRatingPenalty', 'Мінус за оцінку', ''],
+              ['reviewsFrom', 'Відгуків від', 'скільки відгуків рахуються за багато'],
+              ['reviewsBonus', 'Плюс за відгуки', ''],
+              ['noReviewsPenalty', 'Мінус за нуль відгуків', ''],
+            ] as const
+          ).map(([key, label, description]) => (
+            <NumberInput
+              key={key}
+              label={label}
+              description={description || undefined}
+              value={reputation[key]}
+              onChange={(value) =>
+                patch({
+                  companies: {
+                    ...draft.companies,
+                    reputation: { ...reputation, [key]: Number(value) || 0 },
+                  },
+                })
+              }
+              w={168}
+              allowDecimal
+              allowNegative
+            />
+          ))}
         </Group>
       </Card>
 

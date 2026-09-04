@@ -41,6 +41,12 @@ export async function saveCompanies(items: RawCompany[], source: string): Promis
         tags: item.tags,
         description: item.description,
         sourceUrl: item.sourceUrl,
+        rating: item.rating ?? null,
+        reviewsCount: item.reviewsCount ?? null,
+        minProject: item.minProject ?? null,
+        hourlyRate: item.hourlyRate ?? null,
+        foundedYear: item.foundedYear ?? null,
+        extra: item.extra ?? {},
       });
       if (created) stats.itemsNew += 1;
       else stats.updated += 1;
@@ -108,6 +114,17 @@ const browserItemSchema = z.object({
   tags: z.array(z.string()).default([]),
   description: z.string().nullable().optional(),
   sourceUrl: z.string().nullable().optional(),
+  /*
+   * Репутація з каталогу. Усі поля необовʼязкові: старіша версія розширення
+   * їх не шле, і сторінка від неї має прийматись, а не відкидатись валідацією.
+   */
+  rating: z.number().min(0).max(5).nullable().optional(),
+  reviewsCount: z.number().int().min(0).nullable().optional(),
+  minProject: z.string().nullable().optional(),
+  hourlyRate: z.string().nullable().optional(),
+  foundedYear: z.number().int().min(1900).max(2100).nullable().optional(),
+  /** Блок "Інше": пари підпис-значення, які каталог показав у картці. */
+  extra: z.record(z.string(), z.string()).default({}),
 });
 
 export interface BrowserImportResult {
@@ -146,6 +163,12 @@ export async function importFromBrowser(payload: {
     tags: item.tags,
     description: item.description ?? null,
     openVacancies: null,
+    rating: item.rating ?? null,
+    reviewsCount: item.reviewsCount ?? null,
+    minProject: item.minProject ?? null,
+    hourlyRate: item.hourlyRate ?? null,
+    foundedYear: item.foundedYear ?? null,
+    extra: item.extra,
   }));
 
   const stats = await withRun(`browser:${source}`, async () => {
