@@ -6,6 +6,8 @@ import { companies, runs, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { followUps } from '../pipeline/actions.js';
 import { getQueue, todayKey } from '../pipeline/queue.js';
+import { listDrafts } from '../pipeline/outreach.js';
+import { dueFollowups } from '../pipeline/followups.js';
 
 /**
  * Телеграм тут допоміжний канал: тільки алерти і нагадування.
@@ -52,6 +54,31 @@ export async function digestMessage(day = todayKey()): Promise<string | null> {
     `<b>Черга на ${day}</b>: ${pending.length} карток`,
     ...lines,
     pending.length > 5 ? `і ще ${pending.length - 5}` : '',
+    WEB_URL,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * Дайджест розсилки о 10:00: скільки чернеток готово і скільки фолоу-апів настало.
+ *
+ * Окремим повідомленням від черги вакансій навмисно: це різні дії. Черга це
+ * рішення "цікаво чи ні", розсилка це "сісти і надіслати".
+ */
+export async function outreachMessage(): Promise<string | null> {
+  const drafts = await listDrafts();
+  const ready = drafts.filter((row) => !row.error);
+  const stuck = drafts.length - ready.length;
+  const due = await dueFollowups();
+
+  if (ready.length === 0 && stuck === 0 && due.length === 0) return null;
+
+  return [
+    '<b>Розсилка</b>',
+    `готових чернеток: ${ready.length}`,
+    stuck > 0 ? `потребують уваги: ${stuck}` : '',
+    due.length > 0 ? `настав фолоу-ап: ${due.length}` : '',
     WEB_URL,
   ]
     .filter(Boolean)
@@ -320,5 +347,6 @@ export const notify = {
   highScore: (options: NotifyOptions = {}) => highScoreMessage().then((text) => deliver(text, options)),
   followUps: (options: NotifyOptions = {}) => followUpMessage().then((text) => deliver(text, options)),
   broken: (options: NotifyOptions = {}) => brokenSourcesMessage().then((text) => deliver(text, options)),
+  outreach: (options: NotifyOptions = {}) => outreachMessage().then((text) => deliver(text, options)),
   raw: (text: string, options: NotifyOptions = {}) => deliver(text, options),
 };

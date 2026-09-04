@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { app } from './api/index.js';
-import { setRuntimeEnv } from './config.js';
+import { config, setRuntimeEnv } from './config.js';
 import { setDb, schema } from './db/client.js';
 import { log } from './lib/log.js';
 import { listSources } from './sources/registry.js';
@@ -12,6 +12,10 @@ import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
 import { setAiBinding } from './lib/workers-ai.js';
+import { checkReplies } from './pipeline/replies.js';
+import { prepareFollowups } from './pipeline/followups.js';
+// Токен Gmail на Workers приходить секретом, файлової системи тут немає.
+import './lib/gmail-store.env.js';
 
 /**
  * Точка входу для Cloudflare Workers. Той самий Hono-застосунок, що й локально,
@@ -72,8 +76,20 @@ async function runSchedule(cron: string): Promise<void> {
 
   if (cron === '0 4 * * 1') return safely('catalog:dou', () => syncDou({ limit: 60 }));
   if (cron === '0 5 * * 2') return safely('discover', () => discover({ limit: 40 }));
-  if (cron === '0 10 * * *') return safely('notify:digest', () => notify.digest());
+  if (cron === '0 10 * * *') {
+    await safely('notify:digest', () => notify.digest());
+    return safely('notify:outreach', () => notify.outreach());
+  }
   if (cron === '0 18 * * *') return safely('notify:followUps', () => notify.followUps());
+
+  /*
+   * Розсилка. Час у Cron Triggers завжди UTC, тому 06:30 UTC це 09:30 за Києвом:
+   * чернетки фолоу-апів мають бути готові до дайджесту, а не після нього.
+   */
+  if (cron === '5 * * * *') {
+    return safely('outreach:replies', () => checkReplies({ ownEmail: config.gmail.fromEmail }));
+  }
+  if (cron === '30 6 * * *') return safely('outreach:followups', () => prepareFollowups());
 
   log.warn({ cron }, 'невідомий розклад');
 }

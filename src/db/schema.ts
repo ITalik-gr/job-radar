@@ -117,6 +117,12 @@ export const contacts = sqliteTable(
     name: text('name'),
     role: text('role'),
     email: text('email'),
+    /**
+     * Адреса, яка дала hard bounce, лишається в базі, але позначається мертвою:
+     * видаляти її не можна, бо тоді enrichment знайде її знову і лист піде
+     * вдруге на ту саму скриньку.
+     */
+    emailValid: integer('email_valid', { mode: 'boolean' }).notNull().default(true),
     telegram: text('telegram'),
     xHandle: text('x_handle'),
     linkedin: text('linkedin'),
@@ -190,9 +196,50 @@ export const outreach = sqliteTable(
       .notNull()
       .references(() => companies.id, { onDelete: 'cascade' }),
     vacancyId: integer('vacancy_id').references(() => vacancies.id, { onDelete: 'set null' }),
+    /**
+     * Контакт, якому пишемо. На відміну від `contact_name` і `contact_email`,
+     * це живий звʼязок: він потрібен, щоб позначити адресу невалідною після
+     * hard bounce. Знімок імені і пошти лишається поруч і переживає видалення.
+     */
+    contactId: integer('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
     channel: text('channel').notNull(),
-    sentAt: integer('sent_at').notNull().default(now),
+    /**
+     * Порожнє означає, що лист ще не пішов. Чернетка живе в цій же таблиці,
+     * а не в окремій: інакше при відправці довелось би переносити рядок і
+     * гарантувати, що знімок тексту не зміниться дорогою.
+     */
+    sentAt: integer('sent_at'),
     templateUsed: text('template_used'),
+    templateId: integer('template_id').references(() => templates.id, { onDelete: 'set null' }),
+    /** uk | en. Знімок на момент чернетки, шаблон потім можуть перекласти. */
+    language: text('language'),
+    /** Те, що реально пішло, після всіх правок людини. Не перегенеровується. */
+    subjectFinal: text('subject_final'),
+    bodyFinal: text('body_final'),
+    /**
+     * Перший абзац від моделі зберігається окремо від тіла листа навмисно:
+     * через сотню листів це єдиний спосіб порівняти конверсію з персоналізацією
+     * і без неї, не розбираючи текст назад на абзаци.
+     */
+    aiUsed: integer('ai_used', { mode: 'boolean' }).notNull().default(false),
+    aiParagraph: text('ai_paragraph'),
+    /**
+     * Чому абзац від моделі не використали. Порожнє при `ai_used` означає, що все
+     * пройшло. Потрібне для статистики відкатів: якщо їх понад 30 відсотків,
+     * поганий промпт, і без розбивки по причинах цього не видно.
+     */
+    aiFallbackReason: text('ai_fallback_reason'),
+    /** draft | approved | sent | failed | bounced | replied */
+    status: text('status').notNull().default('sent'),
+    gmailMessageId: text('gmail_message_id'),
+    /**
+     * Заголовок Message-Id самого листа. Не те саме, що `gmail_message_id`:
+     * той внутрішній для API, а фолоу-ап у `In-Reply-To` чекає саме RFC-значення
+     * у кутових дужках. Без цього поля ланцюжок треду не збирається.
+     */
+    rfcMessageId: text('rfc_message_id'),
+    gmailThreadId: text('gmail_thread_id'),
+    queuedAt: integer('queued_at'),
     /**
      * Кому саме писали. Не звʼязок із `contacts`, а знімок імені і пошти на момент
      * листа: контакт може змінитись або зникнути з сайту, а історія має лишитись
@@ -201,15 +248,58 @@ export const outreach = sqliteTable(
     contactName: text('contact_name'),
     contactEmail: text('contact_email'),
     replyAt: integer('reply_at'),
-    // positive | rejection | auto
+    // positive | rejection | autoreply | ooo | unclear
     replyType: text('reply_type'),
+    /** hard | soft. Hard означає, що адреса мертва і більше не використовується. */
+    bounceType: text('bounce_type'),
+    /** Лист, продовженням якого є цей. Фолоу-ап рівно один, тому ланцюжок короткий. */
+    followupOf: integer('followup_of'),
+    followupDueAt: integer('followup_due_at'),
+    /**
+     * Чому чернетка не готова: порожній обовʼязковий плейсхолдер, немає адреси,
+     * порожній шаблон. Такі лежать окремою вкладкою, а не тихо зникають.
+     */
+    error: text('error'),
     note: text('note'),
   },
   (t) => [
     index('outreach_company_idx').on(t.companyId),
     index('outreach_sent_idx').on(t.sentAt),
+    index('outreach_status_idx').on(t.status),
+    index('outreach_followup_idx').on(t.followupDueAt),
   ],
 );
+
+/**
+ * Whitelist фактів про власника, які модель має право згадати в першому абзаці.
+ *
+ * Навіщо в базі, а не в промпті: список правиться з інтерфейсу, і кожен факт
+ * можна вимкнути, не чіпаючи код. Модель не має права сказати нічого, чого тут
+ * немає, і валідатор це перевіряє.
+ */
+export const facts = sqliteTable(
+  'facts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    key: text('key').notNull(),
+    textUk: text('text_uk').notNull(),
+    textEn: text('text_en').notNull(),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('facts_key_uq').on(t.key)],
+);
+
+/**
+ * Лічильник відправок за добу. Живе окремо від `outreach`, бо на ньому тримаються
+ * і денний ліміт, і пауза між листами, і прогрів: рахувати це кожного разу
+ * агрегатом по історії означає залежати від того, що історію ніхто не чистив.
+ */
+export const sendLog = sqliteTable('send_log', {
+  day: text('day').primaryKey(),
+  count: integer('count').notNull().default(0),
+  lastSentAt: integer('last_sent_at'),
+});
 
 export const runs = sqliteTable(
   'runs',
@@ -308,12 +398,36 @@ export const templates = sqliteTable(
     /** vacancy | studio | resume. Визначає, де шаблон пропонується. */
     kind: text('kind').notNull().default('vacancy'),
     /**
+     * Мова тексту: uk | en. Один шаблон не буває двомовним, бо переклад це інший
+     * текст, а не те саме іншими словами. Вибір мови детермінований: країна UA
+     * означає uk, решта en.
+     */
+    language: text('language').notNull().default('uk'),
+    /**
+     * Під який випадок розсилки заточений шаблон:
+     * vacancy | studio_named | studio_generic | followup.
+     *
+     * Саме за цим полем чернетка вибирає шаблон, і вибір робить код, не модель.
+     * Порожнє означає, що шаблон у розсилці не бере участі і лежить для ручного
+     * копіювання зі сторінки Шаблони.
+     */
+    targetType: text('target_type'),
+    /**
      * Тип компанії, під який заточений текст: design | startup | studio | outstaff.
      * Порожнє означає універсальний. Дизайн-студії і стартапу пишеться зовсім різне,
      * і вибирати шаблон руками щоразу це те саме тертя, через яке листи не пишуться.
      */
     forKind: text('for_kind'),
     subject: text('subject'),
+    /**
+     * Статичний перший абзац. Тіло листа підставляє його через `{{intro}}`.
+     *
+     * Розділений навмисно: перший абзац це єдине, що персоналізується моделлю,
+     * а другий і третій містять факти про власника і генеруватись не мають.
+     * Відкат валідації означає підстановку саме цього тексту, тому лист ніколи
+     * не лишається без першого абзацу і ніколи не блокується через модель.
+     */
+    intro: text('intro'),
     body: text('body').notNull().default(''),
     note: text('note'),
     archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
@@ -333,4 +447,7 @@ export type Outreach = typeof outreach.$inferSelect;
 export type CompanyState = typeof companyState.$inferSelect;
 export type Run = typeof runs.$inferSelect;
 export type Template = typeof templates.$inferSelect;
+export type Contact = typeof contacts.$inferSelect;
+export type Fact = typeof facts.$inferSelect;
+export type SendLog = typeof sendLog.$inferSelect;
 export type NewTemplate = typeof templates.$inferInsert;

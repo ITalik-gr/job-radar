@@ -71,6 +71,10 @@ export async function applyAction(input: ActionInput): Promise<ActionResult> {
         companyId: vacancy.companyId,
         vacancyId: vacancy.id,
         channel: input.channel ?? 'email',
+        // Кнопка "Написав" це запис про вже надісланий лист, тому одразу sent.
+        // Чернетки розсилки живуть у цій же таблиці зі status = draft.
+        status: 'sent',
+        sentAt: Date.now(),
         templateUsed: input.templateUsed ?? null,
         contactName: input.contactName ?? null,
         contactEmail: input.contactEmail ?? null,
@@ -131,7 +135,15 @@ export interface OutreachRow {
   vacancyTitle: string | null;
   vacancyUrl: string | null;
   channel: string;
-  sentAt: number;
+  sentAt: number | null;
+  status: string;
+  language: string | null;
+  aiUsed: boolean;
+  bounceType: string | null;
+  /** Текст того, що реально пішло. Інтерфейс показує його на розкритті рядка. */
+  subject: string | null;
+  body: string | null;
+  isFollowup: boolean;
   templateUsed: string | null;
   /** Кому писали. Знімок на момент листа, а не звʼязок із таблицею контактів. */
   contactName: string | null;
@@ -156,6 +168,8 @@ export async function listOutreach(): Promise<OutreachRow[]> {
     .from(outreach)
     .innerJoin(companies, eq(companies.id, outreach.companyId))
     .leftJoin(vacancies, eq(vacancies.id, outreach.vacancyId))
+    // Чернетка це ще не лист. Її місце на сторінці "До відправки", а не в історії.
+    .where(sql`${outreach.sentAt} is not null`)
     .orderBy(desc(outreach.sentAt));
 
   const now = Date.now();
@@ -169,13 +183,21 @@ export async function listOutreach(): Promise<OutreachRow[]> {
     vacancyUrl,
     channel: row.channel,
     sentAt: row.sentAt,
+    status: row.status,
+    language: row.language,
+    aiUsed: row.aiUsed,
+    bounceType: row.bounceType,
+    subject: row.subjectFinal,
+    body: row.bodyFinal,
+    isFollowup: row.followupOf !== null,
     templateUsed: row.templateUsed,
     contactName: row.contactName,
     contactEmail: row.contactEmail,
     replyAt: row.replyAt,
     replyType: row.replyType,
     note: row.note,
-    waitingDays: row.replyAt ? null : Math.floor((now - row.sentAt) / 86_400_000),
+    waitingDays:
+      row.replyAt || !row.sentAt ? null : Math.floor((now - row.sentAt) / 86_400_000),
   }));
 }
 
@@ -200,6 +222,8 @@ export async function funnel(): Promise<FunnelStats> {
   const db = getDb();
   const count = async (query: Promise<{ n: number }[]>) => (await query)[0]?.n ?? 0;
   const n = sql<number>`count(*)`;
+  // Воронка міряє надіслані листи. Чернетка ще нікуди не пішла і в неї не входить.
+  const sent = sql`${outreach.sentAt} is not null`;
 
   return {
     companies: await count(db.select({ n }).from(companies)),
@@ -208,10 +232,16 @@ export async function funnel(): Promise<FunnelStats> {
     decided: await count(
       db.select({ n }).from(queueItems).where(sql`${queueItems.decision} is not null`),
     ),
-    contacted: await count(db.select({ n }).from(outreach)),
-    replied: await count(db.select({ n }).from(outreach).where(sql`${outreach.replyAt} is not null`)),
-    positive: await count(db.select({ n }).from(outreach).where(eq(outreach.replyType, 'positive'))),
-    waitingReply: await count(db.select({ n }).from(outreach).where(isNull(outreach.replyAt))),
+    contacted: await count(db.select({ n }).from(outreach).where(sent)),
+    replied: await count(
+      db.select({ n }).from(outreach).where(and(sent, sql`${outreach.replyAt} is not null`)),
+    ),
+    positive: await count(
+      db.select({ n }).from(outreach).where(and(sent, eq(outreach.replyType, 'positive'))),
+    ),
+    waitingReply: await count(
+      db.select({ n }).from(outreach).where(and(sent, isNull(outreach.replyAt))),
+    ),
   };
 }
 

@@ -69,15 +69,24 @@ function anthropic(): Anthropic {
     apiKey: config.llm.apiKey,
     // Порожній baseUrl означає прямий виклик. Заданий це шлюз AI Gateway.
     ...(config.llm.baseUrl ? { baseURL: config.llm.baseUrl } : {}),
+    /*
+     * Authenticated Gateway відбиває запит без цього заголовка з 401, і збоку
+     * це виглядає як мовчазна відмова моделі: ключ Anthropic правильний, ліміти
+     * цілі, а відповіді немає. Тому заголовок ставиться завжди, коли токен є.
+     */
+    ...(config.cloudflare.gatewayToken
+      ? { defaultHeaders: { 'cf-aig-authorization': `Bearer ${config.cloudflare.gatewayToken}` } }
+      : {}),
   });
   return client;
 }
 
-async function callAnthropic(text: string) {
+async function callAnthropic(text: string, system = SYSTEM_PROMPT, temperature = 0) {
   const response = await anthropic().messages.create({
     model: config.llm.model,
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    temperature,
+    system,
     messages: [{ role: 'user', content: text }],
   });
 
@@ -98,14 +107,14 @@ async function callAnthropic(text: string) {
  * дублюється в самому запиті полем `response_format`: без нього llama регулярно
  * додає пояснення перед обʼєктом, і кожна така відповідь коштувала б ретрай.
  */
-async function callWorkersAi(text: string) {
+async function callWorkersAi(text: string, system = SYSTEM_PROMPT, temperature = 0) {
   const payload = await runWorkersAi(config.llm.workersModel, {
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: system },
       { role: 'user', content: text },
     ],
     max_tokens: 1024,
-    temperature: 0,
+    temperature,
     response_format: { type: 'json_object' },
   });
 
@@ -115,6 +124,32 @@ async function callWorkersAi(text: string) {
 /** Виклик моделі за поточним провайдером. */
 async function callModel(text: string) {
   return config.llm.provider === 'workers-ai' ? callWorkersAi(text) : callAnthropic(text);
+}
+
+export interface RawCall {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * Виклик з довільним системним промптом. Потрібен персоналізації листів: там
+ * інший промпт і температура 0.7, але той самий провайдер, той самий облік
+ * витрат і та сама денна стеля, тому другого клієнта заводити нема сенсу.
+ */
+export async function callModelWith(
+  system: string,
+  user: string,
+  temperature = 0,
+): Promise<RawCall> {
+  return config.llm.provider === 'workers-ai'
+    ? callWorkersAi(user, system, temperature)
+    : callAnthropic(user, system, temperature);
+}
+
+/** Облік витрат для викликів поза класифікацією. */
+export async function noteLlmCall(input: number, output: number, failed = false): Promise<void> {
+  await recordUsage(today(), input, output, failed);
 }
 
 export function today(now = new Date()): string {

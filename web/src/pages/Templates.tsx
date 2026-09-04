@@ -21,7 +21,8 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Archive, FileText, Plus, Save } from 'lucide-react';
+import { Archive, ArchiveRestore, Copy, FileText, Plus, Save, Trash2 } from 'lucide-react';
+import { FactsPanel } from '../components/FactsPanel';
 import { api, formatDate, type TemplateRow } from '../lib/api';
 import { LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
@@ -83,21 +84,32 @@ function Row({
         <Text size="xs" c="dimmed" truncate>
           {row.body ? `${row.body.length} символів` : 'текст не написаний'}
         </Text>
+        {/* Скільки листів уже написано цим шаблоном: видно, що робоче, а що чернетка. */}
+        {row.usageCount > 0 && (
+          <Badge size="xs" color="brand" variant="light">
+            {row.usageCount} лист{row.usageCount === 1 ? '' : 'ів'}
+          </Badge>
+        )}
       </Group>
     </UnstyledButton>
   );
 }
 
-function Editor({ row }: { row: TemplateRow }) {
+function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | null) => void }) {
   const client = useQueryClient();
   const [draft, setDraft] = useState(row);
+  const [confirming, setConfirming] = useState(false);
 
-  useEffect(() => setDraft(row), [row]);
+  useEffect(() => {
+    setDraft(row);
+    setConfirming(false);
+  }, [row]);
 
   const save = useMutation({
     mutationFn: () =>
       api.updateTemplate(row.id, {
         name: draft.name,
+        slug: draft.slug,
         kind: draft.kind,
         forKind: draft.forKind,
         subject: draft.subject,
@@ -116,16 +128,58 @@ function Editor({ row }: { row: TemplateRow }) {
       }),
   });
 
+  const fail = (error: unknown) =>
+    notifications.show({
+      color: 'red',
+      title: 'Не вийшло',
+      message: error instanceof Error ? error.message : String(error),
+    });
+
   const archive = useMutation({
-    mutationFn: () => api.archiveTemplate(row.id),
+    mutationFn: () => (row.archived ? api.restoreTemplate(row.id) : api.archiveTemplate(row.id)),
     onSuccess: () => {
-      notifications.show({ color: 'green', title: draft.name, message: 'в архіві' });
+      notifications.show({
+        color: 'green',
+        title: draft.name,
+        message: row.archived ? 'повернуто з архіву' : 'в архіві',
+      });
       void client.invalidateQueries({ queryKey: ['templates'] });
     },
+    onError: fail,
+  });
+
+  const duplicate = useMutation({
+    mutationFn: () => api.duplicateTemplate(row.id),
+    onSuccess: (copy) => {
+      notifications.show({ color: 'green', title: copy.name, message: 'копію створено' });
+      void client.invalidateQueries({ queryKey: ['templates'] });
+      onSelect(copy.id);
+    },
+    onError: fail,
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteTemplate(row.id),
+    onSuccess: (result) => {
+      notifications.show({
+        color: 'green',
+        title: draft.name,
+        message:
+          result.keptInHistory > 0
+            ? `видалено. У Контактах лишилось ${result.keptInHistory} записів з ключем ${result.slug}`
+            : 'видалено',
+      });
+      setConfirming(false);
+      void client.invalidateQueries({ queryKey: ['templates'] });
+      void client.invalidateQueries({ queryKey: ['outreach'] });
+      onSelect(null);
+    },
+    onError: fail,
   });
 
   const dirty =
     draft.name !== row.name ||
+    draft.slug !== row.slug ||
     draft.kind !== row.kind ||
     draft.forKind !== row.forKind ||
     (draft.subject ?? '') !== (row.subject ?? '') ||
@@ -137,14 +191,14 @@ function Editor({ row }: { row: TemplateRow }) {
       <ScrollArea style={{ flex: 1, minHeight: 0 }}>
         <Box p="lg" maw={860}>
           <Group gap="sm" mb="xs">
-            <Text size="sm" c="dimmed" ff="monospace">
-              {row.slug}
-            </Text>
-            <Tooltip label="цей ключ лягає в історію листування, тому не змінюється разом із назвою">
+            {row.archived && (
               <Badge size="sm" color="gray">
-                незмінний ключ
+                в архіві
               </Badge>
-            </Tooltip>
+            )}
+            <Badge size="sm" color={row.usageCount > 0 ? 'brand' : 'gray'} variant="light">
+              {row.usageCount > 0 ? `написано ${row.usageCount}` : 'ще не використовувався'}
+            </Badge>
             <Text size="xs" c="dimmed" ml="auto">
               оновлено {formatDate(row.updatedAt)}
             </Text>
@@ -174,6 +228,22 @@ function Editor({ row }: { row: TemplateRow }) {
                 clearable
               />
             </Group>
+
+            {/*
+              Ключ редагується, і при зміні радар переписує його в записах листування.
+              Тому підпис каже саме це: інакше правка виглядала б як розрив історії.
+            */}
+            <TextInput
+              label="Ключ для історії"
+              description={
+                row.usageCount > 0
+                  ? `лягає в Контакти. Якщо змінити, ${row.usageCount} записів історії перепишуться на новий ключ`
+                  : 'лягає в Контакти. Пробіли і регістр приводяться до нижнього підкреслення'
+              }
+              value={draft.slug}
+              onChange={(event) => setDraft({ ...draft, slug: event.currentTarget.value })}
+              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+            />
 
             <TextInput
               label="Тема листа"
@@ -242,20 +312,74 @@ function Editor({ row }: { row: TemplateRow }) {
           {dirty ? 'Зберегти' : 'Змін немає'}
         </Button>
 
-        {!row.archived && (
-          <Tooltip label="прибрати зі списків вибору. Запис не стирається: мітка лишається в історії листування">
+        <Tooltip label="зробити варіант цього тексту з власним ключем">
+          <Button
+            variant="default"
+            leftSection={<Copy size={15} />}
+            loading={duplicate.isPending}
+            onClick={() => duplicate.mutate()}
+          >
+            Дублювати
+          </Button>
+        </Tooltip>
+
+        <Group gap="sm" ml="auto" wrap="nowrap">
+          <Tooltip
+            label={
+              row.archived
+                ? 'повернути в списки вибору'
+                : 'прибрати зі списків вибору. Шаблон лишається і його можна повернути'
+            }
+          >
             <Button
               variant="default"
-              ml="auto"
-              leftSection={<Archive size={15} />}
+              leftSection={row.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
               loading={archive.isPending}
               onClick={() => archive.mutate()}
             >
-              В архів
+              {row.archived ? 'З архіву' : 'В архів'}
             </Button>
           </Tooltip>
-        )}
+
+          <Tooltip label="стерти назовсім. Записи в Контактах лишаться, там ключ це знімок">
+            <Button
+              variant="subtle"
+              color="red"
+              leftSection={<Trash2 size={15} />}
+              onClick={() => setConfirming(true)}
+            >
+              Видалити
+            </Button>
+          </Tooltip>
+        </Group>
       </PaneFooter>
+
+      {/*
+        Підтвердження показує, скільки листів написано цим ключем. Без цього числа
+        видалення сліпе: чернетку і робочий шаблон на вигляд не відрізнити.
+      */}
+      <Modal opened={confirming} onClose={() => setConfirming(false)} title={`Видалити ${row.name}?`}>
+        <Stack gap="md">
+          <Text size="sm">
+            Шаблон зникне назовсім. Текст не відновити, тому якщо він ще може знадобитись, краще
+            відправити його в архів.
+          </Text>
+          {row.usageCount > 0 && (
+            <Alert color="yellow">
+              Цим шаблоном написано {row.usageCount} листів. Записи в Контактах лишаться на місці:
+              там зберігається ключ <b>{row.slug}</b> на момент листа, а не посилання на шаблон.
+            </Alert>
+          )}
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setConfirming(false)}>
+              Скасувати
+            </Button>
+            <Button color="red" loading={remove.isPending} onClick={() => remove.mutate()}>
+              Видалити назовсім
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   );
 }
@@ -319,7 +443,8 @@ export function TemplatesPage() {
             allowDeselect={false}
           />
           <Text size="xs" c="dimmed">
-            Ключ для історії листування зробиться з назви автоматично і далі не змінюватиметься.
+            Ключ для історії листування зробиться з назви автоматично, змінити його можна потім
+            у самому шаблоні.
           </Text>
           <Button disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()}>
             Створити
@@ -350,7 +475,10 @@ export function TemplatesPage() {
         }
         detail={
           current ? (
-            <Editor key={current.id} row={current} />
+            <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
+              <Editor key={current.id} row={current} onSelect={setSelected} />
+              <FactsPanel />
+            </Stack>
           ) : (
             <Box p="xl" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
               <EmptyState

@@ -252,6 +252,8 @@ export async function applyStudioAction(input: StudioActionInput): Promise<{ sta
         companyId: input.companyId,
         vacancyId: null,
         channel: input.channel ?? 'email',
+        status: 'sent',
+        sentAt: Date.now(),
         templateUsed: input.templateUsed ?? 'studio_pitch',
         contactName: input.contactName ?? null,
         contactEmail: input.contactEmail ?? null,

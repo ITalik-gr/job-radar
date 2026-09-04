@@ -78,6 +78,30 @@ export const config = {
     get apiToken() {
       return str('CF_AI_API_TOKEN', str('CLOUDFLARE_API_TOKEN', ''));
     },
+    /**
+     * Ім'я AI Gateway. Через нього видно кожен запит до моделі, його вартість
+     * і кеш, тобто те, чого лічильник у `llm_usage` не показує.
+     */
+    get gatewayId() {
+      return str('AI_GATEWAY_ID', '');
+    },
+    /**
+     * Токен для Authenticated Gateway. Якщо в налаштуваннях шлюзу увімкнена
+     * автентифікація, запит без заголовка `cf-aig-authorization` відбивається
+     * з 401 ще до провайдера, і виглядає це як "модель не відповідає".
+     *
+     * Виклики через біндінг `AI` у воркері токена не потребують.
+     */
+    get gatewayToken() {
+      return str('AI_GATEWAY_TOKEN', '');
+    },
+    /** Базова адреса шлюзу. Порожня, якщо шлюз не налаштований. */
+    get gatewayUrl() {
+      const { accountId, gatewayId } = this;
+      return accountId && gatewayId
+        ? `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}`
+        : '';
+    },
   },
 
   llm: {
@@ -118,7 +142,11 @@ export const config = {
      * Формат: https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic
      */
     get baseUrl() {
-      return str('ANTHROPIC_BASE_URL', '');
+      const explicit = str('ANTHROPIC_BASE_URL', '');
+      if (explicit) return explicit;
+      // Шлюз налаштований один раз, і Anthropic іде через нього без окремої змінної.
+      const gateway = config.cloudflare.gatewayUrl;
+      return gateway ? `${gateway}/anthropic` : '';
     },
     /**
      * Стеля викликів на добу. Різна для двох провайдерів навмисно: у Anthropic
@@ -134,6 +162,59 @@ export const config = {
     /** Скільки символів тексту вакансії йде в модель. Довший хвіст майже не додає користі. */
     get maxInputChars() {
       return num('LLM_MAX_INPUT_CHARS', 8000);
+    },
+  },
+  /**
+   * Gmail для розсилки. OAuth2, не SMTP з app password: без `threadId` і читання
+   * вхідних неможливі ні детекція відповідей, ні коректне тредування фолоу-апів.
+   *
+   * Токен лежить окремим файлом, а не в базі: OUTREACH.md, розділ 0, правило 6.
+   * Разом з даними його тримати не можна, а бекап бази з рефреш-токеном усередині
+   * це доступ до пошти власника в архіві.
+   */
+  gmail: {
+    get clientId() {
+      return str('GOOGLE_CLIENT_ID', '');
+    },
+    get clientSecret() {
+      return str('GOOGLE_CLIENT_SECRET', '');
+    },
+    get tokenPath() {
+      return str('GMAIL_TOKEN_PATH', 'data/.gmail-token.json');
+    },
+    /** Імʼя в полі From. Лист від "you@example.com" без імені виглядає як розсилка. */
+    get fromName() {
+      return str('GMAIL_FROM_NAME', 'Alex Example');
+    },
+    get fromEmail() {
+      return str('GMAIL_FROM_EMAIL', '');
+    },
+    /**
+     * Порт локального перехоплювача коду під час `auth:gmail`. Фіксований, бо той
+     * самий redirect_uri мусить бути вписаний у консолі Google.
+     */
+    get authPort() {
+      return num('GMAIL_AUTH_PORT', 53682);
+    },
+    /**
+     * Куди Google повертає код. Порожнє означає локальний перехоплювач.
+     *
+     * На проді сюди йде адреса воркера, наприклад
+     * https://job-radar.workers.dev/api/gmail/callback, і тоді підключення
+     * робиться з браузера, без запуску проєкту на ноутбуці.
+     */
+    get redirectUri() {
+      return str('GMAIL_REDIRECT_URI', '');
+    },
+    /**
+     * Рефреш-токен як секрет середовища. Це шлях для Workers, де файлової
+     * системи немає: `wrangler secret put GMAIL_REFRESH_TOKEN`.
+     *
+     * У базі йому місця немає навмисно, розділ 0 OUTREACH.md: бекап бази з
+     * токеном усередині це доступ до пошти власника в кожному архіві.
+     */
+    get refreshToken() {
+      return str('GMAIL_REFRESH_TOKEN', '');
     },
   },
   telegram: {

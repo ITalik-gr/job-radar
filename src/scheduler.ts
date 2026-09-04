@@ -10,6 +10,9 @@ import { discover } from './pipeline/discover.js';
 import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
 import { isOverdue, lastSuccessAt } from './lib/runs.js';
+import { checkReplies } from './pipeline/replies.js';
+import { prepareFollowups } from './pipeline/followups.js';
+import './lib/gmail-store.node.js';
 
 /** Розклад з CLAUDE.md, розділ 8. Все всередині одного процесу, без черг і Docker. */
 export const SCHEDULE = {
@@ -19,6 +22,10 @@ export const SCHEDULE = {
   discovery: '0 5 * * 2',
   digest: '0 10 * * *',
   followUps: '0 18 * * *',
+  /** Відповіді і баунси. Щогодини: раніше нема сенсу, пізніше втрачається темп. */
+  replies: '5 * * * *',
+  /** Чернетки фолоу-апів готуються зранку, щоб о 10:00 вони вже були в списку. */
+  followupDrafts: '30 9 * * *',
 } as const;
 
 async function safely(name: string, task: () => Promise<unknown>): Promise<void> {
@@ -102,7 +109,24 @@ export function startScheduler(): void {
   cron.schedule(SCHEDULE.catalogs, () => void safely('catalog:dou', () => syncDou({ limit: 60 })), { timezone });
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });
   cron.schedule(SCHEDULE.digest, () => void safely('notify:digest', () => notify.digest()), { timezone });
+  cron.schedule(SCHEDULE.digest, () => void safely('notify:outreach', () => notify.outreach()), { timezone });
   cron.schedule(SCHEDULE.followUps, () => void safely('notify:followUps', () => notify.followUps()), { timezone });
+
+  /*
+   * Розсилка живе тільки локально: токен Gmail лежить файлом на ноутбуці, і на
+   * Workers цих двох задач немає. Якщо пошта не підключена, обидві мовчки нічого
+   * не роблять, тому вмикати їх окремим прапорцем не треба.
+   */
+  cron.schedule(
+    SCHEDULE.replies,
+    () => void safely('outreach:replies', () => checkReplies({ ownEmail: config.gmail.fromEmail })),
+    { timezone },
+  );
+  cron.schedule(
+    SCHEDULE.followupDrafts,
+    () => void safely('outreach:followups', () => prepareFollowups()),
+    { timezone },
+  );
 
   log.info(
     { timezone, schedule: SCHEDULE, llmLimit: config.llm.dailyCallLimit },

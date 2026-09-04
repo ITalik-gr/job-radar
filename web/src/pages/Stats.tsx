@@ -117,6 +117,68 @@ function Funnel({ funnel }: { funnel: Record<string, number> }) {
   );
 }
 
+/**
+ * Розсилка окремим блоком. Головна цифра тут не конверсія, а частка відкатів
+ * валідації: вище 30 відсотків означає поганий промпт, і це видно одразу.
+ */
+function OutreachPanel() {
+  const { data } = useQuery({ queryKey: ['outreachStats'], queryFn: () => api.outreachStats() });
+  if (!data) return null;
+
+  const fallback = Math.round(data.fallbackShare * 100);
+
+  return (
+    <Card withBorder p="md" style={{ gridColumn: '1 / -1' }}>
+      <Text fw={600} mb="xs">
+        Розсилка
+      </Text>
+      <SimpleGrid cols={{ base: 2, md: 4 }} mb="sm">
+        <Box>
+          <Text size="xs" c="dimmed">чернеток</Text>
+          <Text fw={600} className="tabular">{data.drafts}, з них проблемних {data.needsAttention}</Text>
+        </Box>
+        <Box>
+          <Text size="xs" c="dimmed">відкати валідації</Text>
+          <Text fw={600} className="tabular" c={fallback > 30 ? 'red' : undefined}>{fallback} відсотків</Text>
+        </Box>
+        <Box>
+          <Text size="xs" c="dimmed">баунси за 50 листів</Text>
+          <Text fw={600} className="tabular" c={data.bounceRate > 0.03 ? 'red' : undefined}>
+            {Math.round(data.bounceRate * 100)} відсотків
+          </Text>
+        </Box>
+        <Box>
+          <Text size="xs" c="dimmed">медіанний час до відповіді</Text>
+          <Text fw={600} className="tabular">
+            {data.medianReplyHours === null ? 'ще немає' : `${data.medianReplyHours.toFixed(1)} год`}
+          </Text>
+        </Box>
+      </SimpleGrid>
+
+      <Text size="sm" mb={4}>
+        AI проти шаблона: {data.ai.sent} на {data.static.sent} надісланих, позитивних{' '}
+        {data.ai.positive} проти {data.static.positive}
+      </Text>
+
+      {data.byTemplate.length > 0 && (
+        <RankBars
+          rows={data.byTemplate.map((row) => ({
+            label: `${row.template} (${row.sent})`,
+            value: row.positive,
+          }))}
+          labelWidth={180}
+        />
+      )}
+
+      {data.fallbacks.length > 0 && (
+        <Text size="xs" c="dimmed" mt="xs">
+          причини відкатів: {data.fallbacks.map((item) => `${item.reason} ${item.count}`).join(', ')}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
 export function StatsPage() {
   const { data, error, isLoading } = useQuery({ queryKey: ['fullStats'], queryFn: () => api.fullStats() });
 
@@ -259,6 +321,8 @@ export function StatsPage() {
           />
         )}
       </Card>
+
+      <OutreachPanel />
     </SimpleGrid>
   );
 }

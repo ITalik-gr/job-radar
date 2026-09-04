@@ -23,6 +23,7 @@ import {
   CircleAlert,
   Inbox,
   FileText,
+  MailPlus,
   Palette,
   Radar,
   Rocket,
@@ -36,6 +37,7 @@ import { RunMenu } from './components/RunMenu';
 import { QueuePage } from './pages/Queue';
 import { CompaniesPage } from './pages/Companies';
 import { OutreachPage } from './pages/Outreach';
+import { SendingPage } from './pages/Sending';
 import { StudiosPage } from './pages/Studios';
 import { StartupsPage } from './pages/Startups';
 import { SourcesPage } from './pages/Sources';
@@ -50,6 +52,7 @@ const TABS = [
   { id: 'studios', label: 'Студії', icon: Palette, hint: 'кому писати без вакансії: усе з каталогів, що пройшло поріг рахунку' },
   { id: 'startups', label: 'Стартапи', icon: Rocket, hint: 'холодний лист стартапу: чи наймають видно з кількості знайдених вакансій' },
   { id: 'companies', label: 'Компанії', icon: Building2, hint: 'уся база як довідник: пошук, статуси, історія. Писати звідси не треба' },
+  { id: 'sending', label: 'До відправки', icon: MailPlus, hint: 'готові чернетки листів, по одному натисканню на кожен' },
   { id: 'outreach', label: 'Контакти', icon: Send, hint: 'кому писали і хто відповів' },
   { id: 'stats', label: 'Статистика', icon: BarChart3, hint: 'стек, вилки, час життя вакансій' },
   { id: 'sources', label: 'Джерела', icon: Radio, hint: 'стан адаптерів і ручний запуск' },
@@ -114,6 +117,14 @@ export function App() {
   // Ті самі ключі, що й на сторінках, тому лічильники в навігації беруться з кешу.
   const { data: queue } = useQuery({ queryKey: ['queue'], queryFn: () => api.queue() });
   const { data: sources } = useQuery({ queryKey: ['sources'], queryFn: () => api.sources() });
+  // Пошта або підключена, або ні. Мовчазний третій стан означав би, що листи
+  // просто перестали йти, а власник дізнається про це через тиждень.
+  const { data: gmail } = useQuery({
+    queryKey: ['gmail-status'],
+    queryFn: () => api.gmailStatus(),
+    refetchInterval: 120_000,
+    retry: false,
+  });
 
   // Цифри 1..6 перемикають розділи: руки лишаються на клавіатурі під час розбору черги.
   useHotkeys(
@@ -254,6 +265,16 @@ export function App() {
                   </Text>
                 </Tooltip>
               </Group>
+              <Group justify="space-between" gap="xs">
+                <Text size="xs" c="dimmed">
+                  пошта
+                </Text>
+                <Tooltip label={gmail?.hint ?? gmail?.email ?? 'Gmail для розсилки'}>
+                  <Text size="xs" className="tabular" c={gmail?.connected ? undefined : 'yellow.8'}>
+                    {gmail?.connected ? (gmail.email ?? 'підключена') : 'не підключена'}
+                  </Text>
+                </Tooltip>
+              </Group>
               {stats.vacancies.needsReview > 0 && (
                 <Group gap={6} c="yellow.8">
                   <CircleAlert size={14} />
@@ -271,6 +292,7 @@ export function App() {
           {tab === 'studios' && <StudiosPage />}
           {tab === 'startups' && <StartupsPage />}
           {tab === 'companies' && <CompaniesPage />}
+          {tab === 'sending' && <SendingPage />}
           {tab === 'outreach' && <OutreachPage />}
           {tab === 'sources' && <SourcesPage />}
           {tab === 'templates' && <TemplatesPage />}

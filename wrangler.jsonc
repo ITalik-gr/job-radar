@@ -35,14 +35,24 @@
 			"0 4 * * 1",
 			"0 5 * * 2",
 			"0 10 * * *",
-			"0 18 * * *"
+			"0 18 * * *",
+			// Розсилка. Час у Cron Triggers завжди UTC: 06:30 тут це 09:30 за Києвом.
+			"5 * * * *",
+			"30 6 * * *"
 		]
 	},
 	"vars": {
 		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001",
 		// anthropic | workers-ai. Друге це включена квота платного плану замість рахунку за токени.
 		"LLM_PROVIDER": "anthropic",
-		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+		// AI Gateway: у ньому видно кожен виклик моделі, його вартість і кеш.
+		// Без цих двох змінних запити йдуть повз шлюз, і в ньому чесні нулі.
+		"CF_AI_ACCOUNT_ID": "your-cloudflare-account-id",
+		"AI_GATEWAY_ID": "job-radar",
+		// Куди Google повертає код підключення пошти. Має збігатись з консоллю Google.
+		"GMAIL_REDIRECT_URI": "https://job-radar.example.workers.dev/api/gmail/callback",
+		"GMAIL_FROM_NAME": "Alex Example"
 	},
 	"observability": {
 		"enabled": true

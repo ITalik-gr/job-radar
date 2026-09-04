@@ -18,6 +18,7 @@ import {
 const withPeople = readFileSync('fixtures/enrich/team-with-people.html', 'utf8');
 const leadership = readFileSync('fixtures/enrich/team-leadership.html', 'utf8');
 const without = readFileSync('fixtures/enrich/page-without-people.html', 'utf8');
+const singleNames = readFileSync('fixtures/enrich/team-single-names.html', 'utf8');
 
 describe('розбір сторінки команди', () => {
   it('бере імена і ролі, коли імʼя стоїть перед роллю', () => {
@@ -58,6 +59,38 @@ describe('розбір сторінки команди', () => {
   it('назва компанії не приймається за імʼя людини', () => {
     const html = '<div><p>Acme Digital Studio</p><p>CTO</p></div>';
     expect(extractPeople(html, 'https://example.com')).toHaveLength(0);
+  });
+});
+
+describe('картки команди без прізвищ', () => {
+  const people = extractPeople(singleNames, 'https://rubyroidlabs.com/team');
+
+  /*
+   * Половина сайтів студій підписує картку самим імʼям. Правило "імʼя це два слова"
+   * пропускало такі сторінки цілком, і прохід по 100 студіях давав нуль контактів
+   * при 267 завантажених сторінках. Це рівно та мовчазна поразка, проти якої
+   * написане правило 3 в CLAUDE.md.
+   */
+  it('імʼя без прізвища поруч із посадою рахується за контакт', () => {
+    expect(people.length).toBeGreaterThan(0);
+    expect(people.map((person) => person.name)).toContain('Pavel');
+  });
+
+  /*
+   * "VP of Operations" читалось як згадка чужої компанії "Operations" і викидалось.
+   * Тобто enrichment відкидав саме ті посади, заради яких написаний: розділ 9
+   * у CLAUDE.md просить Head of Engineering і подібні.
+   */
+  it('посада з відділом після of не вважається чужою компанією', () => {
+    const roles = people.map((person) => person.role);
+    expect(roles.some((role) => /VP of Engineering/i.test(role ?? ''))).toBe(true);
+  });
+
+  it('пункти меню і підписи кнопок не стають іменами', () => {
+    const names = people.map((person) => person.name?.toLowerCase());
+    for (const junk of ['home', 'about', 'team', 'contact', 'careers', 'blog', 'services']) {
+      expect(names).not.toContain(junk);
+    }
   });
 });
 

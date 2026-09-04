@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import './db/client.node.js';
+import './lib/gmail-store.node.js';
 import { app } from './api/index.js';
 import { runMigrations } from './db/migrate.js';
 import { log } from './lib/log.js';

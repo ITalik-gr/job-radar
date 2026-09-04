@@ -4,7 +4,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { settings, templates } from '../src/db/schema.js';
+import { outreach, settings, templates } from '../src/db/schema.js';
+import { upsertCompany } from '../src/pipeline/companies.js';
 import {
   RULES_KEY,
   loadRules,
@@ -18,11 +19,20 @@ import {
 import {
   archiveTemplate,
   createTemplate,
+  deleteTemplate,
+  duplicateTemplate,
   listTemplates,
+  restoreTemplate,
   seedTemplates,
   slugify,
   updateTemplate,
 } from '../src/pipeline/templates.js';
+
+/** Запис листування потребує компанії, бо `outreach.company_id` це справжній звʼязок. */
+async function companyForOutreach(domain: string): Promise<number> {
+  const { company } = await upsertCompany({ name: domain, domain, source: 'test' });
+  return company.id;
+}
 
 beforeAll(() => {
   for (const suffix of ['', '-wal', '-shm']) rmSync(`${config.dbPath}${suffix}`, { force: true });
@@ -121,12 +131,75 @@ describe('шаблони', () => {
     expect(renamed.slug).toBe(created.slug);
   });
 
-  it('видалення архівує, а не стирає: мітка лишається в історії листування', async () => {
+  it('архів ховає шаблон і повертає його назад', async () => {
     const created = await createTemplate({ name: 'Разовий' });
     await archiveTemplate(created.id);
+    expect((await getDb().select().from(templates).where(eq(templates.id, created.id)))[0]!.archived).toBe(true);
+
+    await restoreTemplate(created.id);
+    expect((await getDb().select().from(templates).where(eq(templates.id, created.id)))[0]!.archived).toBe(false);
+  });
+
+  it('видалення стирає шаблон, а історія листування лишається читабельною', async () => {
+    const created = await createTemplate({ name: 'На видалення' });
+    const companyId = await companyForOutreach('delete-me.com');
+    await getDb().insert(outreach).values({ companyId, channel: 'email', templateUsed: created.slug });
+
+    const result = await deleteTemplate(created.id);
+    expect(result.keptInHistory).toBe(1);
 
     const rows = await getDb().select().from(templates).where(eq(templates.id, created.id));
-    expect(rows[0]!.archived).toBe(true);
+    expect(rows).toHaveLength(0);
+
+    // Ключ у листуванні це знімок на момент листа, тому переживає видалення шаблона.
+    const history = await getDb().select().from(outreach).where(eq(outreach.companyId, companyId));
+    expect(history[0]!.templateUsed).toBe(created.slug);
+  });
+
+  it('видалений стартовий шаблон не воскресає на наступному відкритті сторінки', async () => {
+    await seedTemplates();
+    const [seeded] = await getDb().select().from(templates).where(eq(templates.slug, 'referral'));
+    await deleteTemplate(seeded!.id);
+
+    expect(await seedTemplates()).toBe(0);
+    expect(await getDb().select().from(templates).where(eq(templates.slug, 'referral'))).toHaveLength(0);
+  });
+
+  it('перейменування ключа переписує історію листування на новий ключ', async () => {
+    const created = await createTemplate({ name: 'Старий ключ' });
+    const companyId = await companyForOutreach('rename-me.com');
+    await getDb().insert(outreach).values({ companyId, channel: 'email', templateUsed: created.slug });
+
+    const renamed = await updateTemplate(created.id, { slug: 'Новий Ключ 2' });
+    expect(renamed.slug).toBe('новий_ключ_2');
+
+    const history = await getDb().select().from(outreach).where(eq(outreach.companyId, companyId));
+    expect(history[0]!.templateUsed).toBe('новий_ключ_2');
+  });
+
+  it('зайнятий ключ отримує суфікс замість помилки', async () => {
+    const first = await createTemplate({ name: 'Однакова назва' });
+    const second = await createTemplate({ name: 'Однакова назва' });
+    expect(second.slug).toBe(`${first.slug}_2`);
+  });
+
+  it('дублікат це окремий шаблон з власним ключем і тим самим текстом', async () => {
+    const created = await createTemplate({ name: 'Оригінал', kind: 'studio', body: 'текст листа' });
+    const copy = await duplicateTemplate(created.id);
+
+    expect(copy.id).not.toBe(created.id);
+    expect(copy.slug).not.toBe(created.slug);
+    expect(copy.body).toBe('текст листа');
+    expect(copy.kind).toBe('studio');
+  });
+
+  it('список показує, скільки листів написано кожним шаблоном', async () => {
+    const created = await createTemplate({ name: 'Робочий' });
+    const companyId = await companyForOutreach('usage.com');
+    await getDb().insert(outreach).values({ companyId, channel: 'email', templateUsed: created.slug });
+
+    const row = (await listTemplates()).find((item) => item.id === created.id);
+    expect(row!.usageCount).toBe(1);
   });
 
   it('шаблон можна прив язати до типу компанії і відвʼязати назад', async () => {

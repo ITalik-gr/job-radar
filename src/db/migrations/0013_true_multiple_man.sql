@@ -1,0 +1,1 @@
+ALTER TABLE `outreach` ADD `rfc_message_id` text;

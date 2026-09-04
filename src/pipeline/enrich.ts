@@ -56,7 +56,16 @@ const FOREIGN_ROLE = /\b(?:former|ex-|previously|investor|advisor|board member)\
  * група це назва згаданої компанії. Собака теж роздільник, на лендінгах з відгуками
  * саме через неї підписані інвестори.
  */
-const ROLE_MENTIONS_COMPANY = /(?:\bof\b|\bat\b|,|@)\s*([A-Z][\w.&-]{2,})/;
+const ROLE_MENTIONS_COMPANY = /(?:\bof\b|\bat\b|,|@)\s*([A-Z][\w.&-]{2,})/g;
+
+/**
+ * Слово після "of" далеко не завжди компанія. "Head of Engineering", "VP of Operations",
+ * "Director of Product" це відділ, тобто своя людина, а правило читало їх як чужу
+ * фірму і викидало. Через це enrichment мовчки відкидав рівно ті посади, заради
+ * яких він і написаний: розділ 9 у CLAUDE.md просить саме Head of Engineering.
+ */
+const NOT_A_COMPANY =
+  /^(engineering|operations|product|design|technology|technologies|development|delivery|people|marketing|sales|growth|data|platform|talent|partnerships|business|digital|strategy|innovation|quality|security|research|support|success|staff|department|team|projects?|accounts?|customer|client|content|brand|creative|communications|ux|ui|it|ai|qa|hr|pmo|ceo|cto|coo|cpo|cio|cmo|vp|director|founder|board|the)$/i;
 
 /** Слова, після яких рядок точно не імʼя людини. */
 const NOT_A_NAME =
@@ -117,6 +126,30 @@ function looksLikeName(line: string): boolean {
   return NAME_SHAPE.test(line);
 }
 
+/**
+ * Одне слово з великої літери: "Pavel", "Alex".
+ *
+ * Половина сучасних сайтів студій підписує картку команди самим імʼям, без
+ * прізвища, і правило "імʼя це два слова" пропускало такі сторінки цілком:
+ * прохід по 100 студіях давав нуль контактів при 267 завантажених сторінках.
+ *
+ * Правило свідомо вужче за основне: таке імʼя приймається тільки впритул до
+ * посади і тільки на сторінці команди, інакше в контакти полізли б підписи
+ * кнопок і пунктів меню.
+ */
+const NOT_A_SINGLE_NAME =
+  /^(home|about|team|contact|careers?|blog|news|services?|portfolio|works?|clients?|projects?|more|menu|next|back|prev|search|login|email|phone|address|company|people|culture|values|mission|vision|history|awards|partners|process|approach|hello|hi|ua|en|ru|pl|de)$/i;
+
+const SINGLE_NAME_SHAPE = /^[A-ZА-ЯІЇЄҐ][\p{L}'’-]{2,19}$/u;
+
+function looksLikeSingleName(line: string): boolean {
+  if (NOT_A_SINGLE_NAME.test(line)) return false;
+  if (NOT_A_NAME.test(line)) return false;
+  // Сама посада теж одне слово з великої ("CEO", "Designer"), і імʼям вона не є.
+  if (ROLE_ACRONYM.test(line) || ROLE_PHRASE.test(line)) return false;
+  return SINGLE_NAME_SHAPE.test(line);
+}
+
 function cleanRole(line: string): string {
   return line
     .replace(/\s+at\s+.*/i, '')
@@ -136,11 +169,22 @@ function cleanRole(line: string): string {
  * Назва своєї компанії береться з адреси сторінки, тому додаткових аргументів не треба.
  */
 function mentionsOtherCompany(role: string, ownName: string): boolean {
-  const match = ROLE_MENTIONS_COMPANY.exec(role);
-  if (!match) return false;
-  const mentioned = match[1]!.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!mentioned || !ownName) return true;
-  return !mentioned.includes(ownName) && !ownName.includes(mentioned);
+  /*
+   * Перевіряються всі згадки в рядку, а не перша. "Former CEO of GitHub" має дві:
+   * "Former" і "GitHub", і достатньо однієї чужої, щоб рядок був відгуком, а не
+   * своєю людиною. Раніше бралась лише перша, і порядок слів вирішував результат.
+   */
+  for (const match of role.matchAll(ROLE_MENTIONS_COMPANY)) {
+    const raw = match[1]!;
+    if (NOT_A_COMPANY.test(raw)) continue;
+
+    const mentioned = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!mentioned) continue;
+    if (!ownName) return true;
+    if (!mentioned.includes(ownName) && !ownName.includes(mentioned)) return true;
+  }
+
+  return false;
 }
 
 /** Друге ім'я домену: triare.net це "triare", а www.acme.co.uk це "acme". */
@@ -169,6 +213,17 @@ export function extractPeople(html: string, sourceUrl: string): FoundContact[] {
     for (let step = 1; step <= 2 && !name; step += 1) {
       for (const candidate of [lines[index - step], lines[index + step]]) {
         if (candidate && looksLikeName(candidate)) {
+          name = candidate;
+          break;
+        }
+      }
+    }
+
+    // Імʼя без прізвища приймається лише впритул до посади: одне слово надто
+    // схоже на пункт меню, щоб шукати його через рядок.
+    if (!name) {
+      for (const candidate of [lines[index - 1], lines[index + 1]]) {
+        if (candidate && looksLikeSingleName(candidate)) {
           name = candidate;
           break;
         }

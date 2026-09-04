@@ -6,6 +6,19 @@ import { config } from '../config.js';
 import { getDb } from '../db/client.js';
 import { runs, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
+import { authUrl, exchangeCode, gmailStatus, isConfigured as gmailConfigured } from '../lib/gmail.js';
+import {
+  discardDraft,
+  listDrafts,
+  prepareDrafts,
+  regenerateIntro,
+  updateDraft,
+} from '../pipeline/outreach.js';
+import { checkSend, sendCounters } from '../pipeline/send-guards.js';
+import { createFact, deleteFact, listFacts, updateFact } from '../pipeline/facts.js';
+import { prepareFollowups } from '../pipeline/followups.js';
+import { outreachStats } from '../pipeline/outreach-stats.js';
+import { sendDraft } from '../pipeline/send.js';
 import { listSources } from '../sources/registry.js';
 import '../sources/index.js';
 import {
@@ -36,7 +49,10 @@ import {
   TEMPLATE_KINDS,
   archiveTemplate,
   createTemplate,
+  deleteTemplate,
+  duplicateTemplate,
   listTemplates,
+  restoreTemplate,
   seedTemplates,
   updateTemplate,
 } from '../pipeline/templates.js';
@@ -53,7 +69,12 @@ const WEB_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
  */
 export function requireToken(token: string | undefined) {
   return async (c: { req: { header: (name: string) => string | undefined; query: (name: string) => string | undefined; path: string; method: string } }, next: () => Promise<void>) => {
-    if (!token || c.req.method === 'OPTIONS' || c.req.path === '/api/health') return next();
+    /*
+     * Колбек Google приходить із браузера редіректом, заголовок туди не покласти.
+     * Замість токена він перевіряє `state`, який ми самі поклали в посилання.
+     */
+    const open = ['/api/health', '/api/gmail/callback'];
+    if (!token || c.req.method === 'OPTIONS' || open.includes(c.req.path)) return next();
 
     const provided =
       c.req.header('authorization')?.replace(/^Bearer\s+/i, '') ??
@@ -348,6 +369,58 @@ app.post('/api/rules/weights', async (c) => {
   return c.json({ rules: saved, source: rulesSource() });
 });
 
+/**
+ * Підключення пошти прямо з прода: OAuth починається тут і сюди ж повертається.
+ *
+ * Навіщо, якщо є `pnpm cli auth:gmail`: локальний шлях вимагає запустити проєкт
+ * на ноутбуці, а радар живе на Workers. Один браузер, дві сторінки, і жодного
+ * локального процесу.
+ */
+app.get('/api/gmail/connect', (c) => {
+  if (!gmailConfigured()) {
+    return c.json({ error: 'спершу GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GMAIL_FROM_EMAIL' }, 400);
+  }
+  // state несе токен радара: сам колбек приходить із браузера без заголовків.
+  return c.redirect(authUrl(config.token));
+});
+
+/*
+ * Колбек Google. Токен у заголовку тут неможливий, тому перевірка йде через
+ * `state`, який ми самі поклали в посилання і який Google повертає незмінним.
+ */
+app.get('/api/gmail/callback', async (c) => {
+  const code = c.req.query('code');
+  const state = c.req.query('state') ?? '';
+  if (config.token && state !== config.token) return c.text('невірний state', 401);
+  if (!code) return c.text(`Google повернув помилку: ${c.req.query('error') ?? 'без коду'}`, 400);
+
+  const token = await exchangeCode(code);
+
+  /*
+   * Рефреш-токен показується рівно один раз і нікуди не записується.
+   *
+   * Секрет воркера ззовні не переписати, а класти його в базу заборонено:
+   * бекап бази з токеном усередині це доступ до пошти в кожному архіві.
+   * Тому власник копіює його в `wrangler secret put` руками, і це правильно.
+   */
+  return c.html(
+    `<meta charset="utf-8"><body style="font:15px system-ui;padding:32px;max-width:760px">
+      <h2>Gmail підключено: ${token.email ?? 'акаунт невідомий'}</h2>
+      <p>Скопіювати рефреш-токен і покласти його секретом воркера:</p>
+      <pre style="background:#f4f4f5;padding:12px;white-space:pre-wrap;word-break:break-all">npx wrangler secret put GMAIL_REFRESH_TOKEN
+${token.refreshToken}</pre>
+      <p>Цей токен більше ніде не збережений і не показується вдруге.
+      Після додавання секрету воркер надсилатиме листи сам.</p>
+    </body>`,
+  );
+});
+
+/** Стан підключення пошти. Окремим роутом, а не полем у /api/stats: сторінка
+ * розсилки має показувати його завжди, і мовчазне "листи не йдуть" тут гірше
+ * за будь-яку помилку.
+ */
+app.get('/api/gmail/status', (c) => c.json(gmailStatus()));
+
 app.get('/api/templates', async (c) => {
   await seedTemplates();
   return c.json({ kinds: TEMPLATE_KINDS, templates: await listTemplates(c.req.query('kind')) });
@@ -364,9 +437,87 @@ app.patch('/api/templates/:id', async (c) => {
   return c.json(await updateTemplate(Number(c.req.param('id')), body));
 });
 
-app.delete('/api/templates/:id', async (c) => c.json(await archiveTemplate(Number(c.req.param('id')))));
+app.post('/api/templates/:id/archive', async (c) =>
+  c.json(await archiveTemplate(Number(c.req.param('id')))),
+);
+
+app.post('/api/templates/:id/restore', async (c) =>
+  c.json(await restoreTemplate(Number(c.req.param('id')))),
+);
+
+app.post('/api/templates/:id/duplicate', async (c) =>
+  c.json(await duplicateTemplate(Number(c.req.param('id')))),
+);
+
+/*
+ * DELETE стирає назовсім. Раніше він архівував, і це була пастка: кнопка називалась
+ * "видалити", а запис лишався в базі. Архів тепер окремою дією, як воно й читається.
+ */
+app.delete('/api/templates/:id', async (c) => c.json(await deleteTemplate(Number(c.req.param('id')))));
 
 app.route('/api/companies', companiesRoutes);
+
+/*
+ * Розсилка. Чернетки лежать у тій же таблиці, що й історія, тому роути окремим
+ * префіксом: /api/outreach віддає надіслане, /api/outreach/drafts готове до відправки.
+ */
+app.get('/api/outreach/drafts', async (c) =>
+  c.json({ drafts: await listDrafts(), counters: await sendCounters() }),
+);
+
+app.post('/api/outreach/prepare', async (c) => {
+  const body = await c.req
+    .json<{ limit?: number; ai?: boolean }>()
+    .catch(() => ({}) as { limit?: number; ai?: boolean });
+  return c.json(await prepareDrafts({ limit: body.limit, ai: body.ai }));
+});
+
+app.patch('/api/outreach/drafts/:id', async (c) => {
+  const body = await c.req.json<{ subject?: string; body?: string }>();
+  return c.json(await updateDraft(Number(c.req.param('id')), body));
+});
+
+app.delete('/api/outreach/drafts/:id', async (c) =>
+  c.json(await discardDraft(Number(c.req.param('id')))),
+);
+
+/** Перегенерація першого абзацу. Тільки по кнопці, фонових перегенерацій немає. */
+app.post('/api/outreach/drafts/:id/regenerate', async (c) =>
+  c.json(await regenerateIntro(Number(c.req.param('id')))),
+);
+
+app.post('/api/outreach/followups', async (c) => c.json(await prepareFollowups()));
+
+app.get('/api/stats/outreach', async (c) => c.json(await outreachStats()));
+
+app.get('/api/facts', async (c) => c.json(await listFacts()));
+
+app.post('/api/facts', async (c) => c.json(await createFact(await c.req.json())));
+
+app.patch('/api/facts/:id', async (c) =>
+  c.json(await updateFact(Number(c.req.param('id')), await c.req.json())),
+);
+
+app.delete('/api/facts/:id', async (c) => c.json(await deleteFact(Number(c.req.param('id')))));
+
+/** Перевірка без відправки: інтерфейс показує причини ще до натискання. */
+app.get('/api/outreach/drafts/:id/check', async (c) =>
+  c.json({ blockers: await checkSend(Number(c.req.param('id'))) }),
+);
+
+/*
+ * Відправка рівно одного листа по явному натисканню. Масової дії тут немає
+ * навмисно, розділ 0 OUTREACH.md: автопілот з особистого Gmail це блокування
+ * акаунта, а кнопка "надіслати всі" це автопілот з іншою назвою.
+ */
+app.post('/api/outreach/drafts/:id/send', async (c) => {
+  /*
+   * Заблокований лист це не помилка запиту, а нормальний стан з переліком
+   * причин, тому 200 і `sent: false`. Код 4xx тут з'їдав би сам перелік:
+   * клієнт бачив би "409" і жодного пояснення, що саме заважає.
+   */
+  return c.json(await sendDraft(Number(c.req.param('id'))));
+});
 
 app.get('/api/outreach', async (c) => {
   const waiting = c.req.query('waiting');
@@ -518,6 +669,8 @@ app.onError((error, c) => {
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
   await import('../db/client.node.js');
+  // Те саме і з токеном Gmail: файлове сховище є тільки в Node, у воркері його немає.
+  await import('../lib/gmail-store.node.js');
   const port = Number(process.env.API_PORT ?? 3000);
   serve({ fetch: app.fetch, port });
   log.info({ port }, 'API запущено');

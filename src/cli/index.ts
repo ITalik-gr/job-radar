@@ -11,7 +11,7 @@ import { listSources } from '../sources/registry.js';
 import { crawlSource } from '../pipeline/crawl.js';
 import { syncSource } from '../pipeline/sync.js';
 import { queue } from '../pipeline/ingest.js';
-import { remainingBudget, today } from '../pipeline/classify.js';
+import { callModelWith, remainingBudget, today } from '../pipeline/classify.js';
 import { classifyPending } from '../pipeline/reclassify.js';
 import { upsertCompany } from '../pipeline/companies.js';
 import { importCsvFile } from './commands.js';
@@ -40,6 +40,19 @@ import { eq } from 'drizzle-orm';
 import { readFileSync, writeFileSync } from 'node:fs';
 import '../sources/index.js';
 import { watchRules } from '../pipeline/rules.js';
+import {
+  listDrafts,
+  prepareDrafts,
+  seedOutreachTemplates,
+} from '../pipeline/outreach.js';
+import { gmailStatus, sendMessage } from '../lib/gmail.js';
+import { sendDraft } from '../pipeline/send.js';
+import { sendCounters } from '../pipeline/send-guards.js';
+import { checkReplies } from '../pipeline/replies.js';
+import { prepareFollowups } from '../pipeline/followups.js';
+import { outreachStats } from '../pipeline/outreach-stats.js';
+import '../lib/gmail-store.node.js';
+import { authorize } from './gmail-auth.js';
 
 watchRules();
 
@@ -788,10 +801,210 @@ program
   });
 
 program
+  .command('llm:ping')
+  .description('живий виклик моделі: перевірка ключа, шлюзу і провайдера')
+  .action(async () => {
+    console.log(`провайдер: ${config.llm.provider}, модель: ${config.llm.activeModel}`);
+    console.log(`шлюз: ${config.llm.baseUrl || 'прямий виклик, без AI Gateway'}`);
+    console.log(
+      `автентифікація шлюзу: ${config.cloudflare.gatewayToken ? 'токен заданий' : 'токена немає'}`,
+    );
+
+    try {
+      const raw = await callModelWith('Відповідай одним словом.', 'скажи ok');
+      console.log(`відповідь: ${raw.text.trim().slice(0, 40)}`);
+      console.log(`токени: ${raw.inputTokens} вхідних, ${raw.outputTokens} вихідних`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`помилка: ${message}`);
+      if (message.includes('401')) {
+        console.log(
+          'що робити: або вимкнути автентифікацію в Settings шлюзу, або створити токен з правом AI Gateway Run і покласти його в AI_GATEWAY_TOKEN',
+        );
+      }
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('llm:budget')
   .description('скільки викликів моделі лишилось сьогодні')
   .action(async () => {
     console.log(`${today()}: лишилось ${await remainingBudget()}`);
+  });
+
+program
+  .command('outreach:seed')
+  .description('додати стартові шаблони розсилки, яких ще немає')
+  .action(async () => {
+    const added = await seedOutreachTemplates();
+    console.log(added === 0 ? 'усі шаблони розсилки вже на місці' : `додано шаблонів: ${added}`);
+  });
+
+program
+  .command('outreach:prepare')
+  .description('зібрати чернетки листів')
+  .option('--limit <n>', 'скільки компаній узяти', '20')
+  .option('--dry-run', 'показати і нічого не писати в базу')
+  .option('--ai', 'перший абзац пише модель, з валідацією і відкатом')
+  .action(async (options: { limit: string; dryRun?: boolean; ai?: boolean }) => {
+    const report = await prepareDrafts({
+      limit: Number(options.limit),
+      dryRun: Boolean(options.dryRun),
+      ai: Boolean(options.ai),
+    });
+
+    for (const draft of report.drafts) {
+      console.log('─'.repeat(70));
+      console.log(
+        `${draft.companyId} ${draft.contactEmail ?? 'без адреси'} | ${draft.templateSlug} | ${draft.language}`,
+      );
+      console.log(`тема: ${draft.subject || '(порожня)'}`);
+      console.log(draft.body.trim() || '(порожнє тіло)');
+      if (draft.aiUsed) console.log('абзац: модель');
+      else if (draft.aiFallbackReason) console.log(`абзац: відкат на шаблон, ${draft.aiFallbackReason}`);
+      if (draft.error) console.log(`! ${draft.error}`);
+    }
+
+    console.log('─'.repeat(70));
+    for (const skip of report.skipped) console.log(`пропущено ${skip.company}: ${skip.reason}`);
+    console.log(
+      `кандидатів ${report.candidates}, чернеток ${options.dryRun ? report.drafts.length : report.created}, потребують уваги ${report.needsAttention}`,
+    );
+  });
+
+program
+  .command('outreach:send')
+  .description('надіслати одну чернетку за id')
+  .argument('<id>', 'id чернетки зі списку outreach:drafts')
+  .action(async (id: string) => {
+    const outcome = await sendDraft(Number(id));
+    if (outcome.sent) {
+      console.log(`надіслано, threadId ${outcome.threadId}`);
+      return;
+    }
+    console.log('не надіслано:');
+    for (const blocker of outcome.blockers) console.log(`  ${blocker.code}: ${blocker.message}`);
+  });
+
+program
+  .command('outreach:limits')
+  .description('скільки листів дозволено сьогодні')
+  .action(async () => {
+    const counters = await sendCounters();
+    console.log(`день ${counters.day}: ${counters.sentToday} з ${counters.limit}`);
+    console.log(`вікно відправки: ${counters.windowOpen ? 'відкрите' : 'закрите'}`);
+    if (counters.nextAllowedAt) {
+      console.log(`наступний лист не раніше ${new Date(counters.nextAllowedAt).toLocaleTimeString()}`);
+    }
+    console.log(`баунси: ${Math.round(counters.bounceRate * 100)} відсотків`);
+  });
+
+program
+  .command('outreach:replies')
+  .description('перевірити відповіді і баунси в надісланих листах')
+  .action(async () => {
+    const report = await checkReplies({ ownEmail: config.gmail.fromEmail });
+    console.log(
+      `перевірено ${report.checked}, відповідей ${report.replies}, баунсів ${report.bounces}`,
+    );
+    for (const error of report.errors) console.log(`  помилка ${error}`);
+  });
+
+program
+  .command('outreach:followups')
+  .description('зібрати чернетки фолоу-апів, кому час писати вдруге')
+  .action(async () => {
+    const report = await prepareFollowups();
+    console.log(`настало ${report.due}, чернеток ${report.created}`);
+    for (const skip of report.skipped) console.log(`  пропущено ${skip.company}: ${skip.reason}`);
+  });
+
+program
+  .command('outreach:stats')
+  .description('конверсія шаблонів, відкати валідації, баунси')
+  .action(async () => {
+    const stats = await outreachStats();
+    console.table(stats.byTemplate);
+    console.log(`AI: ${stats.ai.sent} надіслано, ${stats.ai.positive} позитивних`);
+    console.log(`шаблон: ${stats.static.sent} надіслано, ${stats.static.positive} позитивних`);
+    console.log(`відкатів валідації: ${Math.round(stats.fallbackShare * 100)} відсотків`);
+    for (const item of stats.fallbacks) console.log(`  ${item.reason}: ${item.count}`);
+    console.log(`баунси: ${Math.round(stats.bounceRate * 100)} відсотків`);
+    console.log(
+      `медіанний час до відповіді: ${stats.medianReplyHours === null ? 'ще немає' : `${stats.medianReplyHours.toFixed(1)} год`}`,
+    );
+  });
+
+program
+  .command('outreach:drafts')
+  .description('що зараз лежить у чернетках')
+  .action(async () => {
+    const rows = await listDrafts();
+    if (rows.length === 0) {
+      console.log('чернеток немає, зібрати: pnpm cli outreach:prepare');
+      return;
+    }
+    console.table(
+      rows.map((row) => ({
+        id: row.id,
+        компанія: row.company,
+        кому: row.contactEmail ?? '',
+        шаблон: row.templateUsed ?? '',
+        мова: row.language ?? '',
+        проблема: row.error ?? '',
+      })),
+    );
+  });
+
+program
+  .command('auth:gmail')
+  .description('підключити Gmail через OAuth')
+  .action(async () => {
+    const token = await authorize();
+    console.log(`підключено: ${token.email ?? 'акаунт невідомий'}`);
+    console.log(`токен збережено: ${config.gmail.tokenPath}`);
+  });
+
+program
+  .command('gmail:status')
+  .description('стан підключення пошти')
+  .action(() => {
+    const status = gmailStatus();
+    console.log(`налаштовано: ${status.configured ? 'так' : 'ні'}`);
+    console.log(`підключено: ${status.connected ? (status.email ?? 'так') : 'ні'}`);
+    if (status.scopes.length > 0) console.log(`дозволи: ${status.scopes.join(' ')}`);
+    if (status.hint) console.log(`що робити: ${status.hint}`);
+  });
+
+program
+  .command('gmail:test')
+  .description('надіслати тестовий лист собі')
+  .argument('[email]', 'кому, за замовчуванням власна адреса')
+  .action(async (email?: string) => {
+    const to = email ?? config.gmail.fromEmail;
+    if (!to) throw new Error('нема адреси: заповнити GMAIL_FROM_EMAIL у .env');
+
+    // Кирилиця в темі і тілі навмисно: саме на ній ламається кодування.
+    const result = await sendMessage({
+      to,
+      subject: 'Job Radar: перевірка кодування, тест',
+      body: [
+        'Це технічний лист від Job Radar.',
+        '',
+        'Якщо тема і цей рядок читаються без кракозябр, кодування правильне.',
+        '',
+        'Alex Example',
+        'Front-end / Full-stack developer',
+        'example.dev',
+        '',
+      ].join('\n'),
+    });
+
+    console.log(`надіслано на ${to}`);
+    console.log(`messageId: ${result.messageId}`);
+    console.log(`threadId: ${result.threadId}`);
+    console.log(`Message-Id: ${result.rfcMessageId ?? 'не віддався'}`);
   });
 
 await program.parseAsync(process.argv);

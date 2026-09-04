@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActionIcon,
@@ -50,6 +50,8 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
 export function OutreachPage() {
   const client = useQueryClient();
   const [tab, setTab] = useState<string | null>('waiting');
+  // Клік по рядку показує текст листа: без нього історія це набір дат без змісту.
+  const [expanded, setExpanded] = useState<number | null>(null);
   const { data, error, isLoading } = useQuery({ queryKey: ['outreach'], queryFn: () => api.outreach() });
 
   const reply = useMutation({
@@ -145,6 +147,7 @@ export function OutreachPage() {
                 <Table.Th>вакансія</Table.Th>
                 <Table.Th w={100}>канал</Table.Th>
                 <Table.Th w={150}>шаблон</Table.Th>
+                <Table.Th w={90}>абзац</Table.Th>
                 <Table.Th w={160}>відповідь</Table.Th>
                 <Table.Th w={130} />
               </Table.Tr>
@@ -152,8 +155,14 @@ export function OutreachPage() {
             <Table.Tbody>
               {rows.map((row: OutreachRow) => {
                 const late = !row.replyType && (row.waitingDays ?? 0) >= 7;
+                const open = expanded === row.id;
                 return (
-                  <Table.Tr key={row.id} bg={late ? 'yellow.0' : undefined}>
+                  <Fragment key={row.id}>
+                  <Table.Tr
+                    bg={late ? 'yellow.0' : undefined}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setExpanded(open ? null : row.id)}
+                  >
                     <Table.Td>
                       <Text size="sm" className="tabular">
                         {formatDate(row.sentAt)}
@@ -201,7 +210,23 @@ export function OutreachPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      {row.replyType ? (
+                      <Group gap={4} wrap="nowrap">
+                        <Badge size="sm" variant="light" color={row.aiUsed ? 'violet' : 'gray'}>
+                          {row.aiUsed ? 'AI' : 'шаблон'}
+                        </Badge>
+                        {row.language && (
+                          <Text size="xs" c="dimmed">
+                            {row.language}
+                          </Text>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      {row.bounceType ? (
+                        <Badge color={row.bounceType === 'hard' ? 'red' : 'orange'}>
+                          баунс, {row.bounceType}
+                        </Badge>
+                      ) : row.replyType ? (
                         <Badge
                           color={
                             row.replyType === 'positive' ? 'green' : row.replyType === 'rejection' ? 'red' : 'gray'
@@ -215,7 +240,7 @@ export function OutreachPage() {
                         </Badge>
                       )}
                     </Table.Td>
-                    <Table.Td>
+                    <Table.Td onClick={(event) => event.stopPropagation()}>
                       {!row.replyType && (
                         <Group gap={4} justify="flex-end" wrap="nowrap">
                           {REPLY_ACTIONS.map((action) => (
@@ -235,6 +260,21 @@ export function OutreachPage() {
                       )}
                     </Table.Td>
                   </Table.Tr>
+                  {open && (
+                    <Table.Tr>
+                      <Table.Td colSpan={9}>
+                        {/* Те, що реально пішло. Знімок, а не перезбирання з шаблона. */}
+                        <Text size="xs" c="dimmed" mb={4}>
+                          {row.isFollowup ? 'фолоу-ап, тим самим тредом' : 'перший лист'}
+                          {row.subject ? `: ${row.subject}` : ''}
+                        </Text>
+                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                          {row.body ?? 'текст не зберігся, лист позначили вручну'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </Table.Tbody>

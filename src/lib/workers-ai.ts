@@ -10,7 +10,7 @@ import { config } from '../config.js';
  */
 
 export interface AiBinding {
-  run: (model: string, input: unknown) => Promise<unknown>;
+  run: (model: string, input: unknown, options?: unknown) => Promise<unknown>;
 }
 
 let binding: AiBinding | null = null;
@@ -31,31 +31,57 @@ export function aiAvailable(): boolean {
 }
 
 export async function runWorkersAi(model: string, input: unknown): Promise<unknown> {
-  if (binding) return binding.run(model, input);
+  const { accountId, apiToken, gatewayId, gatewayToken, gatewayUrl } = config.cloudflare;
 
-  const { accountId, apiToken } = config.cloudflare;
+  /*
+   * Через біндінг шлюз вмикається третім аргументом. Без нього запит до моделі
+   * виконується, але в AI Gateway його не видно взагалі, і саме тому там нулі
+   * при живій класифікації. Токен тут не потрібен: біндінг уже автентифікований
+   * акаунтом воркера.
+   */
+  if (binding) {
+    return gatewayId
+      ? binding.run(model, input, { gateway: { id: gatewayId } })
+      : binding.run(model, input);
+  }
+
   if (!accountId || !apiToken) {
     throw new Error(
       'немає CF_AI_ACCOUNT_ID або CF_AI_API_TOKEN у .env, а біндінга AI поза Workers не буває',
     );
   }
 
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
-    {
-      method: 'POST',
-      headers: { authorization: `Bearer ${apiToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify(input),
+  const url = gatewayUrl
+    ? `${gatewayUrl}/workers-ai/${model}`
+    : `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      'content-type': 'application/json',
+      // Потрібен лише для Authenticated Gateway, без нього шлюз віддає 401.
+      ...(gatewayToken ? { 'cf-aig-authorization': `Bearer ${gatewayToken}` } : {}),
     },
-  );
+    body: JSON.stringify(input),
+  });
 
   if (!response.ok) {
-    throw new Error(`Workers AI: ${response.status} ${(await response.text()).slice(0, 200)}`);
+    const text = (await response.text()).slice(0, 200);
+    const hint =
+      response.status === 401 && gatewayUrl
+        ? '. Схоже на Authenticated Gateway: потрібен AI_GATEWAY_TOKEN або вимкнена автентифікація шлюзу'
+        : '';
+    throw new Error(`Workers AI: ${response.status} ${text}${hint}`);
   }
 
   const body = (await response.json()) as { result?: unknown; success?: boolean; errors?: unknown[] };
-  if (!body.success) throw new Error(`Workers AI: ${JSON.stringify(body.errors).slice(0, 200)}`);
-  return body.result;
+  /*
+   * Шлюз віддає відповідь моделі без обгортки `success`, а прямий API з нею.
+   * Розрізняємо за наявністю поля, інакше через шлюз усе падало б на перевірці.
+   */
+  if (body.success === false) throw new Error(`Workers AI: ${JSON.stringify(body.errors).slice(0, 200)}`);
+  return body.success === true ? body.result : body;
 }
 
 interface AiText {

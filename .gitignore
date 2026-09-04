@@ -1,6 +1,8 @@
 node_modules/
 data/*.db
 data/*.db-*
+# Рефреш-токен Gmail. Доступ до пошти власника, у комітах йому не місце.
+data/.gmail-token.json
 logs/
 
 .env

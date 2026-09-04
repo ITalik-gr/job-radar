@@ -115,6 +115,13 @@ export interface OutreachRow {
   replyType: string | null;
   note: string | null;
   waitingDays: number | null;
+  status: string;
+  language: string | null;
+  aiUsed: boolean;
+  bounceType: string | null;
+  subject: string | null;
+  body: string | null;
+  isFollowup: boolean;
 }
 
 export interface StudioCard {
@@ -214,6 +221,8 @@ export interface TemplateRow {
   body: string;
   note: string | null;
   archived: boolean;
+  /** Скільки листів написано цим ключем. Показується перед видаленням. */
+  usageCount: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -242,6 +251,71 @@ function token(): string | null {
     return fromUrl;
   }
   return localStorage.getItem(TOKEN_KEY);
+}
+
+/** Стан підключення Gmail. Порожній екран замість пояснення тут не годиться. */
+export interface GmailStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+  scopes: string[];
+  connectedAt: number | null;
+  expiresAt: number | null;
+  hint: string | null;
+}
+
+/** Чернетка листа на сторінці "До відправки". */
+export interface DraftRow {
+  id: number;
+  companyId: number;
+  company: string;
+  domain: string;
+  vacancyTitle: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  templateUsed: string | null;
+  language: string | null;
+  subject: string | null;
+  body: string | null;
+  aiUsed: boolean;
+  aiFallbackReason: string | null;
+  error: string | null;
+  queuedAt: number | null;
+}
+
+export interface OutreachStats {
+  byTemplate: { template: string; sent: number; replied: number; positive: number }[];
+  ai: { sent: number; replied: number; positive: number };
+  static: { sent: number; replied: number; positive: number };
+  fallbacks: { reason: string; count: number }[];
+  fallbackShare: number;
+  bounceRate: number;
+  medianReplyHours: number | null;
+  drafts: number;
+  needsAttention: number;
+}
+
+export interface FactRow {
+  id: number;
+  key: string;
+  textUk: string;
+  textEn: string;
+  isActive: boolean;
+}
+
+export interface Blocker {
+  code: string;
+  message: string;
+  retryAt?: number;
+}
+
+export interface SendCounters {
+  day: string;
+  sentToday: number;
+  limit: number;
+  nextAllowedAt: number | null;
+  bounceRate: number;
+  windowOpen: boolean;
 }
 
 export function setToken(value: string): void {
@@ -312,10 +386,46 @@ export const api = {
     request<TemplateRow>('/templates', { method: 'POST', body: JSON.stringify(body) }),
   updateTemplate: (id: number, body: Record<string, unknown>) =>
     request<TemplateRow>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  archiveTemplate: (id: number) => request<TemplateRow>(`/templates/${id}`, { method: 'DELETE' }),
+  archiveTemplate: (id: number) =>
+    request<TemplateRow>(`/templates/${id}/archive`, { method: 'POST', body: '{}' }),
+  restoreTemplate: (id: number) =>
+    request<TemplateRow>(`/templates/${id}/restore`, { method: 'POST', body: '{}' }),
+  duplicateTemplate: (id: number) =>
+    request<TemplateRow>(`/templates/${id}/duplicate`, { method: 'POST', body: '{}' }),
+  deleteTemplate: (id: number) =>
+    request<{ deleted: true; slug: string; keptInHistory: number }>(`/templates/${id}`, {
+      method: 'DELETE',
+    }),
   sources: () => request<SourceRow[]>('/sources'),
   runSource: (id: string) => request<{ itemsFound: number }>(`/sources/${id}/run`, { method: 'POST', body: '{}' }),
   stats: () => request<Stats>('/stats'),
+  gmailStatus: () => request<GmailStatus>('/gmail/status'),
+  drafts: () => request<{ drafts: DraftRow[]; counters: SendCounters }>('/outreach/drafts'),
+  regenerateIntro: (id: number) =>
+    request<DraftRow>(`/outreach/drafts/${id}/regenerate`, { method: 'POST', body: '{}' }),
+  outreachStats: () => request<OutreachStats>('/stats/outreach'),
+  prepareFollowups: () =>
+    request<{ due: number; created: number }>('/outreach/followups', { method: 'POST', body: '{}' }),
+  facts: () => request<FactRow[]>('/facts'),
+  createFact: (body: Record<string, unknown>) =>
+    request<FactRow>('/facts', { method: 'POST', body: JSON.stringify(body) }),
+  updateFact: (id: number, body: Record<string, unknown>) =>
+    request<FactRow>(`/facts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteFact: (id: number) => request<{ deleted: boolean }>(`/facts/${id}`, { method: 'DELETE' }),
+  prepareDrafts: (limit?: number) =>
+    request<{ candidates: number; created: number; needsAttention: number }>('/outreach/prepare', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+  updateDraft: (id: number, body: { subject?: string; body?: string }) =>
+    request<DraftRow>(`/outreach/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  discardDraft: (id: number) =>
+    request<{ deleted: boolean }>(`/outreach/drafts/${id}`, { method: 'DELETE' }),
+  sendDraft: (id: number) =>
+    request<{ sent: boolean; blockers: Blocker[] }>(`/outreach/drafts/${id}/send`, {
+      method: 'POST',
+      body: '{}',
+    }),
   fullStats: () => request<FullStats>('/stats/full'),
   topUpQueue: () =>
     request<{ added: number; total: number }>('/queue/top-up', { method: 'POST', body: '{}' }),

@@ -1,0 +1,1 @@
+ALTER TABLE `contacts` ADD `email_valid` integer DEFAULT true NOT NULL;

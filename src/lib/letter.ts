@@ -18,6 +18,13 @@ export interface LetterContext {
   kind?: string | null;
   stack?: string[];
   vacancyTitle?: string | null;
+  city?: string | null;
+  country?: string | null;
+  /**
+   * Перший абзац листа: або від моделі, або статичний з шаблона. Приходить сюди
+   * готовим рядком, бо рішення, чий саме це текст, приймається до підстановки.
+   */
+  intro?: string | null;
 }
 
 /** Підписи для редактора шаблонів: власник має бачити, що взагалі можна вставити. */
@@ -29,6 +36,9 @@ export const LETTER_PLACEHOLDERS: { token: string; hint: string }[] = [
   { token: 'niche', hint: 'студія, дизайн-студія, стартап' },
   { token: 'their_stack', hint: 'стек із їхнього сайту, через кому' },
   { token: 'vacancy_title', hint: 'назва вакансії, якщо лист із Черги' },
+  { token: 'intro', hint: 'перший абзац: від моделі або статичний з шаблона' },
+  { token: 'city', hint: 'місто компанії' },
+  { token: 'country', hint: 'країна компанії' },
 ];
 
 const NICHE_LABELS: Record<string, string> = {
@@ -62,6 +72,9 @@ export function renderLetter(template: string, context: LetterContext): Rendered
     niche: context.kind ? (NICHE_LABELS[context.kind] ?? '') : '',
     their_stack: (context.stack ?? []).join(', '),
     vacancy_title: context.vacancyTitle ?? '',
+    intro: context.intro ?? '',
+    city: context.city ?? '',
+    country: context.country ?? '',
   };
 
   const missing = new Set<string>();
