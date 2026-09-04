@@ -50,10 +50,17 @@
     return null;
   };
 
+  /*
+   * База для відносних посилань це повна поточна адреса, а не origin.
+   *
+   * Пагінація на каталогах часто виглядає як href="?page=2". Від origin таке
+   * посилання розкривалось у "https://clutch.co/?page=2", тобто на головну
+   * замість наступної сторінки списку, і обхід зривався на першому ж переході.
+   */
   const absolute = (path) => {
     if (!path) return null;
     try {
-      return new URL(path, window.location.origin).href;
+      return new URL(path, window.location.href).href;
     } catch {
       return null;
     }

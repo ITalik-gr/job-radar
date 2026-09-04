@@ -11,7 +11,6 @@ import {
   Drawer,
   EmptyState,
   Group,
-  Indicator,
   Paper,
   ScrollArea,
   Select,
@@ -27,40 +26,15 @@ import { notifications } from '@mantine/notifications';
 import { Building2, ExternalLink, Mail, Search } from 'lucide-react';
 import { api, formatDate, type CompanyRow } from '../lib/api';
 import { Score } from '../components/Score';
-
-const STATUSES = [
-  'new',
-  'interesting',
-  'contacted',
-  'replied',
-  'rejected_by_me',
-  'rejected_by_them',
-  'blacklist',
-  'snoozed',
-];
-
-const STATUS_LABELS: Record<string, string> = {
-  new: 'нова',
-  interesting: 'цікава',
-  contacted: 'написали',
-  replied: 'відповіли',
-  rejected_by_me: 'відкинув сам',
-  rejected_by_them: 'відмовили',
-  blacklist: 'блокліст',
-  snoozed: 'відкладена',
-};
+import {
+  STATUS_OPTIONS,
+  StatusCell,
+  StatusIcon,
+  renderStatusOption,
+  statusLabel,
+} from '../components/statuses';
 
 const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'html', 'rss', 'none', 'unknown'];
-
-const STATUS_OPTIONS = STATUSES.map((status) => ({ value: status, label: STATUS_LABELS[status] ?? status }));
-
-function statusColor(status: string | null): string {
-  if (status === 'blacklist' || status === 'rejected_by_them') return 'red';
-  if (status === 'replied') return 'green';
-  if (status === 'contacted') return 'yellow';
-  if (status === 'interesting') return 'brand';
-  return 'gray';
-}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -82,7 +56,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
   const setState = useMutation({
     mutationFn: (status: string) => api.setCompanyState(id, { status }),
     onSuccess: (_result, status) => {
-      notifications.show({ color: 'green', title: 'Статус змінено', message: STATUS_LABELS[status] ?? status });
+      notifications.show({ color: 'green', title: 'Статус змінено', message: statusLabel(status) });
       void client.invalidateQueries({ queryKey: ['company', id] });
       void client.invalidateQueries({ queryKey: ['companies'] });
     },
@@ -123,7 +97,11 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
             data={STATUS_OPTIONS}
             value={data.state?.status ?? 'new'}
             onChange={(status) => status && setState.mutate(status)}
+            renderOption={renderStatusOption}
+            leftSection={<StatusIcon status={data.state?.status ?? 'new'} />}
             allowDeselect={false}
+            maxDropdownHeight={400}
+            comboboxProps={{ width: 320, position: 'bottom-start' }}
           />
 
           <DataList labelWidth={128} gap="sm">
@@ -355,6 +333,10 @@ export function CompaniesPage() {
             data={STATUS_OPTIONS}
             value={filters.status || null}
             onChange={(status) => setFilters({ ...filters, status: status ?? '' })}
+            renderOption={renderStatusOption}
+            leftSection={filters.status ? <StatusIcon status={filters.status} /> : undefined}
+            maxDropdownHeight={400}
+            comboboxProps={{ width: 320, position: 'bottom-start' }}
             clearable
             w={200}
           />
@@ -366,8 +348,13 @@ export function CompaniesPage() {
             clearable
             w={180}
           />
-          <Text size="sm" c="dimmed" ml="auto">
-            компаній {data?.length ?? 0}
+          {/*
+            Найчастіше питання про цю сторінку: чи звідси писати листи. Ні.
+            Це довідник на всю базу, а робочі списки це Черга і Студії.
+          */}
+          <Text size="sm" c="dimmed" maw={420} ml="auto">
+            Довідник на всю базу: {data?.length ?? 0} компаній. Листи пишуться з Черги і Студій,
+            тут тільки пошук, статуси і історія по кожній.
           </Text>
         </Group>
       </Paper>
@@ -460,11 +447,7 @@ export function CompaniesPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <Indicator color={statusColor(row.status)} size={7} position="middle-start" offset={-2}>
-                        <Text size="sm" pl="sm">
-                          {STATUS_LABELS[row.status ?? 'new'] ?? row.status}
-                        </Text>
-                      </Indicator>
+                      <StatusCell status={row.status} />
                     </Table.Td>
                     <Table.Td ta="right">
                       <Text size="sm" c={row.openVacancies ? undefined : 'dimmed'} className="tabular">

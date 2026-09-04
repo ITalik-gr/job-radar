@@ -22,10 +22,12 @@ import {
   Building2,
   CircleAlert,
   Inbox,
+  FileText,
   Palette,
   Radar,
   Radio,
   Send,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { api, setToken } from './lib/api';
 import { useHotkeys } from './lib/hotkeys';
@@ -35,23 +37,27 @@ import { CompaniesPage } from './pages/Companies';
 import { OutreachPage } from './pages/Outreach';
 import { StudiosPage } from './pages/Studios';
 import { SourcesPage } from './pages/Sources';
+import { TemplatesPage } from './pages/Templates';
+import { RulesPage } from './pages/Rules';
 
 // Статистика тягне recharts, тому вантажиться окремим чанком лише коли її відкрили.
 const StatsPage = lazy(() => import('./pages/Stats').then((module) => ({ default: module.StatsPage })));
 
 const TABS = [
   { id: 'queue', label: 'Черга', icon: Inbox, hint: 'десять карток на день, по одному рішенню на кожну' },
-  { id: 'studios', label: 'Студії', icon: Palette, hint: 'компанії, яким варто написати без вакансії' },
-  { id: 'companies', label: 'Компанії', icon: Building2, hint: 'уся база з історією по кожній' },
+  { id: 'studios', label: 'Студії', icon: Palette, hint: 'кому писати без вакансії: усе з каталогів, що пройшло поріг рахунку' },
+  { id: 'companies', label: 'Компанії', icon: Building2, hint: 'уся база як довідник: пошук, статуси, історія. Писати звідси не треба' },
   { id: 'outreach', label: 'Контакти', icon: Send, hint: 'кому писали і хто відповів' },
   { id: 'stats', label: 'Статистика', icon: BarChart3, hint: 'стек, вилки, час життя вакансій' },
   { id: 'sources', label: 'Джерела', icon: Radio, hint: 'стан адаптерів і ручний запуск' },
+  { id: 'templates', label: 'Шаблони', icon: FileText, hint: 'твої тексти листів і резюме' },
+  { id: 'rules', label: 'Правила', icon: SlidersHorizontal, hint: 'поріг, стоп-слова і ваги термінів' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 /** Сторінки з двома панелями керують скролом самі, решта скролиться цілком. */
-const FULL_HEIGHT: TabId[] = ['queue', 'studios'];
+const FULL_HEIGHT: TabId[] = ['queue', 'studios', 'templates'];
 
 function TokenGate() {
   const [value, setValue] = useState('');
@@ -210,7 +216,7 @@ export function App() {
                 <Text size="xs" c="dimmed">
                   ..
                 </Text>
-                <Kbd size="xs">6</Kbd>
+                <Kbd size="xs">8</Kbd>
                 <Text size="xs" c="dimmed">
                   перемикають розділи
                 </Text>
@@ -249,6 +255,8 @@ export function App() {
           {tab === 'companies' && <CompaniesPage />}
           {tab === 'outreach' && <OutreachPage />}
           {tab === 'sources' && <SourcesPage />}
+          {tab === 'templates' && <TemplatesPage />}
+          {tab === 'rules' && <RulesPage />}
           {tab === 'stats' && (
             <Suspense fallback={<Skeleton h={320} m="lg" />}>
               <StatsPage />
@@ -266,7 +274,8 @@ function HeaderStat({ label, value, color }: { label: string; value: number; col
       <Text size="xs" c="dimmed" tt="uppercase" fw={500} style={{ letterSpacing: '0.04em' }}>
         {label}
       </Text>
-      <Text size="lg" fw={600} c={color} className="tabular">
+      {/* Значення читається з відстані, підпис лише уточнює, тому різниця в розмірі велика. */}
+      <Text fz={16} lh={1.3} fw={600} c={color} className="tabular">
         {value}
       </Text>
     </div>

@@ -284,19 +284,37 @@
 
   // ---------- автообхід ----------
 
+  /*
+   * Стан обходу зберігає service worker. Прямий доступ до chrome.storage.session
+   * зі сторінки заборонений браузером (untrusted context), і саме на цьому
+   * автообхід падав з "Access to storage is not allowed from this context".
+   */
+  async function readWalk() {
+    const response = await chrome.runtime.sendMessage({ type: 'radar:walk-get' });
+    return response?.walk ?? null;
+  }
+
+  async function writeWalk(walk) {
+    await chrome.runtime.sendMessage({ type: 'radar:walk-set', walk });
+  }
+
+  async function clearWalk() {
+    await chrome.runtime.sendMessage({ type: 'radar:walk-clear' });
+  }
+
   async function startWalk() {
-    const { walk } = await chrome.storage.session.get({ walk: null });
-    if (walk) return;
+    const saved = await readWalk();
+    if (saved) return;
 
     STATE.walk = { page: 1, created: 0, startedAt: Date.now() };
-    await chrome.storage.session.set({ walk: STATE.walk });
+    await writeWalk(STATE.walk);
     render({ text: 'автообхід запущено' });
     void step();
   }
 
   async function stopWalk(reason) {
     STATE.walk = null;
-    await chrome.storage.session.remove('walk');
+    await clearWalk();
     render({ text: reason, tone: 'warn' });
   }
 
@@ -306,7 +324,7 @@
 
     if (result) {
       STATE.walk.created += result.created;
-      await chrome.storage.session.set({ walk: STATE.walk });
+      await writeWalk(STATE.walk);
     }
 
     if (challengeShown()) return stopWalk('сайт показав перевірку, зупиняюсь');
@@ -323,7 +341,7 @@
     if (!STATE.walk) return;
 
     STATE.walk.page += 1;
-    await chrome.storage.session.set({ walk: STATE.walk });
+    await writeWalk(STATE.walk);
     location.href = next;
   }
 
@@ -339,8 +357,8 @@
     const settings = await chrome.storage.local.get(DEFAULTS);
     STATE.settings = { ...DEFAULTS, ...settings };
 
-    const { walk } = await chrome.storage.session.get({ walk: null });
-    STATE.walk = walk;
+    STATE.walk = await readWalk();
+    const walk = STATE.walk;
 
     render({ text: 'читаю сторінку' });
 

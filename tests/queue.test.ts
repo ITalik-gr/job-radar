@@ -12,6 +12,11 @@ import { getQueue, pendingCount, todayKey } from '../src/pipeline/queue.js';
 let acme: Company;
 let other: Company;
 const DAY = '2026-09-03';
+/**
+ * Останній день у сценарії. Нерозібрані картки переїжджають у найновіший зріз,
+ * тому тести дій мусять брати саме його, інакше шукають у вже спорожнілому дні.
+ */
+const LAST_DAY = '2026-09-07';
 
 async function addVacancy(companyId: number, title: string, score: number, over: Record<string, unknown> = {}) {
   const [row] = await getDb()
@@ -55,26 +60,62 @@ describe('getQueue', () => {
     expect(cards.map((c) => c.title)).toEqual(['Senior Frontend', 'Fullstack Engineer', 'React Developer']);
   });
 
-  it('наступний день бачить нову вакансію і не повторює вчорашні', async () => {
+  it('наступний день переносить нерозібрані і додає нову, вчорашні не дублюються', async () => {
     const cards = await getQueue('2026-09-04');
-    expect(cards.map((c) => c.title)).toEqual(['Найкраща вакансія дня']);
+
+    // Три вчорашні картки нерозібрані, тому переїжджають першими за давністю очікування,
+    // і лише після них іде свіжа знахідка.
+    expect(cards.map((c) => c.title)).toEqual([
+      'Senior Frontend',
+      'Fullstack Engineer',
+      'React Developer',
+      'Найкраща вакансія дня',
+    ]);
+
+    // Переїзд, а не копія: на вакансію лишається один рядок черги.
+    const rows = await getDb().select().from(queueItems);
+    const ids = rows.map((row) => row.vacancyId);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    // Дата першого показу зберігається, тому видно, скільки картка вже чекає.
+    const carried = cards.find((c) => c.title === 'Senior Frontend')!;
+    expect(carried.firstShownAt).toBeGreaterThan(0);
   });
 
-  it('ліміт карток на день дотримується', async () => {
-    for (let i = 0; i < 15; i += 1) await addVacancy(acme.id, `Масовка ${i}`, 7);
+  it('розібрана картка не переноситься далі', async () => {
+    const before = await getQueue('2026-09-04');
+    const card = before.find((c) => c.title === 'Найкраща вакансія дня')!;
+    await applyAction({ vacancyId: card.vacancyId, action: 'interesting' });
+
     const cards = await getQueue('2026-09-05');
+    expect(cards.map((c) => c.title)).not.toContain('Найкраща вакансія дня');
+    expect(cards.map((c) => c.title)).toContain('Senior Frontend');
+  });
+
+  it('закрита вакансія не переноситься, навіть якщо рішення не було', async () => {
+    const gone = await addVacancy(acme.id, 'Зникла поки чекала', 25);
+    await getDb().insert(queueItems).values({ day: '2026-09-05', vacancyId: gone.id, position: 99 });
+    await getDb().update(vacancies).set({ closedAt: Date.now() }).where(eq(vacancies.id, gone.id));
+
+    const cards = await getQueue('2026-09-06');
+    expect(cards.map((c) => c.title)).not.toContain('Зникла поки чекала');
+  });
+
+  it('ліміт карток на день дотримується разом із перенесеними', async () => {
+    for (let i = 0; i < 15; i += 1) await addVacancy(acme.id, `Масовка ${i}`, 7);
+    const cards = await getQueue('2026-09-07');
     expect(cards).toHaveLength(config.pipeline.queueDailyLimit);
   });
 });
 
 describe('applyAction', () => {
   it('"не цікаво" ставить статус компанії і прибирає картку з черги', async () => {
-    const cards = await getQueue(DAY);
+    const cards = await getQueue(LAST_DAY);
     const card = cards.find((c) => c.company === 'Beta')!;
 
     await applyAction({ vacancyId: card.vacancyId, action: 'not_interesting', note: 'не той стек' });
 
-    const after = await getQueue(DAY);
+    const after = await getQueue(LAST_DAY);
     expect(after.find((c) => c.vacancyId === card.vacancyId)!.decision).toBe('not_interesting');
 
     const [state] = await getDb().select().from(companyState).where(eq(companyState.companyId, other.id));
@@ -83,7 +124,7 @@ describe('applyAction', () => {
   });
 
   it('"написав" створює запис у листуванні з шаблоном і датою', async () => {
-    const cards = await getQueue(DAY);
+    const cards = await getQueue(LAST_DAY);
     const card = cards.find((c) => c.company === 'Acme')!;
 
     const result = await applyAction({

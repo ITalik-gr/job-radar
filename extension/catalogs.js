@@ -1,48 +1,56 @@
-/** Каталоги, де живуть студії і агенції. Використовується попапом як швидкі посилання. */
+/**
+ * Каталоги, де живуть студії і агенції. Використовується попапом як швидкі посилання.
+ *
+ * Кожне посилання перевірене відкриттям у справжньому браузері 4 вересня 2026.
+ * Каталоги переписують свої URL і не ставлять редіректів, тому мертві посилання тут
+ * зʼявляються самі собою. Перед тим як додати нове, відкрий його і подивись на заголовок:
+ * Clutch і GoodFirms на неіснуючий шлях віддають 404, а не редірект на список.
+ *
+ * Прибрані з попередньої версії:
+ *   clutch.co/agencies/web-design        404, правильний шлях це /web-designers
+ *   clutch.co/ua/kyiv/web-developers     404, міських сторінок у такому вигляді немає
+ *   clutch.co/web-developers?employees=  параметр нічого не фільтрує, віддає ті самі 95 675
+ *   goodfirms.co/directory/services/...  404
+ *   goodfirms.co/directory/platform/...  404 для react-js
+ *   upcity.com/web-design/agencies       не відкривається, правильний шлях це /web-design
+ */
 const JOB_RADAR_CATALOGS = [
   {
-    group: 'Clutch',
+    group: 'Дизайн-студії',
     links: [
-      ['Web Development', 'https://clutch.co/web-developers'],
-      ['Web Design', 'https://clutch.co/agencies/web-design'],
-      ['Україна', 'https://clutch.co/ua/web-developers'],
-      ['Польща', 'https://clutch.co/pl/web-developers'],
-      ['Німеччина', 'https://clutch.co/de/web-developers'],
-      ['Малі команди', 'https://clutch.co/web-developers?employees=10-49'],
+      ['Clutch, web design', 'https://clutch.co/web-designers'],
+      ['DesignRush, web design', 'https://www.designrush.com/agency/website-design-development'],
+      ['GoodFirms, web design', 'https://www.goodfirms.co/directory/platforms/top-web-design-companies'],
+      ['UpCity, web design', 'https://upcity.com/web-design'],
     ],
   },
   {
-    group: 'GoodFirms',
+    group: 'Веб-розробка',
     links: [
-      ['Web Development', 'https://www.goodfirms.co/directory/services/list-web-development-companies'],
-      ['React', 'https://www.goodfirms.co/directory/platform/top-software-development-companies/react-js'],
-      ['Україна', 'https://www.goodfirms.co/directory/country/top-web-development-companies/ua'],
-    ],
-  },
-  {
-    group: 'DesignRush',
-    links: [
-      ['Web Development', 'https://www.designrush.com/agency/web-development-companies'],
-      ['Web Design', 'https://www.designrush.com/agency/website-design-development'],
-      ['Україна', 'https://www.designrush.com/agency/web-development-companies/ua'],
-    ],
-  },
-  {
-    group: 'Інші каталоги',
-    links: [
+      ['Clutch', 'https://clutch.co/web-developers'],
+      ['GoodFirms', 'https://www.goodfirms.co/companies/web-development-agency'],
+      ['DesignRush', 'https://www.designrush.com/agency/web-development-companies'],
       ['Sortlist', 'https://www.sortlist.com/web-development'],
       ['The Manifest', 'https://themanifest.com/web-development/companies'],
-      ['UpCity', 'https://upcity.com/web-design/agencies'],
       ['TechBehemoths', 'https://techbehemoths.com/companies/web-development'],
     ],
   },
   {
-    group: 'Україна',
+    group: 'Україна і поблизу',
     links: [
-      ['DOU, сервісні', 'https://jobs.dou.ua/companies/?business=Service'],
-      ['DOU, аутстаф', 'https://jobs.dou.ua/companies/?business=Outstaffing'],
-      ['DOU, стартапи', 'https://jobs.dou.ua/companies/?business=Startup'],
-      ['Clutch Київ', 'https://clutch.co/ua/kyiv/web-developers'],
+      ['Clutch, Україна', 'https://clutch.co/ua/web-developers'],
+      ['Clutch, Польща', 'https://clutch.co/pl/web-developers'],
+      ['Clutch, Німеччина', 'https://clutch.co/de/web-developers'],
+      ['GoodFirms, Україна', 'https://www.goodfirms.co/companies/web-development-agency/ua'],
+      ['DesignRush, Україна', 'https://www.designrush.com/agency/web-development-companies/ua'],
+    ],
+  },
+  {
+    group: 'DOU',
+    links: [
+      ['Сервісні компанії', 'https://jobs.dou.ua/companies/?business=Service'],
+      ['Аутстаф', 'https://jobs.dou.ua/companies/?business=Outstaffing'],
+      ['Стартапи', 'https://jobs.dou.ua/companies/?business=Startup'],
     ],
   },
 ];

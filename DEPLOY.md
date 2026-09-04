@@ -93,6 +93,18 @@ Settings (read). Шаблон Edit Cloudflare Workers дає це все.
 pnpm wrangler d1 migrations apply job-radar --remote
 ```
 
+## Після цієї зміни схеми
+
+Зʼявились таблиці `settings` (правила з інтерфейсу) і `templates` (шаблони листів).
+Без міграції сторінки Шаблони і Правила на проді віддадуть 500:
+
+```bash
+pnpm wrangler d1 migrations apply job-radar --remote
+pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
+```
+
+`doctor` мусить показати 12 таблиць.
+
 ## Workers Builds, вбудований білдер Cloudflare
 
 Другий шлях, зараз не використовується. Він зависав на `Initializing build environment...`

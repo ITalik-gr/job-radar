@@ -42,6 +42,8 @@ export interface QueueCard {
   companyStatus: string;
   /** Заповнене, якщо компанії вже писали давно і показ дозволений як виняток. */
   contactedNote: string | null;
+  /** Коли картку показали вперше. Відрізняється від сьогодні, якщо її перенесли. */
+  firstShownAt: number;
 }
 
 /** Кандидати на чергу: відкриті, вище порогу, компанія не в списку прихованих статусів. */
@@ -92,6 +94,62 @@ async function candidates(limit: number, day: string) {
 }
 
 /**
+ * Нерозібрані картки з попередніх днів переїжджають у сьогоднішній зріз.
+ *
+ * Навіщо: раніше картка, на якій власник не натиснув нічого, наступного дня просто
+ * зникала, і захист від повторів не давав їй вернутись 30 днів. Тобто пропустив день,
+ * втратив вакансію.
+ *
+ * Рядок саме переїжджає, а не копіюється. Копія створила б другий запис на ту саму
+ * вакансію: `stats.shown` рахує рядки і показав би завищене число, а `created_at`
+ * перестав би означати дату першого показу. При переїзді не втрачається нічого.
+ *
+ * Порядок FIFO, найдовше очікувані першими: інакше свіжа вакансія з вищим рахунком
+ * щодня відтісняла б стару, і та не дочекалась би рішення ніколи.
+ */
+async function carryOver(day: string, limit: number): Promise<number> {
+  if (limit <= 0) return 0;
+  const db = getDb();
+
+  const rows = await db
+    .select({
+      item: queueItems,
+      vacancy: vacancies,
+      status: companyState.status,
+      snoozedUntil: companyState.snoozedUntil,
+    })
+    .from(queueItems)
+    .innerJoin(vacancies, eq(vacancies.id, queueItems.vacancyId))
+    .leftJoin(companyState, eq(companyState.companyId, vacancies.companyId))
+    .where(and(isNull(queueItems.decision), sql`${queueItems.day} < ${day}`))
+    .orderBy(asc(queueItems.createdAt), desc(vacancies.score));
+
+  const now = Date.now();
+  const threshold = rules().threshold;
+
+  // Умови ті самі, що для нових кандидатів: за час очікування вакансію могли закрити,
+  // компанію заблокувати чи відкласти, а ваги в конфізі могли змінитись.
+  const eligible = rows
+    .filter((row) => {
+      if (row.vacancy.closedAt) return false;
+      if ((row.vacancy.score ?? -100) < threshold) return false;
+      if (row.snoozedUntil && row.snoozedUntil > now) return false;
+      return !HIDDEN_STATUSES.includes(row.status ?? 'new');
+    })
+    .slice(0, limit);
+
+  for (const [index, row] of eligible.entries()) {
+    await db
+      .update(queueItems)
+      .set({ day, position: index + 1 })
+      .where(eq(queueItems.id, row.item.id));
+  }
+
+  if (eligible.length > 0) log.info({ day, carried: eligible.length }, 'нерозібрані картки перенесено');
+  return eligible.length;
+}
+
+/**
  * Черга на день. Перший виклик за добу фіксує зріз, наступні повертають той самий
  * порядок. Рішення прибирає картку, але місце не переобирається: ліміт на день це ліміт.
  */
@@ -107,17 +165,19 @@ export async function getQueue(
     .orderBy(asc(queueItems.position));
 
   if (items.length === 0) {
-    const picks = await candidates(limit, day);
+    // Перенесені займають місця в ліміті першими, нові добирають решту.
+    const carried = await carryOver(day, limit);
+    const picks = await candidates(limit - carried, day);
     if (picks.length > 0) {
       await db.insert(queueItems).values(
         picks.map((pick, index) => ({
           day,
           vacancyId: pick.vacancy.id,
-          position: index + 1,
+          position: carried + index + 1,
           scoreAtPick: pick.vacancy.score,
         })),
       );
-      log.info({ day, picked: picks.length }, 'зріз черги зафіксовано');
+      log.info({ day, picked: picks.length, carried }, 'зріз черги зафіксовано');
     }
     items = await db
       .select()
@@ -183,6 +243,7 @@ export async function getQueue(
         careersUrl: row.company.careersUrl,
         companyStatus: status,
         contactedNote,
+        firstShownAt: item.createdAt,
       } satisfies QueueCard;
     })
     .filter((card): card is QueueCard => card !== null)

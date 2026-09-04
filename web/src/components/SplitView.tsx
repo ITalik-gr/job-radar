@@ -28,24 +28,36 @@ export function SplitView({
   );
 }
 
-/** Заголовок будь-якої панелі: однакова висота і однакові відступи всюди. */
-export function PaneHeader({ children }: { children: ReactNode }) {
+/**
+ * Заголовок панелі. Один рядок центрується по висоті, багаторядковий вміст
+ * отримує однакові відступи згори і знизу: раніше він тулився до нижньої межі.
+ */
+export function PaneHeader({ children, stacked = false }: { children: ReactNode; stacked?: boolean }) {
   return (
     <div
-      className="flex shrink-0 items-center gap-3 px-4"
-      style={{ minHeight: 52, borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+      className={stacked ? 'shrink-0' : 'flex shrink-0 items-center gap-3'}
+      style={{
+        padding: stacked ? '14px 16px' : '10px 16px',
+        minHeight: stacked ? undefined : 52,
+        borderBottom: '1px solid var(--mantine-color-gray-2)',
+      }}
     >
       {children}
     </div>
   );
 }
 
-/** Смуга дій під карткою. Липне до низу панелі, тому кнопки завжди видно. */
+/**
+ * Смуга дій під карткою. Липне до низу панелі, тому кнопки завжди видно.
+ * Відступи по вертикалі навмисно великі: це найчастіше клікана зона застосунку,
+ * і кнопки не мусять тулитись до краю екрана.
+ */
 export function PaneFooter({ children }: { children: ReactNode }) {
   return (
     <div
-      className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3"
+      className="flex shrink-0 flex-wrap items-center gap-2"
       style={{
+        padding: '24px 16px',
         borderTop: '1px solid var(--mantine-color-gray-2)',
         background: 'var(--mantine-color-body)',
       }}

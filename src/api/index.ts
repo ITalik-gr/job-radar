@@ -26,9 +26,17 @@ import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
 import { syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes } from './companies.js';
-import { applyStudioAction, studioQueue, type StudioActionInput } from '../pipeline/studios.js';
+import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
 import { recalcScores } from '../pipeline/recalc.js';
-import { rules } from '../pipeline/rules.js';
+import { resetRules, rules, rulesSource, saveRules } from '../pipeline/rules.js';
+import {
+  TEMPLATE_KINDS,
+  archiveTemplate,
+  createTemplate,
+  listTemplates,
+  seedTemplates,
+  updateTemplate,
+} from '../pipeline/templates.js';
 
 export const app = new Hono();
 
@@ -95,7 +103,9 @@ app.get('/api/health', async (c) => {
       'outreach',
       'queue_items',
       'runs',
+      'settings',
       'snapshots',
+      'templates',
       'vacancies',
     ];
     const missing = expected.filter((name) => !tables.includes(name));
@@ -162,14 +172,17 @@ app.post('/api/import/catalog', async (c) => {
 });
 
 app.get('/api/studios', async (c) => {
-  const cards = await studioQueue({
-    limit: c.req.query('limit') ? Number(c.req.query('limit')) : 25,
+  // Ліміт свідомо високий: список студій це основний робочий інструмент власника,
+  // і 25 записів на 300 компаній у базі виглядали так, ніби збір не працює.
+  // Уся видача важить близько 300 КБ, для локального інструмента це нічого.
+  const page = await studioPage({
+    limit: c.req.query('limit') ? Number(c.req.query('limit')) : 1000,
     minScore: c.req.query('min') ? Number(c.req.query('min')) : undefined,
     country: c.req.query('country'),
     search: c.req.query('q'),
     includeContacted: c.req.query('all') === '1',
   });
-  return c.json({ threshold: rules().companies.threshold, cards });
+  return c.json(page);
 });
 
 app.post('/api/companies/:id/action', async (c) => {
@@ -186,7 +199,74 @@ app.post('/api/companies/:id/action', async (c) => {
 
 app.post('/api/score/recalc', async (c) => c.json(await recalcScores()));
 
-app.get('/api/rules', (c) => c.json(rules()));
+/*
+ * Правила відбору і шаблони листів правляться з інтерфейсу, а не тільки з файла.
+ * На Workers файлової системи немає, тому без цих роутів на проді не змінити ні
+ * поріг, ні стоп-слова, ні текст листа: тільки новим деплоєм.
+ */
+
+app.get('/api/rules', (c) => c.json({ rules: rules(), source: rulesSource() }));
+
+app.put('/api/rules', async (c) => {
+  const body = (await c.req.json()) as unknown;
+  const saved = await saveRules(body);
+  return c.json({ rules: saved, source: rulesSource() });
+});
+
+app.post('/api/rules/reset', async (c) => {
+  const restored = await resetRules();
+  return c.json({ rules: restored, source: rulesSource() });
+});
+
+/**
+ * Дрібні правки одним кліком: побачив тег у вакансії і одразу відправив його
+ * у стоп-слова або дав вагу. Повний обʼєкт правил при цьому не гоняється туди-сюди.
+ */
+app.post('/api/rules/stop-words', async (c) => {
+  const { word, remove } = (await c.req.json()) as { word?: string; remove?: boolean };
+  const value = word?.trim().toLowerCase();
+  if (!value) return c.json({ error: 'потрібне слово' }, 400);
+
+  const current = rules();
+  const set = new Set(current.stopWords);
+  if (remove) set.delete(value);
+  else set.add(value);
+
+  const saved = await saveRules({ ...current, stopWords: [...set].sort() });
+  return c.json({ rules: saved, source: rulesSource() });
+});
+
+app.post('/api/rules/weights', async (c) => {
+  const { term, weight } = (await c.req.json()) as { term?: string; weight?: number | null };
+  const value = term?.trim().toLowerCase();
+  if (!value) return c.json({ error: 'потрібен термін' }, 400);
+
+  const current = rules();
+  const terms = { ...current.weights.terms };
+  if (weight === null || weight === undefined) delete terms[value];
+  else terms[value] = weight;
+
+  const saved = await saveRules({ ...current, weights: { ...current.weights, terms } });
+  return c.json({ rules: saved, source: rulesSource() });
+});
+
+app.get('/api/templates', async (c) => {
+  await seedTemplates();
+  return c.json({ kinds: TEMPLATE_KINDS, templates: await listTemplates(c.req.query('kind')) });
+});
+
+app.post('/api/templates', async (c) => {
+  const body = (await c.req.json()) as { name?: string };
+  if (!body.name?.trim()) return c.json({ error: 'потрібна назва' }, 400);
+  return c.json(await createTemplate(body as { name: string }));
+});
+
+app.patch('/api/templates/:id', async (c) => {
+  const body = (await c.req.json()) as Record<string, unknown>;
+  return c.json(await updateTemplate(Number(c.req.param('id')), body));
+});
+
+app.delete('/api/templates/:id', async (c) => c.json(await archiveTemplate(Number(c.req.param('id')))));
 
 app.route('/api/companies', companiesRoutes);
 

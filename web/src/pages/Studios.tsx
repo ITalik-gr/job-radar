@@ -38,9 +38,8 @@ import {
 import { api, formatDate, type StudioCard } from '../lib/api';
 import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
+import { TemplateSelect } from '../components/TemplateSelect';
 import { Score } from '../components/Score';
-
-const TEMPLATES = ['studio_pitch', 'agency_cold', 'project_offer', 'referral'];
 
 /** Стек, знятий із сайту студії. WordPress і Tilda означають, що фронт там навряд чи наймають. */
 const WEAK_STACK = ['wordpress', 'tilda', 'wix', 'squarespace', 'drupal'];
@@ -92,8 +91,34 @@ function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; on
   );
 }
 
+/**
+ * Каталоги пхають у теги все підряд, аж до часток відсотків і ставок за годину.
+ * Тому за замовчуванням видно перші десять, а решта розкривається і згортається
+ * назад: раніше лічильник "ще 6" був просто текстом і нічого не робив.
+ */
+function TagList({ tags, limit = 10 }: { tags: string[]; limit?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const hidden = tags.length - limit;
+  const visible = expanded ? tags : tags.slice(0, limit);
+
+  return (
+    <Group gap={6}>
+      {visible.map((tag) => (
+        <Badge key={tag} color="gray">
+          {tag}
+        </Badge>
+      ))}
+      {hidden > 0 && (
+        <Anchor component="button" type="button" size="sm" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? 'згорнути' : `ще ${hidden}`}
+        </Anchor>
+      )}
+    </Group>
+  );
+}
+
 function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string, unknown>) => void }) {
-  const [template, setTemplate] = useState(TEMPLATES[0]!);
+  const [template, setTemplate] = useState<string | null>(null);
 
   useHotkeys(
     useMemo(
@@ -204,20 +229,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
                 {card.tags.length === 0 ? (
                   <Text c="dimmed">немає</Text>
                 ) : (
-                  <Group gap={6}>
-                    {/* Каталоги пхають у теги все підряд, аж до часток відсотків.
-                        Показуємо перші десять, решта в лічильнику. */}
-                    {card.tags.slice(0, 10).map((tag) => (
-                      <Badge key={tag} color="gray">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {card.tags.length > 10 && (
-                      <Text size="sm" c="dimmed">
-                        ще {card.tags.length - 10}
-                      </Text>
-                    )}
-                  </Group>
+                  <TagList tags={card.tags} />
                 )}
               </DataList.ItemValue>
             </DataList.Item>
@@ -281,22 +293,26 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
       </ScrollArea>
 
       <PaneFooter>
-        <Button
-          color="green"
-          leftSection={<Check size={15} />}
-          rightSection={<Kbd size="xs">i</Kbd>}
-          onClick={() => onAct({ action: 'interesting' })}
-        >
-          Цікаво
-        </Button>
-        <Button
-          variant="default"
-          leftSection={<ThumbsDown size={15} />}
-          rightSection={<Kbd size="xs">n</Kbd>}
-          onClick={() => onAct({ action: 'not_interesting' })}
-        >
-          Не цікаво
-        </Button>
+        <Tooltip label="статус «цікава»: студія лишається в цьому списку і зʼявляється у фільтрі Компаній. Лист не надсилається">
+          <Button
+            color="green"
+            leftSection={<Check size={15} />}
+            rightSection={<Kbd size="xs">i</Kbd>}
+            onClick={() => onAct({ action: 'interesting' })}
+          >
+            Цікаво
+          </Button>
+        </Tooltip>
+        <Tooltip label="статус «відкинув сам»: студія зникає зі списку назовсім, але лишається в базі">
+          <Button
+            variant="default"
+            leftSection={<ThumbsDown size={15} />}
+            rightSection={<Kbd size="xs">n</Kbd>}
+            onClick={() => onAct({ action: 'not_interesting' })}
+          >
+            Не цікаво
+          </Button>
+        </Tooltip>
 
         <Tooltip label="більше ніколи не показувати цю компанію">
           <Button
@@ -321,21 +337,17 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
         </Tooltip>
 
         <Group gap="xs" ml="auto" wrap="nowrap">
-          <Select
-            data={TEMPLATES}
-            value={template}
-            onChange={(value) => value && setTemplate(value)}
-            allowDeselect={false}
-            w={150}
-            aria-label="шаблон листа"
-          />
-          <Button
-            leftSection={<Send size={15} />}
-            rightSection={<Kbd size="xs">e</Kbd>}
-            onClick={() => onAct({ action: 'contacted', templateUsed: template })}
-          >
-            Написав
-          </Button>
+          <TemplateSelect kind="studio" value={template} onChange={setTemplate} width={150} />
+          <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
+            <Button
+              leftSection={<Send size={15} />}
+              rightSection={<Kbd size="xs">e</Kbd>}
+              disabled={!template}
+              onClick={() => onAct({ action: 'contacted', templateUsed: template })}
+            >
+              Написав
+            </Button>
+          </Tooltip>
         </Group>
       </PaneFooter>
     </>
@@ -438,9 +450,19 @@ export function StudiosPage() {
             </Stack>
           )}
 
-          <Group px="md" py={6} gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+          <Group px="md" py={8} gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+            {/* Різниця між total і aboveThreshold це головне число тут: без нього
+                короткий список читається як зламаний збір, хоча база повна. */}
             <Text size="xs" c="dimmed">
-              знайдено {cards.length}, поріг {data?.threshold ?? '-'}
+              {data ? `${cards.length} з ${data.total} компаній` : 'читаю'}
+              {data && data.total > data.aboveThreshold && (
+                <Tooltip label="поріг можна змінити на сторінці Правила">
+                  <Text span c="dimmed">
+                    {' '}
+                    · поріг {data.threshold} приховав {data.total - data.aboveThreshold}
+                  </Text>
+                </Tooltip>
+              )}
             </Text>
             <Text size="xs" c="dimmed" ml="auto">
               <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> перехід

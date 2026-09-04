@@ -16,7 +16,6 @@ import {
   ScrollArea,
   Select,
   Skeleton,
-  Spoiler,
   Stack,
   Text,
   Title,
@@ -29,18 +28,19 @@ import {
   Check,
   Clock,
   ExternalLink,
+  Filter,
   Inbox,
   MessageSquareQuote,
   Send,
   ThumbsDown,
   TriangleAlert,
 } from 'lucide-react';
-import { api, formatSalary, type QueueCard } from '../lib/api';
+import { api, formatSalary, waitingDays, type QueueCard } from '../lib/api';
 import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
+import { TemplateSelect } from '../components/TemplateSelect';
+import { TagMenu } from '../components/TagMenu';
 import { Score } from '../components/Score';
-
-const TEMPLATES = ['fullstack_ai', 'frontend_react', 'agency_cold', 'referral'];
 
 const DONE: Record<string, string> = {
   interesting: 'у цікавих',
@@ -61,6 +61,8 @@ function Row({
   onSelect: () => void;
 }) {
   const node = useRef<HTMLButtonElement>(null);
+  const waiting = waitingDays(card.firstShownAt);
+  const [rawOpen, setRawOpen] = useState(false);
 
   useEffect(() => {
     if (active) node.current?.scrollIntoView({ block: 'nearest' });
@@ -90,6 +92,11 @@ function Row({
             </Text>
             {card.needsReview && <TriangleAlert size={13} color="var(--mantine-color-yellow-7)" />}
             {card.contactedNote && <Clock size={13} color="var(--mantine-color-yellow-7)" />}
+            {waiting > 0 && (
+              <Badge size="xs" color="gray" ml="auto">
+                {waiting} дн
+              </Badge>
+            )}
           </Group>
 
           <Text size="sm" lineClamp={2} mt={2}>
@@ -116,8 +123,10 @@ function Row({
 
 /** Відкрита картка. Одна на екран, тому тут можна дозволити собі повітря і повний текст. */
 function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string, unknown>) => void }) {
-  const [template, setTemplate] = useState(TEMPLATES[0]!);
+  const [template, setTemplate] = useState<string | null>(null);
   const salary = formatSalary(card);
+  const waiting = waitingDays(card.firstShownAt);
+  const [rawOpen, setRawOpen] = useState(false);
 
   useHotkeys(
     useMemo(
@@ -156,6 +165,14 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
           {card.contactedNote && (
             <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="Цій компанії вже писали">
               {card.contactedNote}. Повторний контакт через квартал нормальний, через тиждень ні.
+            </Alert>
+          )}
+
+          {waiting > 0 && (
+            <Alert color="gray" mt="md" icon={<Clock size={16} />}>
+              Картка чекає рішення {waiting} {waiting === 1 ? 'день' : 'дн'}: її перенесли з
+              попередніх зрізів, бо ти її не розібрав. Вона займає місце в денному ліміті,
+              поки не отримає рішення.
             </Alert>
           )}
 
@@ -222,13 +239,16 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
                 {card.stack.length === 0 ? (
                   <Text c="dimmed">не розпізнано</Text>
                 ) : (
-                  <Group gap={6}>
-                    {card.stack.map((tech) => (
-                      <Badge key={tech} color="gray">
-                        {tech}
-                      </Badge>
-                    ))}
-                  </Group>
+                  <Stack gap={6}>
+                    <Group gap={6}>
+                      {card.stack.map((tech) => (
+                        <TagMenu key={tech} term={tech} />
+                      ))}
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      натисни тег, щоб змінити його вагу або відправити у стоп-слова
+                    </Text>
+                  </Stack>
                 )}
               </DataList.ItemValue>
             </DataList.Item>
@@ -240,14 +260,36 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
             </Alert>
           )}
 
-          <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
-            сирий текст вакансії
-          </Text>
-          <Spoiler maxHeight={160} showLabel="показати весь текст" hideLabel="згорнути">
-            <Code block className="raw-text">
-              {(card.rawText ?? '').slice(0, 8000) || 'сирого тексту немає'}
-            </Code>
-          </Spoiler>
+          <Group gap="sm" mt="lg" mb="xs">
+            <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>
+              сирий текст вакансії
+            </Text>
+            {card.rawText && (
+              <Text size="xs" c="dimmed">
+                {card.rawText.length} символів
+              </Text>
+            )}
+            <Anchor component="button" type="button" size="xs" onClick={() => setRawOpen((value) => !value)}>
+              {rawOpen ? 'згорнути' : 'розкрити повністю'}
+            </Anchor>
+          </Group>
+
+          {/*
+            Згорнутий стан це вікно з власним скролом, а не обрізаний текст:
+            прочитати перший абзац можна не розкриваючи блок. Розкритий стан знімає
+            обмеження висоти зовсім, і текст скролиться разом зі сторінкою.
+          */}
+          <Code
+            block
+            className="raw-text"
+            style={
+              rawOpen
+                ? undefined
+                : { maxHeight: 260, overflowY: 'auto', overscrollBehavior: 'contain' }
+            }
+          >
+            {card.rawText || 'сирого тексту немає'}
+          </Code>
         </Box>
       </ScrollArea>
 
@@ -258,22 +300,26 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
         а рука щоразу тягнеться в те саме місце.
       */}
       <PaneFooter>
-        <Button
-          color="green"
-          leftSection={<Check size={15} />}
-          rightSection={<Kbd size="xs">i</Kbd>}
-          onClick={() => onAct({ action: 'interesting' })}
-        >
-          Цікаво
-        </Button>
-        <Button
-          variant="default"
-          leftSection={<ThumbsDown size={15} />}
-          rightSection={<Kbd size="xs">n</Kbd>}
-          onClick={() => onAct({ action: 'not_interesting' })}
-        >
-          Не цікаво
-        </Button>
+        <Tooltip label="компанія в статус «цікава», картка зникає з черги. Лист не надсилається">
+          <Button
+            color="green"
+            leftSection={<Check size={15} />}
+            rightSection={<Kbd size="xs">i</Kbd>}
+            onClick={() => onAct({ action: 'interesting' })}
+          >
+            Цікаво
+          </Button>
+        </Tooltip>
+        <Tooltip label="статус «відкинув сам», більше не показуємо. Вакансія лишається в базі для статистики">
+          <Button
+            variant="default"
+            leftSection={<ThumbsDown size={15} />}
+            rightSection={<Kbd size="xs">n</Kbd>}
+            onClick={() => onAct({ action: 'not_interesting' })}
+          >
+            Не цікаво
+          </Button>
+        </Tooltip>
         <Tooltip label="більше ніколи не показувати цю компанію">
           <Button
             color="red"
@@ -297,24 +343,64 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
         </Tooltip>
 
         <Group gap="xs" ml="auto" wrap="nowrap">
-          <Select
-            data={TEMPLATES}
-            value={template}
-            onChange={(value) => value && setTemplate(value)}
-            allowDeselect={false}
-            w={150}
-            aria-label="шаблон листа"
-          />
-          <Button
-            leftSection={<Send size={15} />}
-            rightSection={<Kbd size="xs">e</Kbd>}
-            onClick={() => onAct({ action: 'contacted', channel: 'email', templateUsed: template })}
-          >
-            Написав
-          </Button>
+          <TemplateSelect kind="vacancy" value={template} onChange={setTemplate} width={150} />
+          <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
+            <Button
+              leftSection={<Send size={15} />}
+              rightSection={<Kbd size="xs">e</Kbd>}
+              disabled={!template}
+              onClick={() => onAct({ action: 'contacted', channel: 'email', templateUsed: template })}
+            >
+              Написав
+            </Button>
+          </Tooltip>
         </Group>
       </PaneFooter>
     </>
+  );
+}
+
+/**
+ * Порожня черга буває з трьох різних причин, і дії власника в кожному випадку різні.
+ * Тому текст не один на всі випадки: раніше тут завжди писало "новий зріз завтра",
+ * що при нулі вакансій вище порогу просто вводило в оману.
+ */
+function EmptyReason({ decided, total }: { decided: number; total: number }) {
+  const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: () => api.stats() });
+
+  if (decided > 0 && decided === total) {
+    return (
+      <EmptyState
+        icon={<Inbox size={28} />}
+        withIndicatorBackground
+        title="Сьогоднішній зріз розібрано"
+        description={`Усі ${total} карток пройдені. Новий зріз збереться завтра, або запусти джерела кнопкою у шапці.`}
+      />
+    );
+  }
+
+  if (stats && stats.vacancies.aboveThreshold === 0) {
+    return (
+      <EmptyState
+        icon={<Filter size={28} />}
+        withIndicatorBackground
+        title="Нічого не проходить поріг"
+        description={`У базі ${stats.vacancies.open} відкритих вакансій, але жодна не набрала ${stats.threshold} балів. Знизь поріг або поправ ваги в config/scoring.json, далі Запустити, Перерахувати рахунки.`}
+      />
+    );
+  }
+
+  return (
+    <EmptyState
+      icon={<Inbox size={28} />}
+      withIndicatorBackground
+      title="Нових вакансій для черги немає"
+      description={
+        stats
+          ? `Поріг проходять ${stats.vacancies.aboveThreshold} вакансій, і всі вони вже розібрані. Потрібні нові знахідки: Запустити, Оновити вакансії.`
+          : 'Потрібні нові знахідки: Запустити, Оновити вакансії.'
+      }
+    />
   );
 }
 
@@ -381,24 +467,28 @@ export function QueuePage() {
       listWidth={368}
       list={
         <>
-          <PaneHeader>
-            <Box style={{ flex: 1, minWidth: 0 }}>
-              <Group gap="xs" justify="space-between">
-                <Text fw={600}>{pending.length} чекають рішення</Text>
-                <Text size="xs" c="dimmed">
-                  зріз за {data.day}
-                </Text>
-              </Group>
-              {/* Прогрес показує, що черга конечна: десять карток закінчуються, і це видно. */}
-              <Progress value={(decided / Math.max(1, data.cards.length)) * 100} size="xs" mt={6} />
-              <Text size="xs" c="dimmed" mt={4}>
-                розібрано {decided} з {data.cards.length}
-                <Text span mx={6}>
-                  ·
-                </Text>
-                <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> перехід
+          <PaneHeader stacked>
+            <Group gap="xs" justify="space-between" wrap="nowrap">
+              <Text fw={600}>{pending.length} чекають рішення</Text>
+              <Text size="xs" c="dimmed">
+                зріз за {data.day}
               </Text>
-            </Box>
+            </Group>
+            {/* Прогрес показує, що черга конечна: десять карток закінчуються, і це видно. */}
+            <Progress value={(decided / Math.max(1, data.cards.length)) * 100} size="xs" mt={10} />
+            <Group gap={6} mt={10}>
+              <Text size="xs" c="dimmed">
+                розібрано {decided} з {data.cards.length}
+              </Text>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Kbd size="xs">j</Kbd>
+              <Kbd size="xs">k</Kbd>
+              <Text size="xs" c="dimmed">
+                перехід
+              </Text>
+            </Group>
           </PaneHeader>
 
           <ScrollArea style={{ flex: 1, minHeight: 0 }}>
@@ -422,12 +512,7 @@ export function QueuePage() {
           />
         ) : (
           <Box p="xl" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
-            <EmptyState
-              icon={<Inbox size={28} />}
-              withIndicatorBackground
-              title="На сьогодні все розібрано"
-              description="Новий зріз зʼявиться завтра. Щоб не чекати, запусти джерела кнопкою у шапці."
-            />
+            <EmptyReason decided={decided} total={data.cards.length} />
           </Box>
         )
       }

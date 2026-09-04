@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Group,
-  Indicator,
   Paper,
   Skeleton,
   Stack,
@@ -15,6 +14,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Play } from 'lucide-react';
+import { Dot } from '../components/statuses';
 import { api, type SourceRow } from '../lib/api';
 
 function when(ms: number | undefined): string {
@@ -129,16 +129,16 @@ export function SourcesPage() {
                     <Text size="sm">{when(row.lastRun?.startedAt)}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Indicator
-                      color={status === 'error' ? 'red' : status === 'warn' ? 'yellow' : row.lastRun ? 'green' : 'gray'}
-                      size={7}
-                      position="middle-start"
-                      offset={-2}
-                    >
-                      <Text size="sm" pl="sm">
+                    <Group gap={8} wrap="nowrap">
+                      <Dot
+                        color={
+                          status === 'error' ? 'red' : status === 'warn' ? 'yellow' : row.lastRun ? 'green' : 'gray'
+                        }
+                      />
+                      <Text size="sm" truncate>
                         {row.lastRun ? (STATUS_LABELS[status ?? 'ok'] ?? status) : 'не запускався'}
                       </Text>
-                    </Indicator>
+                    </Group>
                   </Table.Td>
                   <Table.Td ta="right">
                     <Text size="sm" className="tabular">

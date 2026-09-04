@@ -22,6 +22,8 @@ export interface QueueCard {
   careersUrl: string | null;
   companyStatus: string;
   contactedNote: string | null;
+  /** Коли картку показали вперше. Раніше за сьогодні означає, що її перенесли. */
+  firstShownAt: number;
 }
 
 export interface QueueResponse {
@@ -157,6 +159,35 @@ export interface FullStats {
   funnel: Record<string, number>;
 }
 
+export interface RulesPayload {
+  rules: Rules;
+  source: 'db' | 'file' | 'bundled';
+}
+
+/** Тільки те, що править інтерфейс. Решта конфіга ходить туди-назад як є. */
+export interface Rules {
+  threshold: number;
+  stopWords: string[];
+  weights: { titleMultiplier: number; bodyCap: number; terms: Record<string, number> };
+  roleGate: { enabled: boolean; mustMatch: string[]; neverMatch: string[] };
+  geo: { enabled: boolean; homeCity: string[]; blockedRegions: string[] } & Record<string, unknown>;
+  companies: { threshold: number } & Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface TemplateRow {
+  id: number;
+  slug: string;
+  name: string;
+  kind: string;
+  subject: string | null;
+  body: string;
+  note: string | null;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Stats {
   vacancies: { total: number; open: number; aboveThreshold: number; stopped: number; needsReview: number };
   funnel: Record<string, number>;
@@ -223,11 +254,32 @@ export const api = {
     }),
   studios: (params: Record<string, string>) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value)).toString();
-    return request<{ threshold: number; cards: StudioCard[] }>(`/studios${query ? `?${query}` : ''}`);
+    return request<{
+      cards: StudioCard[];
+      total: number;
+      aboveThreshold: number;
+      threshold: number;
+    }>(`/studios${query ? `?${query}` : ''}`);
   },
   companyAction: (id: number, body: Record<string, unknown>) =>
     request<{ status: string }>(`/companies/${id}/action`, { method: 'POST', body: JSON.stringify(body) }),
   recalc: () => request<Record<string, number>>('/score/recalc', { method: 'POST', body: '{}' }),
+
+  rules: () => request<RulesPayload>('/rules'),
+  saveRules: (next: Rules) => request<RulesPayload>('/rules', { method: 'PUT', body: JSON.stringify(next) }),
+  resetRules: () => request<RulesPayload>('/rules/reset', { method: 'POST', body: '{}' }),
+  stopWord: (word: string, remove = false) =>
+    request<RulesPayload>('/rules/stop-words', { method: 'POST', body: JSON.stringify({ word, remove }) }),
+  termWeight: (term: string, weight: number | null) =>
+    request<RulesPayload>('/rules/weights', { method: 'POST', body: JSON.stringify({ term, weight }) }),
+
+  templates: (kind?: string) =>
+    request<{ kinds: string[]; templates: TemplateRow[] }>(`/templates${kind ? `?kind=${kind}` : ''}`),
+  createTemplate: (body: Record<string, unknown>) =>
+    request<TemplateRow>('/templates', { method: 'POST', body: JSON.stringify(body) }),
+  updateTemplate: (id: number, body: Record<string, unknown>) =>
+    request<TemplateRow>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  archiveTemplate: (id: number) => request<TemplateRow>(`/templates/${id}`, { method: 'DELETE' }),
   sources: () => request<SourceRow[]>('/sources'),
   runSource: (id: string) => request<{ itemsFound: number }>(`/sources/${id}/run`, { method: 'POST', body: '{}' }),
   stats: () => request<Stats>('/stats'),
@@ -243,6 +295,11 @@ export const api = {
       body: JSON.stringify({ limit }),
     }),
 };
+
+/** Скільки повних доби картка чекає рішення. Нуль означає, що її показали сьогодні. */
+export function waitingDays(firstShownAt: number): number {
+  return Math.floor((Date.now() - firstShownAt) / 86_400_000);
+}
 
 export function formatDate(ms: number | null): string {
   return ms ? new Date(ms).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) : '';

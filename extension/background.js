@@ -44,7 +44,44 @@ async function bumpStats(result) {
   await chrome.action.setBadgeBackgroundColor({ color: '#1e4433' });
 }
 
+/*
+ * Стан автообходу живе в service worker, а не в content script.
+ *
+ * Причина: content script це untrusted context, і chrome.storage.session йому за
+ * замовчуванням недоступний. Звідти й падала помилка "Access to storage is not
+ * allowed from this context", через яку автообхід не працював зовсім. Service
+ * worker це trusted context, тому читає і пише сам, а сторінка лише питає.
+ *
+ * Саме session, а не local: обхід не має продовжуватись після перезапуску браузера,
+ * це разова дія на один сеанс.
+ */
+async function walkState() {
+  const { walk = null } = await chrome.storage.session.get({ walk: null });
+  return walk;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'radar:walk-get') {
+    walkState().then((walk) => sendResponse({ ok: true, walk }));
+    return true;
+  }
+
+  if (message.type === 'radar:walk-set') {
+    chrome.storage.session
+      .set({ walk: message.walk })
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: String(error?.message ?? error) }));
+    return true;
+  }
+
+  if (message.type === 'radar:walk-clear') {
+    chrome.storage.session
+      .remove('walk')
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: String(error?.message ?? error) }));
+    return true;
+  }
+
   if (message.type === 'radar:collect') {
     post('/import/catalog', message.payload)
       .then(async (result) => {

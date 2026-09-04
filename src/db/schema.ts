@@ -228,6 +228,43 @@ export const llmUsage = sqliteTable('llm_usage', {
   failures: integer('failures').notNull().default(0),
 });
 
+/**
+ * Налаштування, які власник править з інтерфейсу. `config/scoring.json` лишається
+ * значенням за замовчуванням, а запис тут його перекриває.
+ *
+ * Навіщо окрема таблиця, а не файл: на Workers файлової системи немає, конфіг вшитий
+ * у бандл. Без цієї таблиці правила на проді можна змінити лише новим деплоєм.
+ */
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value', { mode: 'json' }).notNull(),
+  updatedAt: integer('updated_at').notNull().default(now),
+});
+
+/**
+ * Шаблони листів і резюме. Тексти пише власник, інструмент їх лише зберігає
+ * і підставляє в історію контактів. Генерувати листи тут заборонено, розділ 11
+ * у CLAUDE.md, тому жодного звернення до моделі в цій таблиці не передбачено.
+ */
+export const templates = sqliteTable(
+  'templates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Стабільний ключ, який лягає в outreach.template_used. */
+    slug: text('slug').notNull(),
+    name: text('name').notNull(),
+    /** vacancy | studio | resume */
+    kind: text('kind').notNull().default('vacancy'),
+    subject: text('subject'),
+    body: text('body').notNull().default(''),
+    note: text('note'),
+    archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at').notNull().default(now),
+    updatedAt: integer('updated_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('templates_slug_uq').on(t.slug)],
+);
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Vacancy = typeof vacancies.$inferSelect;
@@ -237,3 +274,5 @@ export type QueueItem = typeof queueItems.$inferSelect;
 export type Outreach = typeof outreach.$inferSelect;
 export type CompanyState = typeof companyState.$inferSelect;
 export type Run = typeof runs.$inferSelect;
+export type Template = typeof templates.$inferSelect;
+export type NewTemplate = typeof templates.$inferInsert;

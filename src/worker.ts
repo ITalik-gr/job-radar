@@ -10,6 +10,7 @@ import { syncDou } from './pipeline/catalogs.js';
 import { discover } from './pipeline/discover.js';
 import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
+import { refreshRulesFromDb } from './pipeline/rules.js';
 
 /**
  * Точка входу для Cloudflare Workers. Той самий Hono-застосунок, що й локально,
@@ -75,11 +76,16 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
+    // Правила, змінені з інтерфейсу, лежать у базі. Ізолят між запитами може бути
+    // новим, тому перечитуємо перед обробкою: інакше скоринг рахував би за вшитим
+    // конфігом і правка порогу нічого б не змінила.
+    await refreshRulesFromDb();
+
     return app.fetch(request, env, ctx);
   },
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     prepare(env);
-    ctx.waitUntil(runSchedule(event.cron));
+    ctx.waitUntil(refreshRulesFromDb().then(() => runSchedule(event.cron)));
   },
 };

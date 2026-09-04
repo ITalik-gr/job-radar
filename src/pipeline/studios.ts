@@ -41,9 +41,23 @@ export interface StudioFilters {
   search?: string;
 }
 
-export async function studioQueue(filters: StudioFilters = {}): Promise<StudioCard[]> {
+export interface StudioPage {
+  cards: StudioCard[];
+  /** Скільком компаніям порахували рахунок після фільтрів пошуку і країни. */
+  total: number;
+  /** Скільки з них пройшли поріг. Різниця з total це те, що приховав поріг. */
+  aboveThreshold: number;
+  threshold: number;
+}
+
+/**
+ * Порахувати рахунок усім компаніям, які проходять фільтри, без порога і без ліміту.
+ * Поділ на цю функцію і `studioPage` потрібен, щоб інтерфейс міг сказати не лише
+ * скільки студій показано, а й скільки приховав поріг: без цього порожній список
+ * виглядає як зламаний збір, хоча компанії в базі є.
+ */
+async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
   const db = getDb();
-  const minScore = filters.minScore ?? rules().companies.threshold;
 
   const rows = await db
     .select({
@@ -121,10 +135,28 @@ export async function studioQueue(filters: StudioFilters = {}): Promise<StudioCa
         lastContactedAt: row.lastContactedAt,
       } satisfies StudioCard;
     })
-    .filter((card) => card.score >= minScore)
     .sort((a, b) => b.score - a.score);
 
-  return cards.slice(0, filters.limit ?? 25);
+  return cards;
+}
+
+/** Сторінка списку студій разом із лічильниками для інтерфейсу. */
+export async function studioPage(filters: StudioFilters = {}): Promise<StudioPage> {
+  const threshold = filters.minScore ?? rules().companies.threshold;
+  const all = await scoreAll(filters);
+  const passing = all.filter((card) => card.score >= threshold);
+
+  return {
+    cards: passing.slice(0, filters.limit ?? 1000),
+    total: all.length,
+    aboveThreshold: passing.length,
+    threshold,
+  };
+}
+
+/** Тонка обгортка для тестів і для викликів, яким потрібен лише список. */
+export async function studioQueue(filters: StudioFilters = {}): Promise<StudioCard[]> {
+  return (await studioPage(filters)).cards;
 }
 
 export interface StudioActionInput {

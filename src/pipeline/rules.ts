@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { log } from '../lib/log.js';
 import defaultRules from '../../config/scoring.json' with { type: 'json' };
@@ -85,7 +86,25 @@ function stripComments<T>(value: T): T {
   return value;
 }
 
-let cached: { rules: Rules; loadedAt: number } | null = null;
+/**
+ * Три джерела правил, у порядку старшинства:
+ *
+ *   база  →  файл на диску  →  вшита в бандл версія
+ *
+ * База найстарша, бо це те, що власник змінив з інтерфейсу, і на Workers це єдиний
+ * спосіб щось змінити взагалі: файлової системи там немає. Файл лишається для
+ * локальної роботи, коли зручніше правити конфіг у редакторі. Вшита версія це
+ * значення за замовчуванням, з якого починається чистий запуск.
+ *
+ * Кеші тримаються окремо саме через це старшинство. Раніше був один кеш, і
+ * періодичне перечитування файла затирало б правку з інтерфейсу через 5 секунд.
+ */
+let fromDb: Rules | null = null;
+let fromFile: Rules | null = null;
+let bundled: Rules | null = null;
+
+/** Ключ у таблиці settings, під яким лежить весь обʼєкт правил. */
+export const RULES_KEY = 'scoring';
 
 /**
  * Конфіг вшитий у бандл статичним імпортом, щоб код працював і на Workers,
@@ -95,9 +114,21 @@ export function loadRules(): Rules {
   return rulesSchema.parse(stripComments(defaultRules));
 }
 
+export function rules(): Rules {
+  bundled ??= loadRules();
+  return fromDb ?? fromFile ?? bundled;
+}
+
+/** Звідки взялись поточні правила. Потрібно інтерфейсу, щоб не брехати про джерело. */
+export function rulesSource(): 'db' | 'file' | 'bundled' {
+  if (fromDb) return 'db';
+  if (fromFile) return 'file';
+  return 'bundled';
+}
+
 /**
- * У Node конфіг додатково перечитується з диска, тому правку видно без перезапуску.
- * На Workers ця функція просто повертає вшиту версію.
+ * У Node конфіг додатково перечитується з диска, тому правку у файлі видно без
+ * перезапуску. На Workers ця функція нічого не робить.
  */
 export async function refreshRules(path = CONFIG_PATH): Promise<Rules> {
   if (typeof process === 'undefined' || !process.versions?.node) return rules();
@@ -105,10 +136,62 @@ export async function refreshRules(path = CONFIG_PATH): Promise<Rules> {
   try {
     const { readFile } = await import('node:fs/promises');
     const raw = JSON.parse(await readFile(path, 'utf8')) as unknown;
-    cached = { rules: rulesSchema.parse(stripComments(raw)), loadedAt: Date.now() };
+    fromFile = rulesSchema.parse(stripComments(raw));
   } catch (error) {
     log.warn({ err: String(error) }, 'конфіг скорингу з диска не прочитався, лишаю вшитий');
   }
+  return rules();
+}
+
+/** Перечитати правила з бази. Викликається на старті і після кожного збереження. */
+export async function refreshRulesFromDb(): Promise<Rules> {
+  try {
+    const [{ getDb }, { settings }] = await Promise.all([
+      import('../db/client.js'),
+      import('../db/schema.js'),
+    ]);
+    const [row] = await getDb().select().from(settings).where(eq(settings.key, RULES_KEY));
+    fromDb = row ? rulesSchema.parse(stripComments(row.value)) : null;
+  } catch (error) {
+    log.warn({ err: String(error) }, 'правила з бази не прочитались, лишаю файл або вшиті');
+  }
+  return rules();
+}
+
+/**
+ * Зберегти правила з інтерфейсу. Приймається тільки повний обʼєкт: часткові патчі
+ * вимагали б домовленості про злиття, і будь-яка помилка в ній тихо ламала б скоринг.
+ * Zod тут не для форми, а для того, щоб у базу не потрапив конфіг, на якому впаде діф.
+ */
+export async function saveRules(next: unknown): Promise<Rules> {
+  const parsed = rulesSchema.parse(stripComments(next));
+  const [{ getDb }, { settings }] = await Promise.all([
+    import('../db/client.js'),
+    import('../db/schema.js'),
+  ]);
+
+  await getDb()
+    .insert(settings)
+    .values({ key: RULES_KEY, value: parsed, updatedAt: Date.now() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: parsed, updatedAt: Date.now() },
+    });
+
+  fromDb = parsed;
+  log.info({ threshold: parsed.threshold }, 'правила збережено з інтерфейсу');
+  return parsed;
+}
+
+/** Скинути правку з інтерфейсу і вернутись до файла або вшитої версії. */
+export async function resetRules(): Promise<Rules> {
+  const [{ getDb }, { settings }] = await Promise.all([
+    import('../db/client.js'),
+    import('../db/schema.js'),
+  ]);
+  await getDb().delete(settings).where(eq(settings.key, RULES_KEY));
+  fromDb = null;
+  log.info('правила скинуто до значень за замовчуванням');
   return rules();
 }
 
@@ -120,11 +203,8 @@ export function watchRules(intervalMs = 5000): void {
   timer.unref?.();
 }
 
-export function rules(): Rules {
-  cached ??= { rules: loadRules(), loadedAt: Date.now() };
-  return cached.rules;
-}
-
 export function resetRulesCache(): void {
-  cached = null;
+  fromDb = null;
+  fromFile = null;
+  bundled = null;
 }

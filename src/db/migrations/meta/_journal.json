@@ -36,6 +36,13 @@
       "when": 1788471155801,
       "tag": "0004_nebulous_sir_ram",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788481567886,
+      "tag": "0005_powerful_jack_power",
+      "breakpoints": true
     }
   ]
 }
