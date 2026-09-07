@@ -1,0 +1,179 @@
+Junior AI-Augmented Product Engineer @ Salsify | Underscore VC Portfolio Opportunities Job Board
+
+-
+
+-
+
+-
+
+Check out:
+Underscore VC's Year in Review!
+
+- Team
+
+- Portfolio
+
+- Resources
+
+- Core Community
+
+- FAQs
+
+- Open Roles
+
+- 45 School Street, 2nd Floor (Boston’s Old City Hall) Boston, MA
+02108
+- (617) 279 - 8272
+- hello@underscore.vc
+
+Build your career
+at an Underscore portfolio company
+
+companies
+
+Jobs
+
+Search
+jobsExplore
+companiesJoin talent network
+Talent
+My job alerts
+
+Junior AI-Augmented Product Engineer
+
+Salsify
+
+Software Engineering, Product, Data Science
+Portugal · Remote
+EUR 38,250-45k / year + Equity
+Posted on Aug 15, 2026
+
+Apply now
+
+Come join a company who is a key leader in the industry scaling the next core commerce infrastructure and on the path from $100M to $500M! Founded in 2012, Salsify helps brand manufacturers, distributors, and retailers in over 80 countries collaborate to win on the digital shelf. As the market leader globally, our products are shopper-centric, frictionless, and create memorable commerce experiences. Our products provide a competitive edge through experiences that improve brand trust, amplify product differentiation and assortments, increase conversion rate, improve profit margins, and speed time to market.
+Learn how the world’s largest brands, including Mars, L'Oreal, Coca-Cola, Bosch, and GSK, as well as retailers and distributors such as E.Leclerc, Carrefour, Metro, and Intermarché use Salsify everyday to stand out on the digital shelf.
+At Salsify, we strive to embody an equitable, diverse, and inclusive company culture. We are united across countries, levels, tenures, and a host of other dimensions of diversity. We understand that while work is just one aspect of who we are, a truly inclusive culture accounts for the full authenticity of every single human being that works here.
+About the Opportunity
+
+We are building next-generation internal AI-powered tools designed to empower our go-to-market teams with faster, more intelligent ways to understand customers, prioritize opportunities, and drive strategic decisions. As a Junior AI-Augmented Product Engineer, you’ll work hand-in-hand with the Platform Owner to shape and deliver new capabilities in an AI-first product development environment.
+This is not a traditional hands-on coding role where you work independently on implementation. You’ll serve as a product-technical bridge: gathering and clarifying go-to-market business needs, framing problems, writing detailed functional and technical specifications, defining acceptance criteria, orchestrating AI-assisted changes through structured workflows, and verifying quality against strict architecture and design standards.
+You will use advanced AI tools as your primary partner to accelerate from idea to verified delivery, while focusing on clear thinking, precise documentation, and cross-team alignment. The role requires strong collaboration, excellent written communication, command of AI usage with respect to software development, and comfort working across US and EMEA time zones.
+This is a great fit for someone who enjoys translating business value into technical reality, thrives on structured reasoning and documentation, and wants to grow in a modern, AI-augmented product engineering practice.
+How You'll Make an Impact:
+- Partner daily with the Platform Owner to understand business challenges, stakeholder goals, and product priorities for internal tools that support go-to-market teams.
+- Lead or support requirements discovery (via calls, async docs, team meetings) to capture needs, edge cases, success metrics, and constraints.
+- Write and maintain high-quality product documentation: functional requirements, technical specifications, data flows, acceptance criteria, and architecture notes, adhering to established internal standards and patterns.
+- Turn requirements into clear, actionable plans and precise instructions for AI-assisted implementation; coordinate changes through iterative build-verify cycles.
+- Enforce consistent, enterprise-grade design patterns, architecture principles, and quality gates during planning, implementation review, and validation.
+- Participate in design and implementation reviews with a focus on correctness, maintainability, adherence to guidelines, and efficient use of AI workflows.
+- Run and troubleshoot automated quality checks (type checking, linting, tests); diagnose issues and propose targeted fixes.
+- Help keep system knowledge current: update reference documentation, track changes across versions, and surface ambiguities for resolution.
+- Support alignment with engineering, product, and go-to-market stakeholders across regions. Balance the demands of leaders with those of individual contributors.
+- Contribute to refining our AI-augmented development processes (better patterns, templates, automation ideas).
+- Communicate effectively across time zones (US / EMEA) using async documentation, collaboration tools, and occasional synchronous sessions.
+You'll Enjoy This Role If You Have:
+Required
+- 2–4 years of experience in product engineering, technical product management, solution architecture, or junior full-stack/ frontend development roles.
+- Demonstrated ability to gather requirements, write clear functional/technical specs, and create acceptance criteria — with strong written English communication.
+- Solid understanding of modern web technologies (React, TypeScript, Node.js, REST APIs, PostgreSQL) and basic software architecture concepts.
+- Comfort with AI-assisted workflows (prompt engineering, using LLMs for code/spec generation, iterative verification).
+- Strong analytical mindset: ability to break down complex problems, spot ambiguities, and ask clarifying questions.
+- Excellent collaboration and communication skills — fluent in English (written + verbal); able to work async and synchronously across cultures/time zones.
+- Located in Portugal with eligibility to work in the EU; available for hybrid Lisbon work when needed and flexible for US overlap hours (e.g., 2–4 PM Lisbon time).
+Preferred
+- Exposure to AI platforms (Gemini, Perplexity, Claude, ChatGPT, Vertex AI) or RAG/grounding concepts.
+- Experience with SaaS product development, especially in sales/marketing intelligence, account-based tools, or enterprise data platforms.
+- Familiarity with Drizzle ORM, Vite, Express, or Google Cloud ecosystem.
+- Additional European languages (French, German, Spanish) are a plus for stakeholder interactions.
+- Hands-on experience with Replit, Cursor, or similar AI-coding environments.
+#LI-IA1 #LI-Remote
+At Salsify, we maintain 3 core principles as part of our Compensation Philosophy:
+- We pay market rates, which are competitive and equitable
+- We pay based on performance and proficiency, not tenure
+- We adjust proactively; when the market moves, we do too
+The posted compensation range reflects the base salary for this position. In addition to base salary, some eligible roles may also have a commission plan or a bonus incentive. All Salsify employees receive equity in the form of stock options. All full-time employees are invited to participate in our Total Rewards plan, which includes health & medical benefits, PTO, and more. Offers to join Salsify are based on a few criteria, including the scope of the role, the candidate’s work experience, targeted skills, internal equity of the team, and external market data.
+
+National Pay Range
+€38.250—€45.000 EUR
+
+Salsify loves a good success story and it would be our privilege to help write yours! We recognize that talent and potential come in all forms and that years of experience does not guarantee on-the-job effectiveness or leadership potential. Our hiring process involves recognizing a person’s achievements, subject matter expertise, and passion, not just check marks next to a job description. If you have an interest in our roles please do not hesitate to apply - we would be happy to speak with you!
+A member of Talent 'talent@salsify.com' will be reaching out about next steps if we would like to move forward.
+Salsify’s mission is to empower brand manufacturers to win on the digital shelf.
+Helping brand manufacturers to win online is what we do. Our culture is who we are. We are empowered. We are positive thinkers. We take action. We care deeply. These values have driven Salsify’s growth and earned the company numerous top workplace awards.
+We are headquartered in Boston, Massachusetts and have hubs in Lisbon (Portugal) and Sydney (Australia). If you are excited to work in a fast-paced environment with a team that values agility, curiosity and passion, we want to hear from you!
+As part of the hiring process, we may be conducting reference checks with your provided contacts.
+Please see our Candidate Privacy Statement for information on the personal data we process in connection with your application.
+An Inclusive Place To Work
+
+Salsify does not discriminate based on race, religion, color, national origin, sex, gender, gender expression, sexual orientation, age, marital status, veteran status, or disability status. Studies have found that people of color and women do not apply to jobs if they do not meet all the requirements. At Salsify we are committed to empowering a diverse workforce. We ensure that individuals with disabilities are provided reasonable accommodation to participate in the job application or interview process, to perform essential job functions, and to receive other benefits and privileges of employment.
+Accommodations
+Salsify is committed to an inclusive hiring process, and we aim to provide accommodations for persons with disabilities. If you need any accommodations for the application or throughout the interview process please contact cx@salsify.com.
+
+We take your security seriously. When applying for a position with us, please be aware of the following:
+Official Communication Channels
+
+All legitimate communications from our team, including interview requests and job offers, will only come from an email address ending in @salsify.com. We will never use generic email addresses (like Gmail or Yahoo) or ask you to communicate through unofficial channels.
+
+Verify Job Postings
+
+Always verify the legitimacy of any Salsify job posting by checking our official website's careers page. If a position is not listed there, it is not a genuine Salsify opening.
+
+Secure Application Process
+
+We use secure applicant tracking systems and encrypted communication channels to protect your sensitive information and documents throughout the application process.
+
+No Payments Ever Required
+
+Legitimate employers, including Salsify, will never ask for upfront payments for applications, training, or equipment. Any request for payment is a clear sign of a scam.
+
+Personal Information Requests
+
+Sensitive personal information, such as bank details or social security numbers, will only be requested after a formal job offer has been made and exclusively through secure, verified channels.By being aware of these protocols, you can help us ensure a safe and secure application experience.
+
+Apply now
+
+See more open positions at Salsify
+
+Powered by Getro.com
+Privacy policyCookie policy
+
+- Home
+
+- Team
+
+- Portfolio
+
+- Resources
+
+- Core Community
+
+- FAQs
+
+- Open Roles
+
+- 45 School Street, 2nd Floor (Boston’s Old City Hall)
+Boston, MA 02108
+- (617) 279 - 8272
+- hello@underscore.vc
+
+Explore our space
+
+It Takes a Community.
+
+This website was designed for accessibility, please flag any
+challenges you encounter with us. Underscore VC is a
+Principles for Responsible Investment signatory and is
+commited to developing a more sustainable and inclusive global
+financial system.
+
+Copyright ©2025. Underscore VC Management Company, LLC.
+Underscore® and Startup Secrets® are registered trademarks of
+Underscore VC Management Company, LLC. All rights reserved.
+
+- Terms and Conditions
+
+- Privacy Policy
+
+- Press Kit
+
+Website by GoingClear

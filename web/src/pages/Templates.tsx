@@ -36,6 +36,22 @@ const KIND_LABELS: Record<string, string> = {
 const KIND_OPTIONS = Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }));
 
 /** Типи компаній із `src/pipeline/company-kind.ts`. Порожнє означає універсальний шаблон. */
+/**
+ * Роль у розсилці. Саме за нею чернетка вибирає шаблон, і вибір робить код:
+ * є вакансія, є іменний контакт, або тільки загальна скринька.
+ */
+const TARGET_OPTIONS = [
+  { value: 'vacancy', label: 'є відкрита вакансія' },
+  { value: 'studio_named', label: 'без вакансії, іменний контакт' },
+  { value: 'studio_generic', label: 'без вакансії, загальна пошта' },
+  { value: 'followup', label: 'фолоу-ап, другий лист у треді' },
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: 'uk', label: 'українською' },
+  { value: 'en', label: 'англійською' },
+];
+
 const FOR_KIND_OPTIONS = [
   { value: 'design', label: 'дизайн-студія' },
   { value: 'studio', label: 'студія розробки' },
@@ -81,6 +97,12 @@ function Row({
         <Badge size="xs" color={row.kind === 'resume' ? 'brand' : 'gray'}>
           {KIND_LABELS[row.kind] ?? row.kind}
         </Badge>
+        {/* Шаблон із роллю бере участь у розсилці сам, решта тільки для копіювання. */}
+        {row.targetType && (
+          <Badge size="xs" color="blue" variant="light">
+            розсилка, {row.language}
+          </Badge>
+        )}
         <Text size="xs" c="dimmed" truncate>
           {row.body ? `${row.body.length} символів` : 'текст не написаний'}
         </Text>
@@ -100,10 +122,15 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
   const [draft, setDraft] = useState(row);
   const [confirming, setConfirming] = useState(false);
 
+  /*
+   * Скидання чернетки прив'язане до `updatedAt`, а не до самого об'єкта. Список
+   * шаблонів перечитується після будь-якої мутації, і кожен перечит давав новий
+   * об'єкт: недописаний текст в редакторі затирався тим, що вже лежить у базі.
+   */
   useEffect(() => {
     setDraft(row);
     setConfirming(false);
-  }, [row]);
+  }, [row.id, row.updatedAt]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -113,8 +140,11 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
         kind: draft.kind,
         forKind: draft.forKind,
         subject: draft.subject,
+        intro: draft.intro,
         body: draft.body,
         note: draft.note,
+        language: draft.language,
+        targetType: draft.targetType,
       }),
     onSuccess: () => {
       notifications.show({ color: 'green', title: draft.name, message: 'шаблон збережено' });
@@ -230,6 +260,31 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
             </Group>
 
             {/*
+              Роль і мова це не оформлення, а те, за чим чернетка вибирає шаблон.
+              Порожня роль означає, що шаблон у розсилці не бере участі і лежить
+              для ручного копіювання, і це нормальний стан для половини списку.
+            */}
+            <Group grow align="start">
+              <Select
+                label="Роль у розсилці"
+                description="коли цей шаблон підставляється автоматично"
+                data={TARGET_OPTIONS}
+                value={draft.targetType}
+                onChange={(targetType) => setDraft({ ...draft, targetType })}
+                placeholder="не бере участі, тільки копіювання руками"
+                clearable
+              />
+              <Select
+                label="Мова"
+                description="uk для компаній з України, en для решти"
+                data={LANGUAGE_OPTIONS}
+                value={draft.language}
+                onChange={(language) => language && setDraft({ ...draft, language })}
+                allowDeselect={false}
+              />
+            </Group>
+
+            {/*
               Ключ редагується, і при зміні радар переписує його в записах листування.
               Тому підпис каже саме це: інакше правка виглядала б як розрив історії.
             */}
@@ -251,6 +306,28 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
               value={draft.subject ?? ''}
               onChange={(event) => setDraft({ ...draft, subject: event.currentTarget.value })}
             />
+
+            <Textarea
+              label="Перший абзац, статичний"
+              description="підставляється замість {{intro}}. Його ж бере відкат, коли абзац від моделі не пройшов перевірку"
+              autosize
+              minRows={2}
+              maxRows={6}
+              value={draft.intro ?? ''}
+              onChange={(event) => setDraft({ ...draft, intro: event.currentTarget.value })}
+              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
+            />
+
+            {/*
+              Абзац без мітки в тілі нікуди не потрапляє. Мовчати про це не можна:
+              на вигляд поле заповнене, а в листі його немає.
+            */}
+            {draft.intro?.trim() && !/\{\{\s*intro\s*\}\}/i.test(draft.body) && (
+              <Alert color="yellow">
+                Перший абзац написаний, але в тексті немає мітки {'{{intro}}'}, тому в лист він не
+                потрапить. Додай мітку туди, де має стояти цей абзац.
+              </Alert>
+            )}
 
             <Textarea
               label="Текст"
@@ -311,6 +388,9 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
         >
           {dirty ? 'Зберегти' : 'Змін немає'}
         </Button>
+
+        {/* Факти живуть поруч із текстом листа, бо саме на нього вони і впливають. */}
+        <FactsPanel />
 
         <Tooltip label="зробити варіант цього тексту з власним ключем">
           <Button
@@ -475,10 +555,7 @@ export function TemplatesPage() {
         }
         detail={
           current ? (
-            <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
-              <Editor key={current.id} row={current} onSelect={setSelected} />
-              <FactsPanel />
-            </Stack>
+            <Editor key={current.id} row={current} onSelect={setSelected} />
           ) : (
             <Box p="xl" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
               <EmptyState

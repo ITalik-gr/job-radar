@@ -8,6 +8,7 @@ import { runs, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { authUrl, exchangeCode, gmailStatus, isConfigured as gmailConfigured } from '../lib/gmail.js';
 import {
+  draftForCompany,
   discardDraft,
   listDrafts,
   prepareDrafts,
@@ -15,6 +16,17 @@ import {
   updateDraft,
 } from '../pipeline/outreach.js';
 import { checkSend, sendCounters } from '../pipeline/send-guards.js';
+import { checkReplies } from '../pipeline/replies.js';
+import { notify } from '../notify/telegram.js';
+
+import { classifyPending } from '../pipeline/reclassify.js';
+import { refreshDetails } from '../pipeline/sync.js';
+import { backfillKinds } from '../pipeline/company-kind.js';
+import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
+import { callModelWith } from '../pipeline/classify.js';
+import { sendMessage } from '../lib/gmail.js';
+import { seedOutreachTemplates } from '../pipeline/outreach.js';
+import { seedTemplates } from '../pipeline/templates.js';
 import { createFact, deleteFact, listFacts, updateFact } from '../pipeline/facts.js';
 import { prepareFollowups } from '../pipeline/followups.js';
 import { outreachStats } from '../pipeline/outreach-stats.js';
@@ -40,7 +52,7 @@ import { syncSource } from '../pipeline/sync.js';
 import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
 import { enrich } from '../pipeline/enrich.js';
-import { syncDou, importFromBrowser } from '../pipeline/catalogs.js';
+import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes } from './companies.js';
 import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
 import { recalcScores } from '../pipeline/recalc.js';
@@ -53,7 +65,6 @@ import {
   duplicateTemplate,
   listTemplates,
   restoreTemplate,
-  seedTemplates,
   updateTemplate,
 } from '../pipeline/templates.js';
 
@@ -422,7 +433,11 @@ ${token.refreshToken}</pre>
 app.get('/api/gmail/status', (c) => c.json(gmailStatus()));
 
 app.get('/api/templates', async (c) => {
-  await seedTemplates();
+  /*
+   * Стартовий набір більше не доливається сам при відкритті сторінки. Раніше
+   * доливався, і видалені шаблони поверталися: власник чистив список, оновлював
+   * вкладку і бачив їх знову. Тепер це окрема дія на сторінці Операції.
+   */
   return c.json({ kinds: TEMPLATE_KINDS, templates: await listTemplates(c.req.query('kind')) });
 });
 
@@ -472,6 +487,12 @@ app.post('/api/outreach/prepare', async (c) => {
   return c.json(await prepareDrafts({ limit: body.limit, ai: body.ai }));
 });
 
+/** Чернетка для однієї компанії: кнопка з Черги і зі Студій. */
+app.post('/api/outreach/drafts', async (c) => {
+  const body = await c.req.json<{ companyId: number; vacancyId?: number | null; ai?: boolean }>();
+  return c.json(await draftForCompany(body.companyId, body.vacancyId ?? null, { ai: body.ai }));
+});
+
 app.patch('/api/outreach/drafts/:id', async (c) => {
   const body = await c.req.json<{ subject?: string; body?: string }>();
   return c.json(await updateDraft(Number(c.req.param('id')), body));
@@ -489,6 +510,88 @@ app.post('/api/outreach/drafts/:id/regenerate', async (c) =>
 app.post('/api/outreach/followups', async (c) => c.json(await prepareFollowups()));
 
 app.get('/api/stats/outreach', async (c) => c.json(await outreachStats()));
+
+/*
+ * Операції, які раніше жили тільки в CLI. Роути навмисно однакової форми:
+ * POST, тіло з необовʼязковим limit, у відповіді те саме, що друкувала команда.
+ * Інтерфейс через це не знає нічого про кожну окрему операцію і малює їх списком.
+ */
+app.post('/api/catalogs/:id/run', async (c) => c.json(await syncCatalog(c.req.param('id'))));
+
+app.post('/api/classify/pending', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  return c.json(await classifyPending(body.limit ?? 50));
+});
+
+app.post('/api/maintenance/kinds', async (c) => c.json(await backfillKinds()));
+
+app.post('/api/maintenance/backfill-catalog', async (c) => c.json(await backfillCatalogFields()));
+
+app.post('/api/maintenance/fix-detail', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number; source?: string };
+  return c.json(await refreshDetails({ limit: body.limit ?? 25, source: body.source }));
+});
+
+app.post('/api/outreach/replies', async (c) =>
+  c.json(await checkReplies({ ownEmail: config.gmail.fromEmail })),
+);
+
+app.post('/api/outreach/seed', async (c) => c.json({ added: await seedOutreachTemplates() }));
+
+/** Стартовий набір шаблонів. Тільки по кнопці: видалене більше не воскресає само. */
+app.post('/api/templates/seed', async (c) => c.json({ added: await seedTemplates() }));
+
+/** Живий виклик моделі: перевірка ключа, шлюзу і провайдера одним рухом. */
+app.post('/api/llm/ping', async (c) => {
+  try {
+    const raw = await callModelWith('Відповідай одним словом.', 'скажи ok');
+    return c.json({
+      ok: true,
+      provider: config.llm.provider,
+      model: config.llm.activeModel,
+      gateway: config.llm.baseUrl || 'прямий виклик',
+      answer: raw.text.trim().slice(0, 40),
+      inputTokens: raw.inputTokens,
+      outputTokens: raw.outputTokens,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ ok: false, gateway: config.llm.baseUrl || 'прямий виклик', error: message });
+  }
+});
+
+/** Тестовий лист собі. Кирилиця в темі навмисно, на ній ламається кодування. */
+app.post('/api/gmail/test', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { to?: string };
+  const to = body.to || config.gmail.fromEmail;
+  if (!to) return c.json({ error: 'немає адреси: заповнити GMAIL_FROM_EMAIL' }, 400);
+
+  const result = await sendMessage({
+    to,
+    subject: 'Job Radar: перевірка кодування, тест',
+    body: [
+      'Це технічний лист від Job Radar.',
+      '',
+      'Якщо тема і цей рядок читаються без кракозябр, кодування правильне.',
+      '',
+      'Alex Example',
+      'Front-end / Full-stack developer',
+      'example.dev',
+      '',
+    ].join('\n'),
+  });
+  return c.json({ to, ...result });
+});
+
+const NOTIFY_KINDS = ['digest', 'outreach', 'highScore', 'followUps', 'broken'] as const;
+
+
+app.post('/api/notify/:kind', async (c) => {
+  const kind = c.req.param('kind') as (typeof NOTIFY_KINDS)[number];
+  if (!NOTIFY_KINDS.includes(kind)) return c.json({ error: `невідоме сповіщення: ${kind}` }, 400);
+  // Порожнє повідомлення це не помилка: у черзі просто нема чого показувати.
+  return c.json({ kind, sent: await notify[kind]() });
+});
 
 app.get('/api/facts', async (c) => c.json(await listFacts()));
 

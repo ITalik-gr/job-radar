@@ -7,7 +7,7 @@ import {
   formatAddress,
   fromBase64Url,
 } from '../src/lib/mime.js';
-import { stripEmDash } from '../src/lib/gmail.js';
+import { explainSendError, stripEmDash } from '../src/lib/gmail.js';
 
 /**
  * Тест на кирилицю тут обовʼязковий, розділ 11 OUTREACH.md. Некоректне кодування
@@ -134,6 +134,22 @@ describe('тредування фолоу-апу', () => {
   it('порожні значення в ланцюжку не лишають зайвих пробілів', () => {
     const raw = buildMime({ ...base, references: ['<a@b>', ''] });
     expect(headerLine(raw, 'References')).toBe('References: <a@b>');
+  });
+});
+
+describe('помилки відправки', () => {
+  it('вимкнений Gmail API пояснюється однією дією', () => {
+    const raw =
+      'Gmail API has not been used in project 8312224703 before or it is disabled. Enable it by visiting https://console.developers.google.com/...';
+    expect(explainSendError(raw, 403)).toContain('Увімкнути його в Google Cloud Console');
+  });
+
+  it('протухлий токен веде до повторного підключення', () => {
+    expect(explainSendError('invalid_grant', 401)).toContain('підключити пошту заново');
+  });
+
+  it('незнайома помилка віддається як є, без вигаданого пояснення', () => {
+    expect(explainSendError('щось дивне', 500)).toContain('щось дивне');
   });
 });
 

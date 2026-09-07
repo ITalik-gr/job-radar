@@ -9,14 +9,16 @@ import { lever } from './boards/lever.js';
 import { ashby } from './boards/ashby.js';
 import { remoteok } from './boards/remoteok.js';
 import { getro } from './boards/getro.js';
+import { hnHiring } from './boards/hnhiring.js';
 import { douBoard } from './boards/dou.js';
 import { djinni } from './boards/djinni.js';
 import { rssSources } from './boards/feeds.js';
 import { dou } from './catalogs/dou.js';
 import { awwwards } from './catalogs/awwwards.js';
+import { yc } from './catalogs/yc.js';
 
-for (const source of [greenhouse, lever, ashby, remoteok, getro, douBoard, djinni, ...rssSources, dou, awwwards]) {
+for (const source of [greenhouse, lever, ashby, remoteok, getro, hnHiring, douBoard, djinni, ...rssSources, dou, awwwards, yc]) {
   registerSource(source);
 }
 
-export { greenhouse, lever, ashby, remoteok, getro, douBoard, djinni, rssSources, dou, awwwards };
+export { greenhouse, lever, ashby, remoteok, getro, hnHiring, douBoard, djinni, rssSources, dou, awwwards, yc };

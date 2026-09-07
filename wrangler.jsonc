@@ -10,7 +10,14 @@
 	"assets": {
 		"directory": "web/dist",
 		"binding": "ASSETS",
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
+		/*
+		 * Без цього рядка навігація браузера на /api/* не доходить до воркера.
+		 * SPA-фолбек віддає index.html будь-якому запиту з Accept: text/html,
+		 * тому curl бачив JSON, а браузер на тій самій адресі бачив інтерфейс.
+		 * Через це мовчки ламався і колбек Google: він приходить саме навігацією.
+		 */
+		"run_worker_first": ["/api/*"]
 	},
 	// Workers AI: вектори компаній і, за LLM_PROVIDER=workers-ai, класифікація вакансій.
 	"ai": {

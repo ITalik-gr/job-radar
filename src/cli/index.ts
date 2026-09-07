@@ -9,7 +9,7 @@ import { runMigrations } from '../db/migrate.js';
 import { log } from '../lib/log.js';
 import { listSources } from '../sources/registry.js';
 import { crawlSource } from '../pipeline/crawl.js';
-import { syncSource } from '../pipeline/sync.js';
+import { refreshDetails, syncSource } from '../pipeline/sync.js';
 import { queue } from '../pipeline/ingest.js';
 import { callModelWith, remainingBudget, today } from '../pipeline/classify.js';
 import { classifyPending } from '../pipeline/reclassify.js';
@@ -798,6 +798,19 @@ program
     console.log(
       `/api/companies: ${companies.status}, ${Array.isArray(data) ? `${data.length} записів` : JSON.stringify(data).slice(0, 160)}`,
     );
+  });
+
+program
+  .command('fix:detail')
+  .description('перечитати вакансії, у яких замість опису збереглось меню сайту')
+  .option('--limit <n>', 'скільки сторінок відкрити за прохід', '50')
+  .option('--source <id>', 'джерело, чиї вакансії перечитати', 'getro')
+  .action(async (options: { limit: string; source: string }) => {
+    const report = await refreshDetails({ limit: Number(options.limit), source: options.source });
+    console.log(
+      `перевірено ${report.checked}, виправлено ${report.fixed}, без змін ${report.unchanged}, без опису ${report.stillEmpty}`,
+    );
+    if (report.fixed > 0) console.log('далі: pnpm cli classify:pending, щоб перекласифікувати');
   });
 
 program

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Alert,
   Anchor,
@@ -12,7 +13,6 @@ import {
   EmptyState,
   Group,
   Paper,
-  ScrollArea,
   Select,
   Skeleton,
   Stack,
@@ -301,11 +301,30 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
 export function CompaniesPage() {
   const [filters, setFilters] = useState({ q: '', status: '', ats: '', country: '' });
   const [selected, setSelected] = useState<CompanyRow | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['companies', filters],
     queryFn: () => api.companies(filters),
   });
+
+  /*
+   * Рядок фіксованої висоти, тому вимірювати нічого не треба: віртуалізатор
+   * рахує позиції арифметикою. Overscan у 12 рядків прибирає білі смуги при
+   * швидкому скролі, і це дешевше, ніж малювати весь список.
+   */
+  const virtualizer = useVirtualizer({
+    count: data?.length ?? 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 45,
+    overscan: 12,
+  });
+
+  const items = virtualizer.getVirtualItems();
+  const rows = items.map((item) => data![item.index]!);
+  const padTop = items.length > 0 ? items[0]!.start : 0;
+  const padBottom =
+    items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1]!.end : 0;
 
   if (error) {
     return (
@@ -376,7 +395,13 @@ export function CompaniesPage() {
 
       {data && data.length > 0 && (
         <Paper style={{ overflow: 'hidden' }}>
-          <ScrollArea.Autosize mah="calc(100dvh - 224px)">
+          {/*
+            Скрол тут власний, а не ScrollArea: віртуалізатору потрібен елемент,
+            у якого можна спитати позицію прокрутки. У базі тисячі компаній, і
+            без віртуалізації браузер малює тисячі рядків одразу, після чого
+            сторінка думає секунду на кожен клік.
+          */}
+          <div ref={scrollRef} style={{ maxHeight: 'calc(100dvh - 224px)', overflowY: 'auto' }}>
             {/* Фіксована розкладка: інакше колонка з назвою розтягується і виштовхує
                 статус та лічильники за правий край. */}
             <Table stickyHeader layout="fixed">
@@ -398,7 +423,12 @@ export function CompaniesPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {data.map((row: CompanyRow) => (
+                {padTop > 0 && (
+                  <Table.Tr aria-hidden style={{ height: padTop }}>
+                    <Table.Td colSpan={9} p={0} />
+                  </Table.Tr>
+                )}
+                {rows.map((row: CompanyRow) => (
                   <Table.Tr
                     key={row.id}
                     onClick={() => setSelected(row)}
@@ -470,9 +500,14 @@ export function CompaniesPage() {
                     </Table.Td>
                   </Table.Tr>
                 ))}
+                {padBottom > 0 && (
+                  <Table.Tr aria-hidden style={{ height: padBottom }}>
+                    <Table.Td colSpan={9} p={0} />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
-          </ScrollArea.Autosize>
+          </div>
         </Paper>
       )}
     </Stack>

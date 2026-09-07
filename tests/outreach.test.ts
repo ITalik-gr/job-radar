@@ -5,6 +5,7 @@ import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import {
+  companies,
   companyState,
   contacts,
   outreach,
@@ -25,6 +26,7 @@ import {
   outreachTemplates,
   pickContact,
   pickLanguage,
+  draftForCompany,
   pickTargetType,
   prepareDrafts,
   seedOutreachTemplates,
@@ -308,6 +310,28 @@ describe('підготовка чернеток', () => {
   it('шаблон із мітками робить чернетку проблемною', async () => {
     const drafts = await listDrafts();
     expect(drafts.every((row) => row.error !== null)).toBe(true);
+  });
+});
+
+describe('чернетка по кнопці з Черги', () => {
+  it('другу чернетку тій самій компанії не створює', async () => {
+    const first = await draftForCompany(studio.id);
+    expect(first.id).not.toBeNull();
+
+    const second = await draftForCompany(studio.id);
+    expect(second.id).toBe(first.id);
+    expect(second.reason).toContain('вже лежить');
+  });
+
+  it('без жодної адреси чернетки не буде, і причина названа', async () => {
+    const db = getDb();
+    const empty = (await upsertCompany({ name: 'Ghost', domain: 'ghost.io', source: 'test' })).company;
+    // enrich: false, щоб тест не ходив у мережу. Кнопка в інтерфейсі, навпаки,
+    // спершу обходить сайт компанії і лише потім здається.
+    const result = await draftForCompany(empty.id, null, { enrich: false });
+    expect(result.id).toBeNull();
+    expect(result.reason).toContain('адреси');
+    await db.delete(companies).where(eq(companies.id, empty.id));
   });
 });
 

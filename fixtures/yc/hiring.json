@@ -1,0 +1,267 @@
+[
+ {
+  "id": 5,
+  "name": "CircuitHub",
+  "slug": "circuithub",
+  "former_names": [],
+  "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/5967d06c7b101af8570dc47b6eea5cd8567dd32b.png",
+  "website": "https://circuithub.com",
+  "all_locations": "London, England, United Kingdom",
+  "long_description": "CircuitHub offers on-demand electronics manufacturing powered by our factory-scale robotics platform, The Grid. This platform delivers a 10x improvement in the speed and cost of small-batch electronics production. Leading customers like Tesla, NASA, and Zipline rely on CircuitHub to cut their time to market in half.",
+  "one_liner": "On-Demand Electronics Manufacturing",
+  "team_size": 58,
+  "industry": "Industrials",
+  "subindustry": "Industrials -> Manufacturing and Robotics",
+  "launched_at": 1322045523,
+  "tags": [
+   "Hard Tech",
+   "Hardware",
+   "Robotics",
+   "Manufacturing",
+   "Automation"
+  ],
+  "tags_highlighted": [],
+  "top_company": false,
+  "isHiring": true,
+  "nonprofit": false,
+  "batch": "Winter 2012",
+  "status": "Active",
+  "industries": [
+   "Industrials",
+   "Manufacturing and Robotics"
+  ],
+  "regions": [
+   "United Kingdom",
+   "Europe",
+   "Remote",
+   "Partly Remote"
+  ],
+  "stage": "Early",
+  "app_video_public": false,
+  "demo_day_video_public": false,
+  "app_answers": null,
+  "question_answers": false,
+  "url": "https://www.ycombinator.com/companies/circuithub",
+  "api": "https://yc-oss.github.io/api/batches/winter-2012/circuithub.json"
+ },
+ {
+  "id": 19,
+  "name": "Rescale",
+  "slug": "rescale",
+  "former_names": [],
+  "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/711fea8d5911eff2cca6ae58f7c2371f123c9dc1.png",
+  "website": "https://rescale.com",
+  "all_locations": "San Francisco, CA, USA",
+  "long_description": "Rescale is a cloud-based platform for computational engineering and R&D, that empowers engineers and researchers to accelerate discovery, testing, and optimization. We democratize access to the latest technologies that drive greater efficiency and competitiveness, including high performance computing, simulation, modeling, AI/ML, and digital twins.\r\n\r\nThe majority of industry leaders worldwide use Rescale as the backbone of R&D, connecting the digital thread of new product innovation to develop products that enrich humanity, from autonomous vehicles to drug discovery. Rescale customers include 7 of the top 10 automotive companies and 3 of the top 6 life science companies.\r\n\r\nRescale’s full-stack, open platform automates systems, data, and workflows into a user-centric experience, so customers can focus on innovation. Choose from 1000+ pre-installed applications for multiphysics simulation and AI/ML-assisted design exploration, including commercial, open-source, and custom software. We offer the largest global network of hyperscale and specialty cloud infrastructure to leverage the latest CPU, GPU, and other specialized architectures.\r\n\r\nRescale is enterprise-ready to enable any size organization to achieve their digital transformation goals–with unified management that gives IT teams full visibility and control of hybrid-cloud operations. Rescale’s intelligent automation gives customers flexibility to improve performance and reduce costs of computing, while our enhanced security and compliance ensures industry-leading standards are met from end to end.\r\n\r\nGetting started is simple, flexible, and free to try. Our team of experts is ready to help you achieve your most ambitious engineering goals – schedule a demo today.\r\n\r\nJoin us and help us build products that change the world: www.rescale.com/careers",
+  "one_liner": "High Performance Computing Built for the Cloud",
+  "team_size": 250,
+  "industry": "B2B",
+  "subindustry": "B2B -> Engineering, Product and Design",
+  "launched_at": 1322045674,
+  "tags": [
+   "Cloud Computing"
+  ],
+  "tags_highlighted": [],
+  "top_company": false,
+  "isHiring": true,
+  "nonprofit": false,
+  "batch": "Winter 2012",
+  "status": "Active",
+  "industries": [
+   "B2B",
+   "Engineering, Product and Design"
+  ],
+  "regions": [
+   "United States of America",
+   "America / Canada",
+   "Remote",
+   "Partly Remote"
+  ],
+  "stage": "Growth",
+  "app_video_public": false,
+  "demo_day_video_public": false,
+  "app_answers": null,
+  "question_answers": true,
+  "url": "https://www.ycombinator.com/companies/rescale",
+  "api": "https://yc-oss.github.io/api/batches/winter-2012/rescale.json"
+ },
+ {
+  "id": 24,
+  "name": "Gusto",
+  "slug": "gusto",
+  "former_names": [
+   "ZenPayroll"
+  ],
+  "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/6ce7845c2e268525f5f04915212ac0a106fb7e3d.png",
+  "website": "https://gusto.com",
+  "all_locations": "San Francisco, CA, USA",
+  "long_description": "Launched in 2012 as ZenPayroll, Gusto serves more than 300,000 businesses nationwide. Each year we process tens of billions of dollars of payroll and provide employee benefits—like health insurance and 401(k) accounts—while helping companies create incredible work places.\r\n\r\nThrough one refreshingly easy, integrated platform, we automate and simplify your payroll, benefits, and HR, all while providing expert support. You and your employees will get the peace of mind you need to do your best work.",
+  "one_liner": "Provides growing businesses with everything to take care of their team",
+  "team_size": 2400,
+  "industry": "B2B",
+  "subindustry": "B2B -> Human Resources",
+  "launched_at": 1322045716,
+  "tags": [
+   "B2B",
+   "Payroll",
+   "Health Insurance"
+  ],
+  "tags_highlighted": [],
+  "top_company": true,
+  "isHiring": true,
+  "nonprofit": false,
+  "batch": "Winter 2012",
+  "status": "Active",
+  "industries": [
+   "B2B",
+   "Human Resources"
+  ],
+  "regions": [
+   "United States of America",
+   "America / Canada",
+   "Remote",
+   "Partly Remote"
+  ],
+  "stage": "Growth",
+  "app_video_public": false,
+  "demo_day_video_public": false,
+  "app_answers": null,
+  "question_answers": true,
+  "url": "https://www.ycombinator.com/companies/gusto",
+  "api": "https://yc-oss.github.io/api/batches/winter-2012/gusto.json"
+ },
+ {
+  "id": 40,
+  "name": "Amplitude",
+  "slug": "amplitude",
+  "former_names": [],
+  "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/fa98c8a53255b3fd2e9d4a65dbb47eec293729f1.png",
+  "website": "https://amplitude.com",
+  "all_locations": "San Francisco, CA, USA",
+  "long_description": "Since graduating from YC, Amplitude (W12) has made it to IPO and beyond by helping cutting edge startups become category leaders. We’ve pioneered the digital analytics category to become the go-to solution for AI pioneers (Cruise, Midjourney), apps that touch millions of consumers (Doordash, Coinbase), and the best in B2B (Atlassian, Rippling, Canva).  \r\n\r\nWith product analytics, experiment, CDP, session replay, and more, Amplitude’s digital analytics platform shows you what your users love, where they’re getting stuck, and what keeps them coming back. You want to build a generational business, and we have the capabilities and pricing plans to guide you every step of the way. Check out our special deal for YC companies and get started on your analytics journey. ",
+  "one_liner": "Digital Analytics Platform",
+  "team_size": 750,
+  "industry": "B2B",
+  "subindustry": "B2B -> Analytics",
+  "launched_at": 1322045852,
+  "tags": [
+   "Developer Tools",
+   "B2B",
+   "Analytics",
+   "Marketing",
+   "Data Visualization"
+  ],
+  "tags_highlighted": [],
+  "top_company": true,
+  "isHiring": true,
+  "nonprofit": false,
+  "batch": "Winter 2012",
+  "status": "Public",
+  "industries": [
+   "B2B",
+   "Analytics"
+  ],
+  "regions": [
+   "United States of America",
+   "America / Canada",
+   "Remote",
+   "Partly Remote"
+  ],
+  "stage": "Growth",
+  "app_video_public": false,
+  "demo_day_video_public": false,
+  "app_answers": null,
+  "question_answers": false,
+  "url": "https://www.ycombinator.com/companies/amplitude",
+  "api": "https://yc-oss.github.io/api/batches/winter-2012/amplitude.json"
+ },
+ {
+  "id": 72,
+  "name": "Apollo",
+  "slug": "apollo",
+  "former_names": [
+   "Meteor",
+   "Apollo",
+   "Apollo M"
+  ],
+  "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/3d684926422fe826a03f5d68cd83bdb413d1c454.png",
+  "website": "http://apollographql.com/",
+  "all_locations": "San Francisco, CA, USA; Remote",
+  "long_description": "Apollo GraphQL is the leader in open source and commercial GraphQL technologies. Apollo’s open-source GraphQL client, server, and gateway are downloaded more than 17M times per month and used in production by over 30% of the Fortune 500. Customers like Walmart, Expedia, Glassdoor, Audi, and PayPal, use the Apollo Graph Platform to unify their GraphQL efforts, collaborate on graph development, and safely iterate on their graphs. Based in San Francisco, Apollo is backed by Insight Partners, Andreessen Horowitz, Matrix Partners, Trinity Ventures, Y Combinator and individual investors.",
+  "one_liner": "Apollo helps engineering teams accelerate delivery",
+  "team_size": 200,
+  "industry": "B2B",
+  "subindustry": "B2B -> Infrastructure",
+  "launched_at": 1326788979,
+  "tags": [
+   "Developer Tools",
+   "Open Source",
+   "GraphQL"
+  ],
+  "tags_highlighted": [],
+  "top_company": false,
+  "isHiring": true,
+  "nonprofit": false,
+  "batch": "Summer 2011",
+  "status": "Active",
+  "industries": [
+   "B2B",
+   "Infrastructure"
+  ],
+  "regions": [
+   "United States of America",
+   "America / Canada",
+   "Remote",
+   "Fully Remote"
+  ],
+  "stage": "Growth",
+  "app_video_public": false,
+  "demo_day_video_public": false,
+  "app_answers": null,
+  "question_answers": false,
+  "url": "https://www.ycombinator.com/companies/apollo",
+  "api": "https://yc-oss.github.io/api/batches/summer-2011/apollo.json"
+ },
+ {
+  "id": 73,
+  "name": "HackerRank",
+  "slug": "hackerrank",
+  "former_names": [
+   "Interviewstreet"
+  ],
+  "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/6df4cc84a7b27db9480fd2d7bff6fa62ff56aacb.png",
+  "website": "http://hackerrank.com",
+  "all_locations": "San Francisco, CA, USA",
+  "long_description": "At HackerRank, our mission is to change the world to value skills over pedigree.\r\n\r\nThousands of companies use our AI-powered platform to hire next-gen developers based on what they can do - not just what’s on their resume. From hiring to upskilling, we help teams identify and grow technical talent at every stage of the developer journey.\r\n\r\nOver 26 million developers have joined the HackerRank Community to learn and certify their skills, practice interviewing, and discover relevant jobs.\r\n",
+  "one_liner": "Change the world to value skills over pedigree",
+  "team_size": 300,
+  "industry": "B2B",
+  "subindustry": "B2B -> Recruiting and Talent",
+  "launched_at": 1326788989,
+  "tags": [
+   "Developer Tools",
+   "Recruiting"
+  ],
+  "tags_highlighted": [],
+  "top_company": false,
+  "isHiring": true,
+  "nonprofit": false,
+  "batch": "Summer 2011",
+  "status": "Active",
+  "industries": [
+   "B2B",
+   "Recruiting and Talent"
+  ],
+  "regions": [
+   "United States of America",
+   "America / Canada"
+  ],
+  "stage": "Growth",
+  "app_video_public": false,
+  "demo_day_video_public": false,
+  "app_answers": null,
+  "question_answers": false,
+  "url": "https://www.ycombinator.com/companies/hackerrank",
+  "api": "https://yc-oss.github.io/api/batches/summer-2011/hackerrank.json"
+ }
+]

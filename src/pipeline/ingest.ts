@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { getDb } from '../db/client.js';
 import { companies, companyState, vacancies, type Company } from '../db/schema.js';
 import { log } from '../lib/log.js';
+import { isUsefulDetail } from '../lib/detail.js';
 import { normalizeDomain } from '../lib/normalize.js';
 import type { RawVacancy } from '../sources/registry.js';
 import { classifyText, type ClassifyOptions } from './classify.js';
@@ -32,6 +33,8 @@ export interface IngestStats {
   classified: number;
   needsReview: number;
   detailed: number;
+  /** Сторінка відкрилась, але опису в ній не було: SPA або редірект. */
+  emptyDetail: number;
   /** Скільки записів не пішли в модель, бо їх відсіяли безкоштовні правила. */
   skippedByFilter: number;
 }
@@ -97,6 +100,7 @@ export async function ingestVacancies(
     classified: 0,
     needsReview: 0,
     detailed: 0,
+    emptyDetail: 0,
     skippedByFilter: 0,
   };
   const threshold = options.detailThreshold ?? 400;
@@ -148,10 +152,18 @@ export async function ingestVacancies(
     let rawText = item.rawText;
     if (options.fetchDetail && rawText.length < threshold) {
       const detail = await options.fetchDetail(item);
-      if (detail && detail.length > rawText.length) {
+      /*
+       * Довша сторінка ще не означає кращий текст. У SPA-бордів у HTML лежить
+       * лише навігація, і без перевірки на прозу радар зберігав меню як опис
+       * вакансії, а потім платив за його класифікацію.
+       */
+      if (detail && detail.length > rawText.length && isUsefulDetail(detail)) {
         rawText = detail;
         text = `${item.title ?? ''}\n${rawText}`;
         stats.detailed += 1;
+      } else if (detail) {
+        log.debug({ url: item.url }, 'сторінка вакансії без опису, лишаю короткий текст');
+        stats.emptyDetail += 1;
       }
     }
 

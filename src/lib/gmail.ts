@@ -43,8 +43,20 @@ export function redirectUri(): string {
   return config.gmail.redirectUri || `http://127.0.0.1:${config.gmail.authPort}/callback`;
 }
 
+/**
+ * Адреса відправника мусить бути адресою.
+ *
+ * Перевірка не зайва: значення приходить із секрету, який набирають руками в
+ * терміналі, і помилка розкладки перетворює його на "шефдшлювум", після чого
+ * лист або не піде, або піде з нечитабельним From. Мовчазний From гірший за
+ * помилку на екрані, бо його бачить тільки одержувач.
+ */
+export function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+
 export function isConfigured(): boolean {
-  return Boolean(config.gmail.clientId && config.gmail.clientSecret && config.gmail.fromEmail);
+  return Boolean(config.gmail.clientId && config.gmail.clientSecret && isEmail(config.gmail.fromEmail));
 }
 
 /**
@@ -223,6 +235,9 @@ export interface GmailStatus {
   configured: boolean;
   connected: boolean;
   email: string | null;
+  /** Адреса з налаштувань, як є. Показується, навіть коли вона зіпсована. */
+  fromEmail: string | null;
+  emailValid: boolean;
   scopes: string[];
   connectedAt: number | null;
   /** Коли протухає поточний access token. Refresh token живе довше і дати не має. */
@@ -234,23 +249,33 @@ export interface GmailStatus {
 export function gmailStatus(): GmailStatus {
   const configured = isConfigured();
   const local = hasTokenStore();
-  const token = configured ? loadToken() : null;
+  /*
+   * Токен читається незалежно від решти налаштувань. Інакше зіпсована адреса
+   * відправника вдавала б, що пошта взагалі не підключена, і власник ішов би
+   * проходити OAuth заново замість того, щоб виправити один секрет.
+   */
+  const token = loadToken();
   const connected = Boolean(token?.refreshToken);
+  const emailValid = isEmail(config.gmail.fromEmail);
 
   return {
     configured,
     connected,
-    email: token?.email ?? null,
+    email: emailValid ? (token?.email ?? null) : null,
+    fromEmail: config.gmail.fromEmail || null,
+    emailValid,
     scopes: token?.scopes ?? [],
     connectedAt: token?.connectedAt ?? null,
     expiresAt: token?.expiresAt ?? null,
     hint: !local
       ? 'розсилка запускається локально, не на Workers'
-      : !configured
-        ? 'заповнити GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GMAIL_FROM_EMAIL у .env'
-        : connected
-          ? null
-          : 'виконати pnpm cli auth:gmail',
+      : config.gmail.fromEmail && !emailValid
+        ? `GMAIL_FROM_EMAIL це не адреса: "${config.gmail.fromEmail}". Схоже на помилку розкладки, задати секрет заново`
+        : !configured
+          ? 'заповнити GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GMAIL_FROM_EMAIL'
+          : connected
+            ? null
+            : 'натиснути "підключити" і підтвердити доступ у Google',
   };
 }
 
@@ -282,6 +307,29 @@ export function stripEmDash(text: string): string {
   return text.replace(/\s*—\s*/g, ', ').replace(/,\s*,/g, ',');
 }
 
+/**
+ * Помилки Gmail приходять абзацом англійського тексту з посиланням на консоль.
+ * Найчастіші з них означають одну конкретну дію, і сказати її одразу дешевше,
+ * ніж змушувати читати абзац і здогадуватись.
+ */
+export function explainSendError(message: string | undefined, status: number): string {
+  const text = message ?? `код ${status}`;
+
+  if (/has not been used in project|is disabled/i.test(text)) {
+    return 'Gmail API вимкнений у проєкті Google. Увімкнути його в Google Cloud Console (APIs and Services, Enable APIs, Gmail API) і повторити за хвилину';
+  }
+  if (/insufficient|scope/i.test(text)) {
+    return 'бракує дозволів: підключити пошту заново, щоб видати gmail.send і gmail.readonly';
+  }
+  if (/invalid_grant|unauthorized|401/i.test(text)) {
+    return 'токен Gmail протух або відкликаний, підключити пошту заново';
+  }
+  if (/rate|quota|429/i.test(text)) {
+    return 'Gmail тимчасово обмежив відправку, спробувати за кілька хвилин';
+  }
+  return `Gmail не прийняв лист: ${text}`;
+}
+
 export async function sendMessage(input: SendInput): Promise<SendResult> {
   const token = await accessToken();
 
@@ -310,7 +358,7 @@ export async function sendMessage(input: SendInput): Promise<SendResult> {
     error?: { message?: string };
   };
   if (!response.ok || !data.id) {
-    throw new Error(`Gmail не прийняв лист: ${data.error?.message ?? response.status}`);
+    throw new Error(explainSendError(data.error?.message, response.status));
   }
 
   log.info({ to: input.to, messageId: data.id }, 'лист надіслано');

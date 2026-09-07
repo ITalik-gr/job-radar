@@ -37,9 +37,18 @@ describe('прод-режим пошти', () => {
     expect(loadToken()).toMatchObject({ accessToken: 'ya29.x', expiresAt: 123 });
   });
 
+  it('зіпсована адреса відправника видно окремо від підключення', () => {
+    setRuntimeEnv({ GMAIL_FROM_EMAIL: 'шефдшлювум' });
+    const status = gmailStatus();
+    expect(status.emailValid).toBe(false);
+    expect(status.connected).toBe(true);
+    expect(status.hint).toContain('розкладки');
+    setRuntimeEnv({ GMAIL_FROM_EMAIL: 'italik@example.com' });
+  });
+
   it('без секрету підключення не вважається робочим', () => {
     setRuntimeEnv({ GMAIL_REFRESH_TOKEN: '' });
     expect(loadToken()).toBeNull();
-    expect(gmailStatus().hint).toContain('auth:gmail');
+    expect(gmailStatus().hint).toContain('підключити');
   });
 });

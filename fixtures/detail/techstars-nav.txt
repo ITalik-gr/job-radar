@@ -1,0 +1,305 @@
+Product Engineer - Wix Payments @ Westcott Multimedia | Techstars Job Board
+
+-
+
+startups
+
+-
+
+corporations
+
+-
+
+communities
+
+-
+
+investors
+
+-
+
+mission
+
+-
+
+-
+
+startups
+
+-
+
+corporations
+
+-
+
+communities
+
+-
+
+investors
+
+-
+
+mission
+
+-
+
+news
+
+-
+
+accelerators
+
+-
+
+portfolio
+
+-
+
+careers
+
+-
+
+contact
+
+-
+
+-
+
+-
+
+-
+
+-
+
+-
+
+startups
+
+corporations
+
+communities
+
+investors
+
+mission
+
+startups
+
+overview
+
+Learn how Techstars can scale your vision.
+
+accelerators
+
+Find a program
+
+portfolio
+
+See the companies we've helped to grow.
+
+learn more & apply
+
+Let's start the conversation.
+
+corporations
+
+overview
+
+See how Techstars partnerships fuel innovation.
+
+accelerator partnership
+
+Future-proof your business with startups in your field.
+
+network engagement
+
+Get access to the global Techstars Network of founders.
+
+innovation bootcamp
+
+Empower your internal team with new tools and frameworks.
+
+communities
+
+overview
+
+Learn how Techstars is helping entrepreneurs in your community.
+
+ecosystem development
+
+Transform your startup community into a thriving ecosystem.
+
+startupweekend.org
+
+Start building your future in just 54 hours.
+
+startupweek.co
+
+Celebrate entrepreneurs in communities across the world.
+
+startupdigest.com
+
+Explore the personalized insider newsletter for all things startup.
+
+investors
+
+overview
+
+Learn how Techstars invests in the future.
+
+mission
+
+overview
+
+Learn more about the values that drive us.
+
+code of conduct
+
+Dive deeper into the standards we live by.
+
+diversity & inclusion
+
+Techstars Foundation
+
+-
+
+contact
+
+-
+
+careers
+
+-
+
+news
+
+-
+
+-
+
+-
+
+-
+
+-
+
+companies
+
+Jobs
+
+Search
+jobsExplore
+companiesJoin talent network
+Talent
+My job alerts
+
+Product Engineer - Wix Payments
+
+Westcott Multimedia
+
+Product · Full-time
+Kyiv City, Kyiv city, Ukraine
+Posted on Aug 22, 2026
+
+Apply now
+
+Job Description
+
+We are seeking a Product Engineer to take end-to-end ownership of the product — from shaping product decisions to bringing them to life through frontend development.
+
+As a product engineer in the Account team at Wix Payments, you'll own payment products end-to-end, from shaping what gets built to designing the experience, building the client, and working on services behind it. You'll enable users across Wix, Base44, and beyond to accept payments and stay compliant while navigating complex regulations across multiple countries. You’ll also use AI as part of your workflow to explore ideas, prototype, and write code.
+
+In your day-to-day, you will:
+
+- Own payment products from idea to production, including product thinking, UX, client, and the APIs behind them
+- Decide how things should work, not just how they're built, together with product managers and designers
+- Build payment flows used by millions of people across dozens of markets, handling failures and edge cases with components and APIs that scale as we add payment methods and regulations
+- Use AI for exploring ideas, prototyping, and writing code, ensuring high-quality standards for what ships
+- Work with TypeScript, React, Node.js, cloud, and CI/CD, while adopting new tools as they emerge
+
+Qualifications
+
+- 3+ years as a software engineer, with real ownership of things running in production
+- Deep frontend expertise, and the drive to work outside it
+- Solid design skills: components, state, APIs, and data flows that scale with the product
+- Experience working with AI tools, and good judgment about what they produce
+- Curiosity about the whole system, from how a button feels to how the service behind it runs
+- Care about correctness. In payments, a bug isn't a broken layout but someone's money
+- Payments experience – an advantage
+
+Additional Information
+
+We’re the Wix Payments team. We provide Wix users with the best way to collect payments from their customers and manage their Wix income online, in person, and on-the-go. We’re passionate about crafting the best experience for our users, and empowering any business on Wix to realize its full financial potential. We have developed our own custom payment processing solution that blends many integrations into one clean and intuitive user interface. We also build innovative products that help our users manage their cash and grow their business. We are fun, passionate and love what we do. We move fast in a dynamic work environment, so you’ll be able to ship products that have an immediate impact on millions of users across the globe.
+
+Apply now
+
+See more open positions at Westcott Multimedia
+
+Powered by Getro.com
+Privacy policyCookie policy
+
+-
+contact
+
+-
+careers
+
+-
+news
+
+-
+
+-
+
+-
+
+-
+
+-
+
+startups
+
+accelerators
+
+portfolio
+
+learn more & apply
+
+corporations
+
+accelerator partnership
+
+network engagement
+
+innovation bootcamp
+
+communities
+
+ecosystem development
+
+startupweekend.org
+
+startupweek.co
+
+startupdigest.com
+
+investors
+
+mission
+
+code of conduct
+
+diversity & inclusion
+
+Techstars Foundation
+
+resources
+
+faq
+
+contact
+
+brand guidelines
+
+© techstars 2024|privacy policy|terms of use

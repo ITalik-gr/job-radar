@@ -218,9 +218,15 @@ export interface TemplateRow {
   /** Тип компанії, під який заточений текст. Порожнє означає універсальний. */
   forKind: string | null;
   subject: string | null;
+  /** Статичний перший абзац. Тіло підставляє його через {{intro}}. */
+  intro: string | null;
   body: string;
   note: string | null;
   archived: boolean;
+  /** uk | en. За мовою шаблон підбирається під країну компанії. */
+  language: string;
+  /** vacancy | studio_named | studio_generic | followup. Порожнє означає ручне копіювання. */
+  targetType: string | null;
   /** Скільки листів написано цим ключем. Показується перед видаленням. */
   usageCount: number;
   createdAt: number;
@@ -258,6 +264,8 @@ export interface GmailStatus {
   configured: boolean;
   connected: boolean;
   email: string | null;
+  fromEmail: string | null;
+  emailValid: boolean;
   scopes: string[];
   connectedAt: number | null;
   expiresAt: number | null;
@@ -316,6 +324,15 @@ export interface SendCounters {
   nextAllowedAt: number | null;
   bounceRate: number;
   windowOpen: boolean;
+}
+
+/**
+ * Посилання на підключення пошти. Токен радара мусить іти в query: OAuth
+ * повертається редіректом браузера, і заголовок туди не покласти.
+ */
+export function gmailConnectUrl(): string {
+  const value = token();
+  return `/api/gmail/connect${value ? `?token=${encodeURIComponent(value)}` : ''}`;
 }
 
 export function setToken(value: string): void {
@@ -400,12 +417,24 @@ export const api = {
   runSource: (id: string) => request<{ itemsFound: number }>(`/sources/${id}/run`, { method: 'POST', body: '{}' }),
   stats: () => request<Stats>('/stats'),
   gmailStatus: () => request<GmailStatus>('/gmail/status'),
+  gmailConnectUrl,
   drafts: () => request<{ drafts: DraftRow[]; counters: SendCounters }>('/outreach/drafts'),
+  draftForCompany: (companyId: number, vacancyId?: number | null) =>
+    request<{ id: number | null; reason: string | null }>('/outreach/drafts', {
+      method: 'POST',
+      body: JSON.stringify({ companyId, vacancyId }),
+    }),
   regenerateIntro: (id: number) =>
     request<DraftRow>(`/outreach/drafts/${id}/regenerate`, { method: 'POST', body: '{}' }),
   outreachStats: () => request<OutreachStats>('/stats/outreach'),
   prepareFollowups: () =>
     request<{ due: number; created: number }>('/outreach/followups', { method: 'POST', body: '{}' }),
+  /**
+   * Універсальний виклик операції. Усі роути операцій однакової форми, тому
+   * інтерфейсу не треба знати про кожну окремо: він малює їх списком з опису.
+   */
+  run: (path: string, body: Record<string, unknown> = {}) =>
+    request<Record<string, unknown>>(path, { method: 'POST', body: JSON.stringify(body) }),
   facts: () => request<FactRow[]>('/facts'),
   createFact: (body: Record<string, unknown>) =>
     request<FactRow>('/facts', { method: 'POST', body: JSON.stringify(body) }),

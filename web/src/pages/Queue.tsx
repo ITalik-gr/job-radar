@@ -31,6 +31,7 @@ import {
   Filter,
   Inbox,
   MessageSquareQuote,
+  MailPlus,
   Send,
   ThumbsDown,
   TriangleAlert,
@@ -128,6 +129,18 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
   const salary = formatSalary(card);
   const waiting = waitingDays(card.firstShownAt);
   const [rawOpen, setRawOpen] = useState(false);
+
+  const toDrafts = useMutation({
+    mutationFn: () => api.draftForCompany(card.companyId, card.vacancyId),
+    onSuccess: (result) =>
+      notifications.show({
+        color: result.id && !result.reason ? 'green' : 'yellow',
+        title: card.company,
+        message: result.reason ?? 'чернетка на сторінці До відправки',
+      }),
+    onError: (error: Error) =>
+      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+  });
 
   useHotkeys(
     useMemo(
@@ -352,6 +365,21 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
         </Tooltip>
 
         <Group gap="xs" ml="auto" wrap="nowrap">
+          {/*
+            Міст між Чергою і розсилкою: та сама компанія, ті самі шаблони і той
+            самий вибір мови, що й у нічній підготовці. Без цієї кнопки лишалось
+            би два паралельні способи написати листа, які з часом розійшлись би.
+          */}
+          <Tooltip label="зібрати чернетку листа. Якщо адреси немає, спершу обійде сайт компанії">
+            <Button
+              variant="light"
+              leftSection={<MailPlus size={15} />}
+              loading={toDrafts.isPending}
+              onClick={() => toDrafts.mutate()}
+            >
+              У чергу листів
+            </Button>
+          </Tooltip>
           <TemplateSelect kind="vacancy" value={template} onChange={setTemplate} width={150} />
           <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
             <Button

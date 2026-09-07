@@ -14,6 +14,7 @@ import { renderLetter, type LetterContext } from '../lib/letter.js';
 import { log } from '../lib/log.js';
 import { rules } from './rules.js';
 import { generateParagraph } from './ai-paragraph.js';
+import { enrich } from './enrich.js';
 
 /**
  * Підготовка чернеток розсилки. Модуль описаний в OUTREACH.md.
@@ -744,6 +745,123 @@ export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCan
   }
 
   return result;
+}
+
+/**
+ * Чернетка для конкретної компанії, по кнопці з Черги або зі Студій.
+ *
+ * Це той самий шлях, що й нічна підготовка: ті самі шаблони, той самий вибір
+ * мови і контакту, ті самі перевірки. Окрема логіка "швидкого листа" тут була б
+ * другим набором правил, який з часом розійдеться з першим.
+ */
+export async function draftForCompany(
+  companyId: number,
+  vacancyId?: number | null,
+  options: { ai?: boolean; enrich?: boolean } = {},
+): Promise<{ draft: PreparedDraft | null; id: number | null; reason: string | null }> {
+  const db = getDb();
+
+  const [existing] = await db
+    .select({ id: outreach.id })
+    .from(outreach)
+    .where(and(eq(outreach.companyId, companyId), eq(outreach.status, 'draft')));
+  if (existing) {
+    return { draft: null, id: existing.id, reason: 'чернетка цій компанії вже лежить у черзі' };
+  }
+
+  let [candidate] = await draftCandidatesFor([companyId]);
+  if (!candidate) return { draft: null, id: null, reason: 'компанію не знайдено' };
+
+  /*
+   * Немає адреси це ще не відмова: сайт компанії просто ще не обходили. Замість
+   * того, щоб відправити людину запускати enrichment руками і повертатись, ходимо
+   * на сайт прямо зараз. Одна компанія це кілька сторінок, не хвилини.
+   *
+   * Іменного контакту може і не знайтись, і це нормально: загальна скринька з
+   * сайту теж адреса, під неї є окремий шаблон. Вигадувати hello@домен ми не
+   * будемо, або воно є на сайті, або листа не буде.
+   */
+  let enriched = false;
+  if (!candidate.contact?.email && options.enrich !== false) {
+    await enrich({ domain: candidate.domain, limit: 1 });
+    enriched = true;
+    [candidate] = await draftCandidatesFor([companyId]);
+    if (!candidate) return { draft: null, id: null, reason: 'компанію не знайдено' };
+  }
+
+  if (!candidate.contact?.email) {
+    return {
+      draft: null,
+      id: null,
+      reason: enriched
+        ? 'обійшов сайт, жодної адреси там немає. Знайти пошту руками і додати контакт'
+        : 'у компанії немає жодної адреси',
+    };
+  }
+
+  if (vacancyId) {
+    const [vacancy] = await db.select().from(vacancies).where(eq(vacancies.id, vacancyId));
+    if (vacancy) {
+      candidate.vacancyId = vacancy.id;
+      candidate.vacancyTitle = vacancy.title;
+      candidate.vacancyStack = vacancy.stack;
+    }
+  }
+
+  const language = pickLanguage(candidate.country);
+  const target = pickTargetType({
+    hasVacancy: candidate.vacancyId !== null,
+    contactName: candidate.contact?.name,
+    contactEmail: candidate.contact?.email,
+  });
+
+  const template = matchTemplate(await outreachTemplates(), target, language);
+  if (!template) {
+    return { draft: null, id: null, reason: `немає шаблона ${target} мовою ${language}` };
+  }
+
+  const ai = options.ai
+    ? await generateParagraph(candidate, language)
+    : { paragraph: null, used: false, reason: null, confidence: null };
+
+  const built = buildDraft(candidate, template, language, ai.paragraph);
+  const [row] = await db
+    .insert(outreach)
+    .values({
+      companyId: candidate.companyId,
+      vacancyId: candidate.vacancyId,
+      contactId: candidate.contact?.id ?? null,
+      channel: 'email',
+      status: 'draft',
+      sentAt: null,
+      queuedAt: Date.now(),
+      templateId: built.templateId,
+      templateUsed: built.templateSlug,
+      language: built.language,
+      subjectFinal: built.subject,
+      bodyFinal: built.body,
+      contactName: built.contactName,
+      contactEmail: built.contactEmail,
+      aiUsed: ai.used,
+      aiParagraph: ai.paragraph,
+      aiFallbackReason: ai.reason,
+      error: built.error,
+    })
+    .returning({ id: outreach.id });
+
+  return {
+    draft: {
+      companyId: candidate.companyId,
+      vacancyId: candidate.vacancyId,
+      contactId: candidate.contact?.id ?? null,
+      aiUsed: ai.used,
+      aiParagraph: ai.paragraph,
+      aiFallbackReason: ai.reason,
+      ...built,
+    },
+    id: row!.id,
+    reason: null,
+  };
 }
 
 /** Пропустити компанію: чернетка стирається, історія не чіпається. */

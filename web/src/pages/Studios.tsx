@@ -32,6 +32,7 @@ import {
   Mail,
   Palette,
   Search,
+  MailPlus,
   Send,
   ThumbsDown,
 } from 'lucide-react';
@@ -148,16 +149,29 @@ function TagList({ tags, limit = 10 }: { tags: string[]; limit?: number }) {
 function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string, unknown>) => void }) {
   const [template, setTemplate] = useState<string | null>(null);
 
+  const toDrafts = useMutation({
+    mutationFn: () => api.draftForCompany(card.companyId),
+    onSuccess: (result) =>
+      notifications.show({
+        color: result.id && !result.reason ? 'green' : 'yellow',
+        title: card.name,
+        message: result.reason ?? 'чернетка на сторінці До відправки',
+      }),
+    onError: (error: Error) =>
+      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+  });
+
   useHotkeys(
     useMemo(
       () => ({
+        d: () => toDrafts.mutate(),
         i: () => onAct({ action: 'interesting' }),
         n: () => onAct({ action: 'not_interesting' }),
         e: () => onAct({ action: 'contacted', templateUsed: template }),
         b: () => onAct({ action: 'blacklist' }),
         s: () => onAct({ action: 'snooze', days: 60 }),
       }),
-      [onAct, template],
+      [onAct, template, toDrafts],
     ),
   );
 
@@ -439,6 +453,22 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
         </Tooltip>
 
         <Group gap="xs" ml="auto" wrap="nowrap">
+          {/*
+            Основний шлях для студій і стартапів: лист збирається тим самим кодом,
+            що й нічна підготовка, і лягає на сторінку До відправки. Кнопка "Написав"
+            поруч лишається журналом для листів, написаних руками деінде.
+          */}
+          <Tooltip label="зібрати чернетку листа. Якщо адреси немає, спершу обійде сайт компанії">
+            <Button
+              variant="light"
+              leftSection={<MailPlus size={15} />}
+              rightSection={<Kbd size="xs">d</Kbd>}
+              loading={toDrafts.isPending}
+              onClick={() => toDrafts.mutate()}
+            >
+              У чергу листів
+            </Button>
+          </Tooltip>
           <TemplateSelect kind="studio" value={template} onChange={setTemplate} width={150} />
           <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
             <Button

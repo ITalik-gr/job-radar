@@ -25,6 +25,15 @@ export interface TemplateInput {
   body?: string;
   note?: string | null;
   archived?: boolean;
+  /** uk | en. Мова тексту, за нею шаблон підбирається під країну компанії. */
+  language?: string;
+  /**
+   * Роль у розсилці: vacancy | studio_named | studio_generic | followup.
+   * Порожнє означає, що шаблон у розсилці не бере участі і лежить для копіювання.
+   */
+  targetType?: string | null;
+  /** Статичний перший абзац. Підставляється в тіло через {{intro}}. */
+  intro?: string | null;
 }
 
 /** Slug лягає в outreach.template_used, тому мусить бути стабільним і без пробілів. */
@@ -111,8 +120,11 @@ export async function createTemplate(input: TemplateInput): Promise<Template> {
       kind: input.kind ?? 'vacancy',
       forKind: input.forKind ?? null,
       subject: input.subject ?? null,
+      intro: input.intro ?? null,
       body: input.body ?? '',
       note: input.note ?? null,
+      language: input.language ?? 'uk',
+      targetType: input.targetType || null,
     })
     .returning();
   return row!;
@@ -154,6 +166,9 @@ export async function updateTemplate(id: number, input: Partial<TemplateInput>):
   if (input.subject !== undefined) patch.subject = input.subject;
   if (input.body !== undefined) patch.body = input.body;
   if (input.note !== undefined) patch.note = input.note;
+  if (input.intro !== undefined) patch.intro = input.intro;
+  if (input.language !== undefined) patch.language = input.language;
+  if (input.targetType !== undefined) patch.targetType = input.targetType || null;
   if (input.archived !== undefined) patch.archived = input.archived;
 
   const [row] = await db.update(templates).set(patch).where(eq(templates.id, id)).returning();
@@ -216,8 +231,16 @@ export async function duplicateTemplate(id: number): Promise<Template> {
     kind: existing.kind,
     forKind: existing.forKind,
     subject: existing.subject,
+    intro: existing.intro,
     body: existing.body,
     note: existing.note,
+    language: existing.language,
+    /*
+     * Роль у розсилці копії не дістається: два активні шаблони на ту саму пару
+     * випадок-мова означали б, що вибір стає випадковим. Копія робиться, щоб
+     * спробувати інший текст, і роль їй призначає людина свідомо.
+     */
+    targetType: null,
   });
 }
 

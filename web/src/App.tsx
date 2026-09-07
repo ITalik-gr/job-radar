@@ -1,8 +1,10 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Anchor,
   AppShell,
   Badge,
+  Box,
   Button,
   Divider,
   Group,
@@ -25,6 +27,7 @@ import {
   FileText,
   MailPlus,
   Palette,
+  Play,
   Radar,
   Rocket,
   Radio,
@@ -38,6 +41,7 @@ import { QueuePage } from './pages/Queue';
 import { CompaniesPage } from './pages/Companies';
 import { OutreachPage } from './pages/Outreach';
 import { SendingPage } from './pages/Sending';
+import { OperationsPage } from './pages/Operations';
 import { StudiosPage } from './pages/Studios';
 import { StartupsPage } from './pages/Startups';
 import { SourcesPage } from './pages/Sources';
@@ -58,6 +62,7 @@ const TABS = [
   { id: 'sources', label: 'Джерела', icon: Radio, hint: 'стан адаптерів і ручний запуск' },
   { id: 'templates', label: 'Шаблони', icon: FileText, hint: 'твої тексти листів і резюме' },
   { id: 'rules', label: 'Правила', icon: SlidersHorizontal, hint: 'поріг, стоп-слова і ваги термінів' },
+  { id: 'operations', label: 'Операції', icon: Play, hint: 'усе, що раніше жило в CLI: збір, обробка, перевірки' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -97,6 +102,53 @@ function TokenGate() {
         </Button>
       </Paper>
     </div>
+  );
+}
+
+/**
+ * Рядок стану в бічній колонці. Значення обрізається, повний текст у підказці:
+ * пошта буває довгою, і без обрізання вона розсовувала колонку і лізла в друге
+ * слово, як на скріні з адресою.
+ */
+function StatusRow({
+  label,
+  value,
+  hint,
+  tone = 'plain',
+  action,
+}: {
+  label: string;
+  value?: string;
+  hint?: string;
+  tone?: 'plain' | 'ok' | 'warn';
+  action?: { label: string; href: string };
+}) {
+  const color = tone === 'warn' ? 'yellow.8' : undefined;
+
+  return (
+    <Group justify="space-between" gap="xs" wrap="nowrap">
+      <Group gap={6} wrap="nowrap">
+        {tone !== 'plain' && (
+          <Box
+            w={6}
+            h={6}
+            style={{
+              borderRadius: 999,
+              background: `var(--mantine-color-${tone === 'ok' ? 'teal' : 'yellow'}-6)`,
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <Text size="xs" c="dimmed">
+          {label}
+        </Text>
+      </Group>
+      <Tooltip label={hint ?? value ?? label} multiline maw={260} withArrow>
+        <Text size="xs" className="tabular" c={color} truncate maw={130} ta="right">
+          {action ? <Anchor href={action.href} size="xs" c={color}>{action.label}</Anchor> : value}
+        </Text>
+      </Tooltip>
+    </Group>
   );
 }
 
@@ -235,46 +287,41 @@ export function App() {
                   перемикають розділи
                 </Text>
               </Group>
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  поріг рахунку
-                </Text>
-                <Text size="xs" className="tabular">
-                  {stats.threshold}
-                </Text>
-              </Group>
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  виклики моделі
-                </Text>
-                <Text size="xs" className="tabular">
-                  {stats.llmBudgetLeft}
-                </Text>
-              </Group>
+              <StatusRow label="поріг рахунку" value={String(stats.threshold)} />
+              <StatusRow
+                label="виклики моделі"
+                value={String(stats.llmBudgetLeft)}
+                hint="скільки викликів лишилось сьогодні"
+              />
               {/*
                 Хто класифікує, видно одразу: Anthropic це рахунок за токени,
                 Workers AI це квота вже оплаченого плану Cloudflare.
               */}
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  класифікує
-                </Text>
-                <Tooltip label={stats.llmModel}>
-                  <Text size="xs" className="tabular">
-                    {stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
-                  </Text>
-                </Tooltip>
-              </Group>
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  пошта
-                </Text>
-                <Tooltip label={gmail?.hint ?? gmail?.email ?? 'Gmail для розсилки'}>
-                  <Text size="xs" className="tabular" c={gmail?.connected ? undefined : 'yellow.8'}>
-                    {gmail?.connected ? (gmail.email ?? 'підключена') : 'не підключена'}
-                  </Text>
-                </Tooltip>
-              </Group>
+              <StatusRow
+                label="класифікує"
+                value={stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
+                hint={stats.llmModel}
+              />
+              {/*
+                Пошта має три стани, а не два: підключена, не підключена і
+                підключена з поламаною адресою відправника. Третій найпідліший,
+                бо все виглядає робочим, а лист іде з нечитабельним From.
+              */}
+              <StatusRow
+                label="пошта"
+                hint={gmail?.hint ?? gmail?.email ?? 'Gmail для розсилки'}
+                tone={gmail?.connected ? (gmail.emailValid ? 'ok' : 'warn') : 'warn'}
+                value={
+                  gmail?.connected
+                    ? gmail.emailValid
+                      ? (gmail.email ?? 'підключена')
+                      : 'перевір адресу'
+                    : undefined
+                }
+                action={
+                  gmail?.connected ? undefined : { label: 'підключити', href: api.gmailConnectUrl() }
+                }
+              />
               {stats.vacancies.needsReview > 0 && (
                 <Group gap={6} c="yellow.8">
                   <CircleAlert size={14} />
@@ -297,6 +344,7 @@ export function App() {
           {tab === 'sources' && <SourcesPage />}
           {tab === 'templates' && <TemplatesPage />}
           {tab === 'rules' && <RulesPage />}
+          {tab === 'operations' && <OperationsPage />}
           {tab === 'stats' && (
             <Suspense fallback={<Skeleton h={320} m="lg" />}>
               <StatsPage />
