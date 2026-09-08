@@ -29,6 +29,7 @@ import {
   draftForCompany,
   pickTargetType,
   prepareDrafts,
+  retemplateDraft,
   seedOutreachTemplates,
   updateDraft,
   type DraftCandidate,
@@ -313,7 +314,111 @@ describe('підготовка чернеток', () => {
   });
 });
 
+describe('компанія без адреси', () => {
+  /*
+   * Чернетка без адреси раніше лягала в чергу з позначкою "немає адреси, куди писати",
+   * і власник бачив лист, який нікуди не піде, доки не запустить збір контактів окремо.
+   * Тепер обхід сайту йде до складання листа, а якщо адреси немає і після нього,
+   * чернетка не створюється зовсім.
+   *
+   * `enrichLimit: 0` тут для того, щоб тест не ходив у мережу.
+   */
+  it('у чергу не потрапляє, а причина називається', async () => {
+    const db = getDb();
+    const empty = (await upsertCompany({ name: 'Silent', domain: 'silent.io', source: 'test' })).company;
+
+    /*
+     * Адреса є, але мертва після hard bounce. Саме такі компанії і давали зіпсовані
+     * чернетки: відбір кандидатів дивиться лише на наявність пошти, а вибір контакту
+     * ще й на її придатність, і між цими двома перевірками лист устигав створитись.
+     */
+    await db.insert(contacts).values({
+      companyId: empty.id,
+      name: 'Dead Box',
+      email: 'dead@silent.io',
+      emailValid: false,
+    });
+
+    const before = (await listDrafts()).length;
+    const report = await prepareDrafts({ enrichLimit: 0 });
+
+    expect((await listDrafts()).length).toBe(before);
+    expect(report.skipped.some((row) => row.company === 'Silent')).toBe(true);
+    expect(report.skipped.find((row) => row.company === 'Silent')?.reason).toContain('адреси');
+
+    await db.delete(companies).where(eq(companies.id, empty.id));
+  });
+});
+
+describe('заміна шаблона в чернетці', () => {
+  it('текст збирається заново, а перший абзац лишається', async () => {
+    const db = getDb();
+    const [draft] = await listDrafts();
+    const was = draft!.templateUsed;
+
+    const other = (await db.select().from(templates).where(eq(templates.slug, 'send_studio_generic_en')))[0]!;
+    const updated = await retemplateDraft(draft!.id, other.slug);
+
+    expect(updated?.templateUsed).toBe(other.slug);
+    expect(updated?.templateUsed).not.toBe(was);
+    expect(updated?.language).toBe(other.language);
+
+    const [row] = await db.select().from(outreach).where(eq(outreach.id, draft!.id));
+    expect(row!.templateId).toBe(other.id);
+  });
+
+  it('невідомий шаблон це помилка, а не тиха заміна', async () => {
+    const [draft] = await listDrafts();
+    await expect(retemplateDraft(draft!.id, 'нема_такого')).rejects.toThrow('немає');
+  });
+});
+
 describe('чернетка по кнопці з Черги', () => {
+  /*
+   * Шаблон, вибраний руками на картці, раніше нікуди не йшов: код підбирав свій
+   * за роллю і мовою, і власник отримував чернетку зовсім іншим текстом.
+   *
+   * Компанія тут своя, а не спільна: чернетка на компанію буває рівно одна, тому
+   * тест на спільній заважав би сусіднім.
+   */
+  it('бере шаблон, вибраний на картці, а не підібраний кодом', async () => {
+    const db = getDb();
+    const own = (await upsertCompany({ name: 'Choice', domain: 'choice.ua', country: 'UA', source: 'test' }))
+      .company;
+    await db.insert(contacts).values({ companyId: own.id, name: 'Ola', email: 'ola@choice.ua' });
+
+    const auto = await draftForCompany(own.id);
+    expect(auto.draft?.templateSlug).toBe('send_studio_named_uk');
+    await db.delete(outreach).where(eq(outreach.companyId, own.id));
+
+    const manual = await draftForCompany(own.id, null, { templateSlug: 'send_studio_generic_en' });
+    expect(manual.draft?.templateSlug).toBe('send_studio_generic_en');
+    expect(manual.draft?.language).toBe('en');
+
+    const [row] = await db.select().from(outreach).where(eq(outreach.id, manual.id!));
+    expect(row!.templateUsed).toBe('send_studio_generic_en');
+    // Шаблон запамʼятався номером, інакше перегенерація абзацу не знає, з чого збирати.
+    expect(row!.templateId).not.toBeNull();
+
+    await db.delete(outreach).where(eq(outreach.companyId, own.id));
+    await db.delete(contacts).where(eq(contacts.companyId, own.id));
+    await db.delete(companies).where(eq(companies.id, own.id));
+  });
+
+  it('неіснуючий шаблон не підміняється тихо іншим', async () => {
+    const db = getDb();
+    const own = (await upsertCompany({ name: 'NoTpl', domain: 'notpl.ua', country: 'UA', source: 'test' }))
+      .company;
+    await db.insert(contacts).values({ companyId: own.id, name: 'Ola', email: 'ola@notpl.ua' });
+
+    const result = await draftForCompany(own.id, null, { templateSlug: 'нема_такого' });
+    expect(result.id).toBeNull();
+    expect(result.reason).toContain('нема_такого');
+
+    await db.delete(contacts).where(eq(contacts.companyId, own.id));
+    await db.delete(companies).where(eq(companies.id, own.id));
+  });
+
   it('другу чернетку тій самій компанії не створює', async () => {
     const first = await draftForCompany(studio.id);
     expect(first.id).not.toBeNull();
@@ -323,14 +428,47 @@ describe('чернетка по кнопці з Черги', () => {
     expect(second.reason).toContain('вже лежить');
   });
 
-  it('без жодної адреси чернетки не буде, і причина названа', async () => {
+  /*
+   * Без адреси чернетка все одно лягає в чергу, з порожнім полем адреси. Раніше тут
+   * була відмова, і компанія зникала з поля зору, хоча знайти пошту очима на їхньому
+   * сайті часто справа хвилини. Відправку це не відкриває, її тримає `checkSend`.
+   */
+  it('без адреси чернетка створюється з порожнім полем і поясненням', async () => {
     const db = getDb();
     const empty = (await upsertCompany({ name: 'Ghost', domain: 'ghost.io', source: 'test' })).company;
-    // enrich: false, щоб тест не ходив у мережу. Кнопка в інтерфейсі, навпаки,
-    // спершу обходить сайт компанії і лише потім здається.
+    // enrich: false, щоб тест не ходив у мережу.
     const result = await draftForCompany(empty.id, null, { enrich: false });
-    expect(result.id).toBeNull();
-    expect(result.reason).toContain('адреси');
+
+    expect(result.id).not.toBeNull();
+    expect(result.reason).toContain('впиши пошту руками');
+    expect(result.draft?.contactEmail).toBeNull();
+    // Помилка є, тобто чернетка лежить у вкладці "Потребують уваги", а не готова до відправки.
+    expect(result.draft?.error).not.toBeNull();
+
+    await db.delete(outreach).where(eq(outreach.companyId, empty.id));
+    await db.delete(companies).where(eq(companies.id, empty.id));
+  });
+
+  /*
+   * Вписана руками адреса не лишається всередині листа: вона заводиться контактом
+   * компанії, тому видно її і на сторінці студії, і наступного разу радар уже не
+   * вважає, що писати нікуди.
+   */
+  it('вписана в чернетці адреса стає контактом компанії', async () => {
+    const db = getDb();
+    const empty = (await upsertCompany({ name: 'Manual', domain: 'manual.io', source: 'test' })).company;
+    const created = await draftForCompany(empty.id, null, { enrich: false });
+
+    const updated = await updateDraft(created.id!, { contactEmail: 'Hello@Manual.io ', contactName: 'Ola' });
+    expect(updated?.contactEmail).toBe('hello@manual.io');
+    expect(updated?.error).toBeNull();
+
+    const rows = await db.select().from(contacts).where(eq(contacts.companyId, empty.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email: 'hello@manual.io', name: 'Ola', emailValid: true });
+
+    await db.delete(outreach).where(eq(outreach.companyId, empty.id));
+    await db.delete(contacts).where(eq(contacts.companyId, empty.id));
     await db.delete(companies).where(eq(companies.id, empty.id));
   });
 });
@@ -367,5 +505,48 @@ describe('видалення чернетки', () => {
   it('надісланий лист не видаляється', async () => {
     const [sent] = await getDb().select().from(outreach).where(eq(outreach.status, 'sent'));
     await expect(discardDraft(sent!.id)).rejects.toThrow('чернетку');
+  });
+});
+
+/*
+ * Підпис однаковий у всіх листах, тому живе окремо від шаблонів. Шаблони, написані
+ * до появи мітки, не лишаються без нього: він дописується в кінець сам.
+ */
+describe('підпис у листі', () => {
+  const signature = 'Alex Example\nexample.dev';
+
+  it('дописується в кінець, якщо мітки в шаблоні немає', () => {
+    const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', null, signature);
+    expect(built.body.endsWith(signature)).toBe(true);
+  });
+
+  it('мітка ставить його туди, де вона стоїть, і другого разу не буде', () => {
+    const built = buildDraft(
+      candidate(),
+      template({ body: 'Hi.\n\n{{signature}}\n\nP.S. one line.' }),
+      'en',
+      null,
+      signature,
+    );
+
+    expect(built.body).toContain(`${signature}\n\nP.S. one line.`);
+    expect(built.body.split('example.dev')).toHaveLength(2);
+  });
+
+  it('підпис, уже вписаний у шаблон руками, не дублюється', () => {
+    const built = buildDraft(
+      candidate(),
+      template({ body: `Hi.\n\nSaw {{domain}}.\n\n${signature}` }),
+      'en',
+      null,
+      signature,
+    );
+
+    expect(built.body.split('example.dev')).toHaveLength(2);
+  });
+
+  it('порожній підпис нічого не дописує', () => {
+    const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', null, '');
+    expect(built.body).toBe('Hi.\n\nSaw acme.com.');
   });
 });

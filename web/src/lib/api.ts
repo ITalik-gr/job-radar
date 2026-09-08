@@ -272,6 +272,24 @@ export interface GmailStatus {
   hint: string | null;
 }
 
+/** Звіт повного перегляду компанії. Показується як є: кнопкою перевіряють пошук. */
+export interface RefreshReport {
+  companyId: number;
+  domain: string;
+  reachable: boolean;
+  clientRendered: boolean;
+  needsBrowser: boolean;
+  pagesFetched: number;
+  careersUrl: string | null;
+  careersKind: string;
+  careersSlug: string | null;
+  techHints: string[];
+  techAdded: string[];
+  contactsAdded: number;
+  emails: string[];
+  people: number;
+}
+
 /** Чернетка листа на сторінці "До відправки". */
 export interface DraftRow {
   id: number;
@@ -351,7 +369,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `${response.status} на ${path}`);
+    if (body.error) throw new Error(body.error);
+
+    /*
+     * Відповідь без тіла це не наша помилка, а платформа: воркер не встиг виконати
+     * запит і його зняли. Голе "503 на /enrich" нічого не пояснює, тому причина
+     * називається прямо, інакше її щоразу треба згадувати заново.
+     */
+    if (response.status === 503 || response.status === 524) {
+      throw new Error(
+        `${response.status} на ${path}: воркер не встиг виконати запит. Довгу операцію треба гнати меншими партіями`,
+      );
+    }
+    throw new Error(`${response.status} на ${path}`);
   }
   return (await response.json()) as T;
 }
@@ -419,10 +449,48 @@ export const api = {
   gmailStatus: () => request<GmailStatus>('/gmail/status'),
   gmailConnectUrl,
   drafts: () => request<{ drafts: DraftRow[]; counters: SendCounters }>('/outreach/drafts'),
-  draftForCompany: (companyId: number, vacancyId?: number | null) =>
+  /** `templateSlug` це шаблон, вибраний руками на картці. Порожнє означає автопідбір. */
+  draftForCompany: (companyId: number, vacancyId?: number | null, templateSlug?: string | null) =>
     request<{ id: number | null; reason: string | null }>('/outreach/drafts', {
       method: 'POST',
-      body: JSON.stringify({ companyId, vacancyId }),
+      body: JSON.stringify({ companyId, vacancyId, templateSlug }),
+    }),
+  /** Інший шаблон для чернетки: текст збирається заново, абзац переноситься. */
+  retemplateDraft: (id: number, slug: string) =>
+    request<DraftRow>(`/outreach/drafts/${id}/template`, {
+      method: 'POST',
+      body: JSON.stringify({ slug }),
+    }),
+  /** Обійти сайт однієї компанії просто зараз: контакти, пошта, ознаки живості. */
+  enrichCompany: (domain: string) =>
+    request<{
+      checked: number;
+      contactsAdded: number;
+      withEmail: number;
+      /** Сайт малює вміст скриптом. Пояснює, чому в розмітці нічого не знайшлось. */
+      clientRendered: number;
+      /** Сайт не відкрився серверу зовсім: захист, таймаут або мертвий домен. */
+      unreachable: number;
+      errors: string[];
+    }>('/enrich', {
+      method: 'POST',
+      body: JSON.stringify({ domain, limit: 1 }),
+    }),
+  /** Підпис, спільний для всіх листів. */
+  signature: () => request<{ signature: string }>('/outreach/signature'),
+  saveSignature: (signature: string) =>
+    request<{ signature: string }>('/outreach/signature', {
+      method: 'PUT',
+      body: JSON.stringify({ signature }),
+    }),
+  /** Повний перегляд однієї компанії: сайт, стек, контакти, career-сторінка. */
+  refreshCompany: (companyId: number) =>
+    request<RefreshReport>(`/companies/${companyId}/refresh`, { method: 'POST', body: '{}' }),
+  /** Контакт, доданий руками зі сторінки студії. */
+  addContact: (companyId: number, body: { email: string; name?: string; role?: string }) =>
+    request<{ email: string; created: boolean }>(`/companies/${companyId}/contacts`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
   regenerateIntro: (id: number) =>
     request<DraftRow>(`/outreach/drafts/${id}/regenerate`, { method: 'POST', body: '{}' }),
@@ -433,6 +501,8 @@ export const api = {
    * Універсальний виклик операції. Усі роути операцій однакової форми, тому
    * інтерфейсу не треба знати про кожну окремо: він малює їх списком з опису.
    */
+  /** Мережі Getro по порядку: сторінка Операції проходить їх по одній. */
+  getroNetworks: () => request<{ networks: string[] }>('/sources/getro/networks'),
   run: (path: string, body: Record<string, unknown> = {}) =>
     request<Record<string, unknown>>(path, { method: 'POST', body: JSON.stringify(body) }),
   facts: () => request<FactRow[]>('/facts'),
@@ -446,7 +516,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ limit }),
     }),
-  updateDraft: (id: number, body: { subject?: string; body?: string }) =>
+  updateDraft: (id: number, body: { subject?: string; body?: string; contactEmail?: string | null; contactName?: string | null }) =>
     request<DraftRow>(`/outreach/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   discardDraft: (id: number) =>
     request<{ deleted: boolean }>(`/outreach/drafts/${id}`, { method: 'DELETE' }),

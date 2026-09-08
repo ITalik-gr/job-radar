@@ -53,6 +53,14 @@ export const GETRO_NETWORKS: GetroNetwork[] = [
  */
 export const GETRO_QUERIES = ['frontend', 'react', 'full stack'];
 
+/** Наступна мережа за списком. `null` означає, що прохід по всіх завершено. */
+export function nextGetroNetwork(current?: string | null): string | null {
+  if (!current) return GETRO_NETWORKS[0]?.id ?? null;
+  const at = GETRO_NETWORKS.findIndex((network) => network.id === current);
+  if (at < 0) return null;
+  return GETRO_NETWORKS[at + 1]?.id ?? null;
+}
+
 const JOB_LINK = /<a\b[^>]*href="(\/companies\/([a-z0-9._-]+)\/jobs\/(\d+)[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
 
 function text(html: string): string {
@@ -174,15 +182,29 @@ export const getro: BoardSource = {
     return parseGetro(payload, ctx?.slug ?? 'jobs.techstars.com');
   },
 
-  async fetch(): Promise<RawVacancy[]> {
+  /*
+   * `slug` тут це id мережі, і він означає "пройди тільки її".
+   *
+   * Дванадцять мереж за один прохід це три з половиною десятки запитів до чужих
+   * сайтів плюс сторінка компанії на кожен новий домен, з паузою в секунду на хост.
+   * У воркері такий прохід не встигає завершитись і його вбиває платформа, тому
+   * прохід ділиться на мережі: одна мережа це один запит, а хто йде наступним,
+   * інтерфейс бачить у `nextGetroNetwork`.
+   */
+  async fetch(ctx: SourceContext = {}): Promise<RawVacancy[]> {
     const all = new Map<string, GetroVacancy>();
+    const networks = ctx.slug
+      ? GETRO_NETWORKS.filter((network) => network.id === ctx.slug)
+      : GETRO_NETWORKS;
+
+    if (ctx.slug && networks.length === 0) throw new Error(`невідома мережа Getro: ${ctx.slug}`);
 
     // Кеш переживає прогін: він лежить у таблиці `settings`.
     const stored = await readSetting<Record<string, string | null>>(DOMAIN_CACHE_KEY, {});
     const domains = new Map<string, string | null>(Object.entries(stored));
     const knownBefore = domains.size;
 
-    for (const network of GETRO_NETWORKS) {
+    for (const network of networks) {
       for (const query of GETRO_QUERIES) {
         try {
           const res = await fetchText(

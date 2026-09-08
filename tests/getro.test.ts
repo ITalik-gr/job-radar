@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { GETRO_NETWORKS, GETRO_QUERIES, parseGetro } from '../src/sources/boards/getro.js';
+import { GETRO_NETWORKS, GETRO_QUERIES, nextGetroNetwork, parseGetro } from '../src/sources/boards/getro.js';
 
 const listing = readFileSync('fixtures/getro/techstars-frontend.html', 'utf8');
 const featured = readFileSync('fixtures/getro/techstars-jobs.html', 'utf8');
@@ -77,5 +77,26 @@ describe('getro', () => {
      * сюди не входять: вони лежать у постійному кеші і тягнуться один раз.
      */
     expect(GETRO_NETWORKS.length * GETRO_QUERIES.length).toBeLessThanOrEqual(40);
+  });
+});
+
+/*
+ * Мережі проходяться по одній: дванадцять за раз це три десятки запитів до чужих
+ * сайтів плюс сторінка компанії на кожен новий домен, і воркер такий прохід знімає.
+ * Курсор рахує сервер, щоб порядок мереж жив в одному місці, а не дублювався у фронті.
+ */
+describe('курсор по мережах', () => {
+  it('без поточної мережі починає з першої', () => {
+    expect(nextGetroNetwork()).toBe(GETRO_NETWORKS[0]!.id);
+    expect(nextGetroNetwork(null)).toBe(GETRO_NETWORKS[0]!.id);
+  });
+
+  it('віддає наступну за списком і null у кінці', () => {
+    expect(nextGetroNetwork(GETRO_NETWORKS[0]!.id)).toBe(GETRO_NETWORKS[1]!.id);
+    expect(nextGetroNetwork(GETRO_NETWORKS.at(-1)!.id)).toBeNull();
+  });
+
+  it('незнайома мережа не починає прохід спочатку', () => {
+    expect(nextGetroNetwork('не-мережа')).toBeNull();
   });
 });

@@ -25,11 +25,43 @@ function when(ms: number | undefined): string {
   return `${Math.floor(hours / 24)} дн тому`;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  ok: 'працює',
-  warn: 'порожній результат',
-  error: 'помилка',
-};
+/*
+ * Статус `warn` у базі означає дві різні речі: адаптер повернув нуль там, де раніше
+ * повертав більше, або прогін дійшов до кінця, але з помилками на окремих компаніях.
+ * Один підпис на обидва випадки брехав: greenhouse із 1633 знайденими вакансіями і
+ * трьома впалими бордами показувався як "порожній результат".
+ */
+function statusLabel(run: SourceRow['lastRun']): string {
+  if (!run) return 'не запускався';
+  if (run.status === 'running') return 'виконується';
+  if (run.status === 'error') return 'помилка';
+  if (run.status === 'warn') {
+    if (run.itemsFound === 0) return 'порожній результат';
+    const count = run.errors.length;
+    return count > 0 ? `частково, помилок ${count}` : 'працює';
+  }
+  return 'працює';
+}
+
+function statusColor(run: SourceRow['lastRun']): string {
+  if (!run) return 'gray';
+  if (run.status === 'error') return 'red';
+  if (run.status === 'running') return 'blue';
+  return run.status === 'warn' ? 'yellow' : 'green';
+}
+
+/**
+ * Помилка від драйвера бази тягне за собою весь запит зі списком з сотень знаків питання
+ * і всіма параметрами. У підказці це стіна, за якою не видно самої помилки, тому довгі
+ * переліки згортаються, а хвіст із параметрами відрізається.
+ */
+function shorten(message: string): string {
+  return message
+    .replace(/\(\s*\?(?:\s*,\s*\?)+\s*\)/g, '(... багато значень)')
+    .replace(/\s*params:.*$/s, '')
+    .trim()
+    .slice(0, 300);
+}
 
 function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
@@ -130,13 +162,9 @@ export function SourcesPage() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap={8} wrap="nowrap">
-                      <Dot
-                        color={
-                          status === 'error' ? 'red' : status === 'warn' ? 'yellow' : row.lastRun ? 'green' : 'gray'
-                        }
-                      />
+                      <Dot color={statusColor(row.lastRun)} />
                       <Text size="sm" truncate>
-                        {row.lastRun ? (STATUS_LABELS[status ?? 'ok'] ?? status) : 'не запускався'}
+                        {statusLabel(row.lastRun)}
                       </Text>
                     </Group>
                   </Table.Td>
@@ -152,7 +180,7 @@ export function SourcesPage() {
                   </Table.Td>
                   <Table.Td>
                     {row.lastRun?.errors.length ? (
-                      <Tooltip label={row.lastRun.errors.join('; ')} multiline w={320}>
+                      <Tooltip label={row.lastRun.errors.map(shorten).join('; ')} multiline w={420}>
                         <Badge color="red">{row.lastRun.errors.length} шт, навести щоб прочитати</Badge>
                       </Tooltip>
                     ) : (

@@ -24,10 +24,21 @@ import { notifications } from '@mantine/notifications';
 import { Archive, ArchiveRestore, Copy, FileText, Plus, Save, Trash2 } from 'lucide-react';
 import { FactsPanel } from '../components/FactsPanel';
 import { api, formatDate, type TemplateRow } from '../lib/api';
+import { COMPANY_KINDS, type CompanyKind } from '../../../src/pipeline/company-kind';
+import type { Language, OutreachTarget } from '../../../src/pipeline/outreach';
+import type { TemplateKind } from '../../../src/pipeline/templates';
 import { LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 
-const KIND_LABELS: Record<string, string> = {
+/*
+ * Підписи ключами від справжніх типів, а не вільними рядками. Record по юніону
+ * означає, що новий тип компанії або нова роль у розсилці ламають збірку тут,
+ * доки їх не додали в список. Раніше ці переліки жили самі по собі і відставали
+ * від коду мовчки: у базі тип уже був, а в селекті його не було.
+ *
+ * Імпорти саме типів, тому файли пайплайна з базою в бандл фронта не тягнуться.
+ */
+const KIND_LABELS: Record<TemplateKind, string> = {
   vacancy: 'під вакансію',
   studio: 'під студію',
   resume: 'резюме',
@@ -35,29 +46,44 @@ const KIND_LABELS: Record<string, string> = {
 
 const KIND_OPTIONS = Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }));
 
-/** Типи компаній із `src/pipeline/company-kind.ts`. Порожнє означає універсальний шаблон. */
 /**
  * Роль у розсилці. Саме за нею чернетка вибирає шаблон, і вибір робить код:
  * є вакансія, є іменний контакт, або тільки загальна скринька.
  */
-const TARGET_OPTIONS = [
-  { value: 'vacancy', label: 'є відкрита вакансія' },
-  { value: 'studio_named', label: 'без вакансії, іменний контакт' },
-  { value: 'studio_generic', label: 'без вакансії, загальна пошта' },
-  { value: 'followup', label: 'фолоу-ап, другий лист у треді' },
+const TARGET_LABELS: Record<OutreachTarget, string> = {
+  vacancy: 'є відкрита вакансія',
+  studio_named: 'без вакансії, іменний контакт',
+  studio_generic: 'без вакансії, загальна пошта',
+  followup: 'фолоу-ап, другий лист у треді',
+};
+
+const TARGET_OPTIONS = Object.entries(TARGET_LABELS).map(([value, label]) => ({ value, label }));
+
+const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
+  { value: 'en', label: 'англійською' },
+  { value: 'uk', label: 'українською' },
 ];
 
-const LANGUAGE_OPTIONS = [
-  { value: 'uk', label: 'українською' },
-  { value: 'en', label: 'англійською' },
-];
+/**
+ * Порожній `forKind` означає "будь-який тип". Це окремий пункт списку, а не хрестик
+ * очищення збоку: універсальний шаблон це свідомий вибір, і він мусить читатись
+ * у полі так само, як решта варіантів.
+ */
+const ANY_KIND = '__any';
+
+const FOR_KIND_LABELS: Record<CompanyKind, string> = {
+  studio: 'студія розробки',
+  design: 'дизайн-студія',
+  startup: 'стартап',
+  product: 'продуктова компанія',
+  outstaff: 'аутстаф',
+  // Такий тип реально стоїть у частини компаній, і під нього теж пишеться лист.
+  unknown: 'тип не визначено',
+};
 
 const FOR_KIND_OPTIONS = [
-  { value: 'design', label: 'дизайн-студія' },
-  { value: 'studio', label: 'студія розробки' },
-  { value: 'startup', label: 'стартап' },
-  { value: 'outstaff', label: 'аутстаф' },
-  { value: 'product', label: 'продуктова компанія' },
+  { value: ANY_KIND, label: 'універсальний, будь-який тип' },
+  ...COMPANY_KINDS.map((value) => ({ value, label: FOR_KIND_LABELS[value] })),
 ];
 
 function Row({
@@ -95,7 +121,7 @@ function Row({
       </Group>
       <Group gap={6} mt={4} wrap="nowrap">
         <Badge size="xs" color={row.kind === 'resume' ? 'brand' : 'gray'}>
-          {KIND_LABELS[row.kind] ?? row.kind}
+          {KIND_LABELS[row.kind as TemplateKind] ?? row.kind}
         </Badge>
         {/* Шаблон із роллю бере участь у розсилці сам, решта тільки для копіювання. */}
         {row.targetType && (
@@ -117,7 +143,42 @@ function Row({
   );
 }
 
-function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | null) => void }) {
+/**
+ * Поля, які редагуються в цій формі. Перелік один на два вжитки: з нього збирається
+ * і те, що йде на сервер, і ознака "є незбережені зміни".
+ *
+ * Раніше це були два списки полів, написані руками в різних місцях, і вони розʼїхались:
+ * мова, роль у розсилці і перший абзац не потрапили ні в один, ні в другий. Кнопка
+ * лишалась сірою, а якщо натиснути її через зміну в іншому полі, значення селектів
+ * тихо не доїжджали до бази і поверталися старими.
+ */
+const EDITABLE = [
+  'name',
+  'slug',
+  'kind',
+  'forKind',
+  'subject',
+  'intro',
+  'body',
+  'note',
+  'language',
+  'targetType',
+] as const satisfies readonly (keyof TemplateRow)[];
+
+function patchFrom(draft: TemplateRow): Record<string, unknown> {
+  return Object.fromEntries(EDITABLE.map((field) => [field, draft[field]]));
+}
+
+function Editor({
+  row,
+  all,
+  onSelect,
+}: {
+  row: TemplateRow;
+  /** Решта шаблонів: потрібна, щоб побачити зіткнення ролей у розсилці. */
+  all: TemplateRow[];
+  onSelect: (id: number | null) => void;
+}) {
   const client = useQueryClient();
   const [draft, setDraft] = useState(row);
   const [confirming, setConfirming] = useState(false);
@@ -133,19 +194,7 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
   }, [row.id, row.updatedAt]);
 
   const save = useMutation({
-    mutationFn: () =>
-      api.updateTemplate(row.id, {
-        name: draft.name,
-        slug: draft.slug,
-        kind: draft.kind,
-        forKind: draft.forKind,
-        subject: draft.subject,
-        intro: draft.intro,
-        body: draft.body,
-        note: draft.note,
-        language: draft.language,
-        targetType: draft.targetType,
-      }),
+    mutationFn: () => api.updateTemplate(row.id, patchFrom(draft)),
     onSuccess: () => {
       notifications.show({ color: 'green', title: draft.name, message: 'шаблон збережено' });
       void client.invalidateQueries({ queryKey: ['templates'] });
@@ -207,14 +256,22 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
     onError: fail,
   });
 
-  const dirty =
-    draft.name !== row.name ||
-    draft.slug !== row.slug ||
-    draft.kind !== row.kind ||
-    draft.forKind !== row.forKind ||
-    (draft.subject ?? '') !== (row.subject ?? '') ||
-    draft.body !== row.body ||
-    (draft.note ?? '') !== (row.note ?? '');
+  const dirty = EDITABLE.some((field) => (draft[field] ?? '') !== (row[field] ?? ''));
+
+  /*
+   * Розсилка бере перший шаблон із потрібною парою роль плюс мова. Два таких шаблони
+   * не помилка на рівні бази, але вибір між ними стає випадковим, і власник не зрозуміє,
+   * чому лист пішов не тим текстом. Тому це показується прямо в редакторі.
+   */
+  const clash = draft.targetType
+    ? all.find(
+        (other) =>
+          other.id !== row.id &&
+          !other.archived &&
+          other.targetType === draft.targetType &&
+          other.language === draft.language,
+      )
+    : undefined;
 
   return (
     <>
@@ -252,10 +309,11 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
                 label="Під який тип компанії"
                 description="цей шаблон пропонуватиметься першим"
                 data={FOR_KIND_OPTIONS}
-                value={draft.forKind}
-                onChange={(forKind) => setDraft({ ...draft, forKind })}
-                placeholder="універсальний"
-                clearable
+                value={draft.forKind ?? ANY_KIND}
+                onChange={(value) =>
+                  value && setDraft({ ...draft, forKind: value === ANY_KIND ? null : value })
+                }
+                allowDeselect={false}
               />
             </Group>
 
@@ -284,6 +342,14 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
               />
             </Group>
 
+            {clash && (
+              <Alert color="yellow">
+                Та сама роль і мова вже стоять у шаблоні <b>{clash.name}</b>. Розсилка візьме
+                один із двох, і який саме, передбачити не можна. Прибери роль в одного або
+                відправ його в архів.
+              </Alert>
+            )}
+
             {/*
               Ключ редагується, і при зміні радар переписує його в записах листування.
               Тому підпис каже саме це: інакше правка виглядала б як розрив історії.
@@ -309,7 +375,7 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
 
             <Textarea
               label="Перший абзац, статичний"
-              description="підставляється замість {{intro}}. Його ж бере відкат, коли абзац від моделі не пройшов перевірку"
+              description="підставляється замість {{intro}}. Мітки тут працюють так само, як у тексті. Його ж бере відкат, коли абзац від моделі не пройшов перевірку"
               autosize
               minRows={2}
               maxRows={6}
@@ -464,10 +530,65 @@ function Editor({ row, onSelect }: { row: TemplateRow; onSelect: (id: number | n
   );
 }
 
+/**
+ * Підпис живе окремо від тексту шаблонів.
+ *
+ * Він однаковий у всіх листах, і правити його в десяти шаблонах по черзі означає
+ * рано чи пізно розійтись у них між собою. У тілі шаблона його місце позначається
+ * міткою {{signature}}, а шаблон без мітки отримує підпис у кінець сам: старі
+ * шаблони писались до її появи, і лишати їх без підпису не можна.
+ */
+function SignatureModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const client = useQueryClient();
+  const { data } = useQuery({ queryKey: ['signature'], queryFn: () => api.signature() });
+  const [value, setValue] = useState('');
+
+  useEffect(() => {
+    if (data) setValue(data.signature);
+  }, [data]);
+
+  const save = useMutation({
+    mutationFn: () => api.saveSignature(value),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['signature'] });
+      notifications.show({ color: 'green', title: 'Підпис', message: 'збережено' });
+      onClose();
+    },
+    onError: (error: Error) =>
+      notifications.show({ color: 'red', title: 'не збереглось', message: error.message }),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Підпис у листах">
+      <Stack gap="md">
+        <Textarea
+          autosize
+          minRows={3}
+          maxRows={8}
+          label="текст підпису"
+          description="ставиться на місце {{signature}}, а якщо мітки в шаблоні немає, дописується в кінець"
+          value={value}
+          onChange={(event) => setValue(event.currentTarget.value)}
+          styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
+        />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            Скасувати
+          </Button>
+          <Button loading={save.isPending} onClick={() => save.mutate()}>
+            Зберегти
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 export function TemplatesPage() {
   const client = useQueryClient();
   const [selected, setSelected] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
+  const [signing, setSigning] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('vacancy');
 
@@ -505,6 +626,8 @@ export function TemplatesPage() {
 
   return (
     <>
+      <SignatureModal opened={signing} onClose={() => setSigning(false)} />
+
       <Modal opened={creating} onClose={() => setCreating(false)} title="Новий шаблон">
         <Stack gap="md">
           <TextInput
@@ -540,6 +663,9 @@ export function TemplatesPage() {
               <Title order={5} style={{ flex: 1 }}>
                 Шаблони
               </Title>
+              <Button variant="default" onClick={() => setSigning(true)}>
+                Підпис
+              </Button>
               <Button variant="default" leftSection={<Plus size={15} />} onClick={() => setCreating(true)}>
                 Новий
               </Button>
@@ -555,7 +681,7 @@ export function TemplatesPage() {
         }
         detail={
           current ? (
-            <Editor key={current.id} row={current} onSelect={setSelected} />
+            <Editor key={current.id} row={current} all={rows} onSelect={setSelected} />
           ) : (
             <Box p="xl" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
               <EmptyState

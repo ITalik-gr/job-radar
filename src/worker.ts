@@ -35,6 +35,8 @@ export interface Env {
   RADAR_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
+  /** Модель для першого абзацу листа. Порожнє означає ту саму, що й класифікація. */
+  OUTREACH_MODEL?: string;
   LLM_PROVIDER?: string;
   WORKERS_AI_MODEL?: string;
   TELEGRAM_BOT_TOKEN?: string;

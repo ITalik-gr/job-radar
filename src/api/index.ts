@@ -12,6 +12,11 @@ import {
   discardDraft,
   listDrafts,
   prepareDrafts,
+  retemplateDraft,
+  readSignature,
+  saveSignature,
+  rememberContact,
+  normalizeEmail,
   regenerateIntro,
   updateDraft,
 } from '../pipeline/outreach.js';
@@ -27,6 +32,7 @@ import { callModelWith } from '../pipeline/classify.js';
 import { sendMessage } from '../lib/gmail.js';
 import { seedOutreachTemplates } from '../pipeline/outreach.js';
 import { seedTemplates } from '../pipeline/templates.js';
+import { GETRO_NETWORKS, nextGetroNetwork } from '../sources/boards/getro.js';
 import { createFact, deleteFact, listFacts, updateFact } from '../pipeline/facts.js';
 import { prepareFollowups } from '../pipeline/followups.js';
 import { outreachStats } from '../pipeline/outreach-stats.js';
@@ -51,7 +57,7 @@ import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
 import { syncSource } from '../pipeline/sync.js';
 import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
-import { enrich } from '../pipeline/enrich.js';
+import { browserQueue, enrich, saveBrowserFindings, type BrowserFindings } from '../pipeline/enrich.js';
 import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes } from './companies.js';
 import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
@@ -489,18 +495,46 @@ app.post('/api/outreach/prepare', async (c) => {
 
 /** Чернетка для однієї компанії: кнопка з Черги і зі Студій. */
 app.post('/api/outreach/drafts', async (c) => {
-  const body = await c.req.json<{ companyId: number; vacancyId?: number | null; ai?: boolean }>();
-  return c.json(await draftForCompany(body.companyId, body.vacancyId ?? null, { ai: body.ai }));
+  const body = await c.req.json<{
+    companyId: number;
+    vacancyId?: number | null;
+    ai?: boolean;
+    /** Шаблон, вибраний руками на картці. Порожнє означає підбір за роллю і мовою. */
+    templateSlug?: string | null;
+  }>();
+
+  return c.json(
+    await draftForCompany(body.companyId, body.vacancyId ?? null, {
+      ai: body.ai,
+      templateSlug: body.templateSlug ?? null,
+    }),
+  );
 });
 
 app.patch('/api/outreach/drafts/:id', async (c) => {
-  const body = await c.req.json<{ subject?: string; body?: string }>();
+  const body = await c.req.json<{
+    subject?: string;
+    body?: string;
+    /** Адреса, вписана руками. Вона ж заводиться контактом компанії. */
+    contactEmail?: string | null;
+    contactName?: string | null;
+  }>();
   return c.json(await updateDraft(Number(c.req.param('id')), body));
 });
 
 app.delete('/api/outreach/drafts/:id', async (c) =>
   c.json(await discardDraft(Number(c.req.param('id')))),
 );
+
+/**
+ * Інший шаблон для чернетки. Текст збирається заново з тими самими даними компанії,
+ * а вже написаний перший абзац переноситься: модель тут не викликається.
+ */
+app.post('/api/outreach/drafts/:id/template', async (c) => {
+  const body = await c.req.json<{ slug?: string }>().catch(() => ({}) as { slug?: string });
+  if (!body.slug) return c.json({ error: 'потрібен ключ шаблона' }, 400);
+  return c.json(await retemplateDraft(Number(c.req.param('id')), body.slug));
+});
 
 /** Перегенерація першого абзацу. Тільки по кнопці, фонових перегенерацій немає. */
 app.post('/api/outreach/drafts/:id/regenerate', async (c) =>
@@ -593,6 +627,14 @@ app.post('/api/notify/:kind', async (c) => {
   return c.json({ kind, sent: await notify[kind]() });
 });
 
+/** Підпис, спільний для всіх листів. Правиться на сторінці Шаблони. */
+app.get('/api/outreach/signature', async (c) => c.json({ signature: await readSignature() }));
+
+app.put('/api/outreach/signature', async (c) => {
+  const body = await c.req.json<{ signature?: string }>().catch(() => ({}) as { signature?: string });
+  return c.json({ signature: await saveSignature(body.signature ?? '') });
+});
+
 app.get('/api/facts', async (c) => c.json(await listFacts()));
 
 app.post('/api/facts', async (c) => c.json(await createFact(await c.req.json())));
@@ -668,12 +710,29 @@ app.get('/api/sources', async (c) => {
   );
 });
 
+/** Мережі Getro по порядку: сторінка Операції проходить їх по одній. */
+app.get('/api/sources/getro/networks', (c) =>
+  c.json({ networks: GETRO_NETWORKS.map((network) => network.id) }),
+);
+
 app.post('/api/sources/:id/run', async (c) => {
   const id = c.req.param('id');
-  const body: { limit?: number; skipLlm?: boolean } = await c.req
-    .json<{ limit?: number; skipLlm?: boolean }>()
+  const body: { limit?: number; skipLlm?: boolean; slug?: string } = await c.req
+    .json<{ limit?: number; skipLlm?: boolean; slug?: string }>()
     .catch(() => ({}));
-  const result = await syncSource(id, { limit: body.limit, skipLlm: body.skipLlm });
+
+  const result = await syncSource(id, { limit: body.limit, skipLlm: body.skipLlm, slug: body.slug });
+
+  /*
+   * Getro ходить по мережах поодинці, бо всі дванадцять за один запит воркер не
+   * встигає. Курсор віддається у відповіді, і сторінка Операції за ним викликає
+   * наступну. Без цього поля прохід виглядав би завершеним після першої ж мережі.
+   */
+  if (id === 'getro') {
+    // Без явної мережі це прохід по всіх, як у крона і CLI, і продовжувати нічого.
+    return c.json({ ...result, slug: body.slug ?? null, next: body.slug ? nextGetroNetwork(body.slug) : null });
+  }
+
   return c.json(result);
 });
 
@@ -715,6 +774,24 @@ app.get('/api/companies/:id/similar', async (c) =>
 app.post('/api/embed', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
   return c.json(await embedCompanies(body.limit ?? 200));
+});
+
+/*
+ * Черга для розширення і приймання того, що воно прочитало.
+ *
+ * Сайти, намальовані скриптом, серверний обхід читати не вміє: у HTML там порожній
+ * каркас. Розширення відкриває їх у власному браузері власника фоновою вкладкою,
+ * бере з готового DOM пошту і стек і присилає сюди. CORS для /api/import/* уже
+ * відкритий, тому приймання живе саме під цим префіксом.
+ */
+app.get('/api/import/browser/queue', async (c) =>
+  c.json({ targets: await browserQueue(Number(c.req.query('limit') ?? 20)) }),
+);
+
+app.post('/api/import/browser/site', async (c) => {
+  const body = await c.req.json<BrowserFindings>();
+  if (!body?.domain) return c.json({ error: 'потрібен домен' }, 400);
+  return c.json(await saveBrowserFindings(body));
 });
 
 app.post('/api/enrich', async (c) => {

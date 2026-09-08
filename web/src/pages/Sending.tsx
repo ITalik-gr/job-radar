@@ -8,6 +8,7 @@ import {
   Group,
   Progress,
   ScrollArea,
+  Select,
   Skeleton,
   Stack,
   Tabs,
@@ -88,16 +89,43 @@ function DraftCard({
   const client = useQueryClient();
   const [subject, setSubject] = useState(draft.subject ?? '');
   const [body, setBody] = useState(draft.body ?? '');
+  const [email, setEmail] = useState(draft.contactEmail ?? '');
 
   // Картку могли перегенерувати або відкрити іншу: поля мусять іти за даними.
   useEffect(() => {
     setSubject(draft.subject ?? '');
     setBody(draft.body ?? '');
-  }, [draft.id, draft.subject, draft.body]);
+    setEmail(draft.contactEmail ?? '');
+  }, [draft.id, draft.subject, draft.body, draft.contactEmail]);
 
   const save = useMutation({
-    mutationFn: () => api.updateDraft(draft.id, { subject, body }),
+    mutationFn: () => api.updateDraft(draft.id, { subject, body, contactEmail: email.trim() || null }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['drafts'] });
+      // Вписана адреса заводиться контактом компанії, тому картка студії теж застаріла.
+      void client.invalidateQueries({ queryKey: ['studios'] });
+    },
+    onError: (failure: Error) =>
+      notifications.show({ color: 'red', title: 'не збереглось', message: failure.message }),
+  });
+
+  /*
+   * Шаблон видно і його можна замінити прямо тут. Вибір за роллю і мовою робить код,
+   * але людина бачить конкретну компанію і знає про неї те, чого немає в базі, тому
+   * перекласти лист на інший текст мусить бути одним рухом, а не збиранням чернетки
+   * заново. Перший абзац при заміні зберігається.
+   */
+  const { data: templates } = useQuery({ queryKey: ['templates'], queryFn: () => api.templates() });
+
+  const templateOptions = (templates?.templates ?? [])
+    .filter((row) => !row.archived && row.kind !== 'resume')
+    .map((row) => ({ value: row.slug, label: `${row.name}, ${row.language}` }));
+
+  const retemplate = useMutation({
+    mutationFn: (slug: string) => api.retemplateDraft(draft.id, slug),
     onSuccess: () => client.invalidateQueries({ queryKey: ['drafts'] }),
+    onError: (failure: Error) =>
+      notifications.show({ color: 'red', title: 'шаблон не змінився', message: failure.message }),
   });
 
   const regenerate = useMutation({
@@ -107,7 +135,10 @@ function DraftCard({
       notifications.show({ color: 'red', title: 'абзац не перегенерувався', message: failure.message }),
   });
 
-  const dirty = subject !== (draft.subject ?? '') || body !== (draft.body ?? '');
+  const dirty =
+    subject !== (draft.subject ?? '') ||
+    body !== (draft.body ?? '') ||
+    email.trim() !== (draft.contactEmail ?? '');
   const words = body.trim().split(/\s+/).filter(Boolean).length;
 
   return (
@@ -122,7 +153,16 @@ function DraftCard({
           </Text>
         </div>
         <Group gap={6}>
-          <Badge variant="light">{draft.templateUsed ?? 'без шаблона'}</Badge>
+          <Select
+            size="xs"
+            w={210}
+            data={templateOptions}
+            value={draft.templateUsed}
+            placeholder={templateOptions.length === 0 ? 'шаблонів немає' : 'без шаблона'}
+            disabled={templateOptions.length === 0 || retemplate.isPending}
+            allowDeselect={false}
+            onChange={(slug) => slug && slug !== draft.templateUsed && retemplate.mutate(slug)}
+          />
           <Tooltip label={draft.aiFallbackReason ?? (draft.aiUsed ? 'перший абзац від моделі' : 'перший абзац із шаблона')}>
             <Badge variant="light" color={draft.aiUsed ? 'violet' : 'gray'}>
               {draft.aiUsed ? 'AI' : 'шаблон'}
@@ -151,6 +191,21 @@ function DraftCard({
           </Stack>
         </Alert>
       )}
+
+      {/*
+        Адреса редагується прямо тут. Чернетка без пошти тепер потрапляє в чергу,
+        бо знайти адресу очима на сайті компанії часто швидше, ніж чекати обходу,
+        а вписана вона одразу стає контактом компанії і видно її і на сторінці студії.
+      */}
+      <TextInput
+        label="адреса"
+        size="xs"
+        placeholder="hello@company.com"
+        value={email}
+        error={!email.trim() ? 'без адреси лист не піде' : undefined}
+        onChange={(event) => setEmail(event.currentTarget.value)}
+        mb="xs"
+      />
 
       <TextInput
         label="тема"

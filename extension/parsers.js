@@ -297,15 +297,6 @@
       profile: (card) => href(card, ['a[href*="/company/"]', 'h2 a', 'h3 a']),
       next: () => href(document, ['a[rel="next"]', 'a.next']),
     },
-    {
-      id: 'jobs.dou.ua',
-      match: /dou\.ua$/,
-      cards: 'li.l-company',
-      name: (card) => text(card, ['a.cn-a']),
-      website: () => null,
-      profile: (card) => href(card, ['a.cn-a']),
-      next: () => null,
-    },
   ];
 
   /** Наступна сторінка: спершу опис сайту, далі загальні ознаки пагінації. */

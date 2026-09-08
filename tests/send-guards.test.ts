@@ -20,6 +20,7 @@ import {
   noteSent,
   sendCounters,
   wordCount,
+  MAX_LINKS,
 } from '../src/pipeline/send-guards.js';
 import { sendDraft } from '../src/pipeline/send.js';
 
@@ -137,10 +138,23 @@ describe('текст листа', () => {
     expect(wordCount(long)).toBe(200);
   });
 
-  it('два посилання це на одне більше, ніж дозволено', () => {
-    const body = 'Портфоліо example.dev і ще https://github.com/italik';
-    expect(countLinks(body)).toBe(2);
+  /*
+   * Межа береться з константи, а не переписується числом у тесті: MAX_LINKS це
+   * налаштування смаку, і зміна порога не має валити перевірку самої механіки.
+   */
+  it('посилань більше дозволеного, і лист не йде', () => {
+    const body = ['Портфоліо example.dev', 'https://github.com/italik']
+      .concat(Array.from({ length: MAX_LINKS }, (_, i) => `https://example${i}.com/case`))
+      .join(' і ще ');
+
+    expect(countLinks(body)).toBeGreaterThan(MAX_LINKS);
     expect(letterBlockers('Тема', body).map((b) => b.code)).toContain('links');
+  });
+
+  it('посилань рівно стільки, скільки дозволено, і це не блокер', () => {
+    const body = Array.from({ length: MAX_LINKS }, (_, i) => `https://example${i}.com`).join(' ');
+    expect(countLinks(body)).toBe(MAX_LINKS);
+    expect(letterBlockers('Тема', body).map((b) => b.code)).not.toContain('links');
   });
 
   it('назва технології не рахується посиланням', () => {

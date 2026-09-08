@@ -131,7 +131,7 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
   const [rawOpen, setRawOpen] = useState(false);
 
   const toDrafts = useMutation({
-    mutationFn: () => api.draftForCompany(card.companyId, card.vacancyId),
+    mutationFn: () => api.draftForCompany(card.companyId, card.vacancyId, template),
     onSuccess: (result) =>
       notifications.show({
         color: result.id && !result.reason ? 'green' : 'yellow',
@@ -280,6 +280,8 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
             stack={card.stack}
             vacancyTitle={card.title}
             templateKind="vacancy"
+            slug={template}
+            onSlug={setTemplate}
           />
 
           <Group gap="sm" mt="lg" mb="xs">
@@ -380,7 +382,7 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
               У чергу листів
             </Button>
           </Tooltip>
-          <TemplateSelect kind="vacancy" value={template} onChange={setTemplate} width={150} />
+          <TemplateSelect kind="vacancy" value={template} onChange={setTemplate} width={240} />
           <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
             <Button
               leftSection={<Send size={15} />}

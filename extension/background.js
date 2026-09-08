@@ -110,3 +110,130 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return false;
 });
+
+/**
+ * Обхід сайтів, які малює скрипт.
+ *
+ * Серверний обхід читає сирий HTML, і на React-сайті там порожній каркас: ні пошти,
+ * ні згадок стеку. Тому такі домени радар складає в окрему чергу, а розширення
+ * відкриває їх тут, у справжньому браузері, де сторінка вже намальована.
+ *
+ * Вкладка створюється **неактивною**: власника нікуди не перекидає, він продовжує
+ * робити своє. Після зчитування вкладка закривається сама.
+ *
+ * Темп людський, як вимагає розділ 4 CLAUDE.md: пауза між сайтами не менша за три
+ * секунди і ліміт доменів за прохід. Це чужі сайти, і ходити ними треба так, як
+ * ходить людина.
+ */
+const BROWSER_WALK = { minGapMs: 3500, settleMs: 2500, loadTimeoutMs: 20000 };
+
+async function waitForLoad(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+
+    const listener = (id, info) => {
+      if (id === tabId && info.status === 'complete') finish(true);
+    };
+
+    // Сторінка могла завантажитись ще до підписки, тому стан перевіряється і напряму.
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.get(tabId).then((tab) => tab?.status === 'complete' && finish(true)).catch(() => finish(false));
+    const timer = setTimeout(() => finish(false), timeoutMs);
+  });
+}
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function readSite(target) {
+  const tab = await chrome.tabs.create({ url: `https://${target.domain}`, active: false });
+
+  try {
+    await waitForLoad(tab.id, BROWSER_WALK.loadTimeoutMs);
+    // Завантаження це ще не намальована сторінка: рендер і запити даних ідуть після.
+    await pause(BROWSER_WALK.settleMs);
+
+    const [injected] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['site.js'],
+    });
+
+    return injected?.result ?? null;
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(() => undefined);
+  }
+}
+
+async function browserWalk(limit) {
+  const { targets } = await call(`/import/browser/queue?limit=${limit}`);
+  const report = { total: targets.length, done: 0, contacts: 0, empty: 0, errors: [] };
+
+  for (const [index, target] of targets.entries()) {
+    const { browserWalk: state } = await chrome.storage.session.get({ browserWalk: null });
+    if (state?.stop) break;
+
+    await chrome.storage.session.set({
+      browserWalk: { running: true, at: index + 1, total: targets.length, domain: target.domain },
+    });
+
+    try {
+      const found = await readSite(target);
+      if (found) {
+        const saved = await post('/import/browser/site', { ...found, companyId: target.companyId });
+        report.contacts += saved.contactsAdded ?? 0;
+        if (!found.emails?.length) report.empty += 1;
+      } else {
+        report.empty += 1;
+      }
+      report.done += 1;
+    } catch (error) {
+      report.errors.push(`${target.domain}: ${String(error?.message ?? error)}`);
+    }
+
+    if (index < targets.length - 1) await pause(BROWSER_WALK.minGapMs);
+  }
+
+  await chrome.storage.session.set({ browserWalk: { running: false, report } });
+  return report;
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'radar:browser-queue') {
+    call('/import/browser/queue?limit=50')
+      .then((data) => sendResponse({ ok: true, count: data.targets.length }))
+      .catch((error) => sendResponse({ ok: false, error: String(error.message ?? error) }));
+    return true;
+  }
+
+  if (message.type === 'radar:browser-walk') {
+    chrome.storage.session
+      .set({ browserWalk: { running: true, at: 0, total: 0 } })
+      .then(() => browserWalk(message.limit ?? 10))
+      .then((report) => sendResponse({ ok: true, report }))
+      .catch((error) => sendResponse({ ok: false, error: String(error.message ?? error) }));
+    return true;
+  }
+
+  if (message.type === 'radar:browser-stop') {
+    chrome.storage.session
+      .set({ browserWalk: { running: true, stop: true } })
+      .then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === 'radar:browser-state') {
+    chrome.storage.session
+      .get({ browserWalk: null })
+      .then(({ browserWalk: state }) => sendResponse({ ok: true, state }));
+    return true;
+  }
+
+  return false;
+});

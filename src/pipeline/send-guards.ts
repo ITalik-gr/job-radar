@@ -26,7 +26,7 @@ export const WARMUP_STEPS: { untilDay: number; limit: number }[] = [
 
 export const MIN_GAP_MS = 3 * 60_000;
 export const MAX_WORDS = 160;
-export const MAX_LINKS = 1;
+export const MAX_LINKS = 3;
 export const BOUNCE_WINDOW = 50;
 export const BOUNCE_RATE_LIMIT = 0.03;
 export const QUIET_HOUR_START = 22;

@@ -50,6 +50,8 @@
 	},
 	"vars": {
 		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001",
+		// Перший абзац листа. Сильніша модель: викликів десятки, а текст читає людина.
+		"OUTREACH_MODEL": "claude-sonnet-5",
 		// anthropic | workers-ai. Друге це включена квота платного плану замість рахунку за токени.
 		"LLM_PROVIDER": "anthropic",
 		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",

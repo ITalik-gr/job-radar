@@ -6,6 +6,8 @@ import {
   detectTech,
   findCareerLinks,
   looksLikeCareersPage,
+  detectTechFromText,
+  detectStack,
 } from '../src/pipeline/discover.js';
 
 describe('detectAts', () => {
@@ -100,5 +102,46 @@ describe('захист відомого ATS', () => {
       expect(KNOWN_ATS).toContain(kind);
     }
     expect(KNOWN_ATS).not.toContain('html');
+  });
+});
+
+/*
+ * Розмітка каже, на чому зроблений сайт компанії. Текст каже, що компанія робить
+ * клієнтам, і це різні речі: студія, яка робить headless-магазини, сама може сидіти
+ * на WordPress. Для листа важливіше друге, тому обидві половини збираються разом.
+ */
+describe('стек із тексту сторінки', () => {
+  const page = `
+    <html><head><script src="/wp-content/themes/main.js"></script></head>
+    <body>
+      <h1>Services</h1>
+      <p>We build headless commerce on Shopify Plus with Sanity as the CMS.</p>
+      <p>Front-end in Next.js and TypeScript, payments through Stripe.</p>
+    </body></html>
+  `;
+
+  it('розмітка дає рушій самого сайту', () => {
+    expect(detectTech(page)).toContain('wordpress');
+  });
+
+  it('текст дає те, про що компанія пише словами', () => {
+    const found = detectTechFromText(page);
+    expect(found).toEqual(expect.arrayContaining(['headless cms', 'shopify', 'sanity', 'next.js', 'stripe']));
+  });
+
+  it('разом це одна множина без повторів', () => {
+    const stack = detectStack(page);
+    expect(stack).toContain('wordpress');
+    expect(stack).toContain('sanity');
+    expect(new Set(stack).size).toBe(stack.length);
+  });
+
+  it('назва всередині іншого слова не рахується', () => {
+    expect(detectTechFromText('<body>Our process is reactive and proactive.</body>')).not.toContain('react');
+  });
+
+  it('розмітка не плутається з текстом: слово в класі не робить стек', () => {
+    // Тут "sanity" лише в тексті абзацу, а не в адресі CDN, і саме текст його ловить.
+    expect(detectTech('<body><p>sanity checks</p></body>')).not.toContain('sanity');
   });
 });

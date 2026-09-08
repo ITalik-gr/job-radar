@@ -13,6 +13,11 @@
  *   goodfirms.co/directory/services/...  404
  *   goodfirms.co/directory/platform/...  404 для react-js
  *   upcity.com/web-design/agencies       не відкривається, правильний шлях це /web-design
+ *   jobs.dou.ua/companies/?business=...  список DOU не показує сайтів компаній, тому
+ *                                        збір із нього давав нуль збережених: усе
+ *                                        відсіювалось як "немає домену". DOU береться
+ *                                        серверним каталогом, `pnpm cli catalog:dou`,
+ *                                        він заходить у профіль і бере сайт звідти
  */
 const JOB_RADAR_CATALOGS = [
   {
@@ -43,14 +48,6 @@ const JOB_RADAR_CATALOGS = [
       ['Clutch, Німеччина', 'https://clutch.co/de/web-developers'],
       ['GoodFirms, Україна', 'https://www.goodfirms.co/companies/web-development-agency/ua'],
       ['DesignRush, Україна', 'https://www.designrush.com/agency/web-development-companies/ua'],
-    ],
-  },
-  {
-    group: 'DOU',
-    links: [
-      ['Сервісні компанії', 'https://jobs.dou.ua/companies/?business=Service'],
-      ['Аутстаф', 'https://jobs.dou.ua/companies/?business=Outstaffing'],
-      ['Стартапи', 'https://jobs.dou.ua/companies/?business=Startup'],
     ],
   },
 ];

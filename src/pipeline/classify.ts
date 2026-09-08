@@ -81,9 +81,9 @@ function anthropic(): Anthropic {
   return client;
 }
 
-async function callAnthropic(text: string, system = SYSTEM_PROMPT, temperature = 0) {
+async function callAnthropic(text: string, system = SYSTEM_PROMPT, temperature = 0, model?: string) {
   const response = await anthropic().messages.create({
-    model: config.llm.model,
+    model: model ?? config.llm.model,
     max_tokens: 1024,
     temperature,
     system,
@@ -141,10 +141,12 @@ export async function callModelWith(
   system: string,
   user: string,
   temperature = 0,
+  /** Модель на цей виклик. Порожнє означає ту, якою класифікуються вакансії. */
+  model?: string,
 ): Promise<RawCall> {
   return config.llm.provider === 'workers-ai'
     ? callWorkersAi(user, system, temperature)
-    : callAnthropic(user, system, temperature);
+    : callAnthropic(user, system, temperature, model);
 }
 
 /** Облік витрат для викликів поза класифікацією. */

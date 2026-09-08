@@ -309,6 +309,35 @@ describe('closeMissing', () => {
     expect(rows).toHaveLength(open.length);
     expect(rows.filter((r) => r.closedAt !== null)).toHaveLength(open.length - 1);
   });
+
+  /*
+   * Партії існують через ліміт D1 на сто звʼязаних параметрів. Тест бере число,
+   * яке гарантовано перекриває кілька партій: на одному запиті це впало б на Workers,
+   * і саме так воно і падало на бордах Greenhouse у великих компаній.
+   */
+  it('закриває сотні вакансій, не впираючись у ліміт параметрів запиту', async () => {
+    const { company } = await upsertCompany({ name: 'Bulk', domain: 'bulk-close.com', source: 'test' });
+    const total = 250;
+
+    await getDb()
+      .insert(vacancies)
+      .values(
+        Array.from({ length: total }, (_, i) => ({
+          companyId: company.id,
+          source: 'greenhouse',
+          externalId: String(i),
+          url: `https://bulk-close.com/jobs/${i}`,
+          title: `Frontend Developer ${i}`,
+          dedupeKey: `bulk-close.com|frontend-developer-${i}|1`,
+        })),
+      );
+
+    expect(await closeMissing(company.id, 'greenhouse', [])).toBe(total);
+
+    const rows = await getDb().select().from(vacancies).where(eq(vacancies.companyId, company.id));
+    expect(rows).toHaveLength(total);
+    expect(rows.every((row) => row.closedAt !== null)).toBe(true);
+  });
 });
 
 describe('queue', () => {

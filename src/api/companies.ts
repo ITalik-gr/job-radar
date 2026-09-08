@@ -10,6 +10,8 @@ import {
   vacancies,
 } from '../db/schema.js';
 import { scoreCompany } from '../pipeline/company-score.js';
+import { normalizeEmail, rememberContact } from '../pipeline/outreach.js';
+import { refreshCompany } from '../pipeline/refresh.js';
 
 export const companiesRoutes = new Hono();
 
@@ -133,6 +135,34 @@ companiesRoutes.get('/:id', async (c) => {
       .where(eq(snapshots.companyId, id))
       .orderBy(desc(snapshots.fetchedAt)),
   });
+});
+
+/**
+ * Контакт, доданий руками зі сторінки студії.
+ *
+ * Пошта на сайті часто лежить там, куди парсер не дістає: у картинці, у формі,
+ * у футері під скриптом. Побачити її очима і вписати це хвилина, а без цієї
+ * кнопки компанія лишалась би назавжди без адреси і без листа.
+ */
+/**
+ * Повний перегляд однієї компанії: заново на сайт, стек, контакти, career-сторінка.
+ * Нічні проходи роблять те саме за розкладом, а тут це робиться зараз і без умов.
+ */
+companiesRoutes.post('/:id/refresh', async (c) =>
+  c.json(await refreshCompany(Number(c.req.param('id')))),
+);
+
+companiesRoutes.post('/:id/contacts', async (c) => {
+  const companyId = Number(c.req.param('id'));
+  const body = await c.req
+    .json<{ email?: string; name?: string; role?: string }>()
+    .catch(() => ({}) as { email?: string; name?: string; role?: string });
+
+  const email = normalizeEmail(body.email);
+  if (!email) return c.json({ error: 'потрібна коректна адреса' }, 400);
+
+  const result = await rememberContact(companyId, email, body.name?.trim() || null, body.role?.trim() || null);
+  return c.json({ email, ...result });
 });
 
 companiesRoutes.post('/:id/state', async (c) => {

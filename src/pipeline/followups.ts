@@ -3,7 +3,7 @@ import { getDb } from '../db/client.js';
 import { companies, outreach } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { renderLetter } from '../lib/letter.js';
-import { matchTemplate, outreachTemplates, type Language } from './outreach.js';
+import { matchTemplate, outreachTemplates, readSignature, type Language } from './outreach.js';
 
 /**
  * Фолоу-апи, розділ 6 OUTREACH.md.
@@ -95,6 +95,7 @@ export async function prepareFollowups(now = new Date()): Promise<FollowupReport
   const db = getDb();
   const list = await outreachTemplates();
   const candidates = await dueFollowups(now);
+  const signature = await readSignature();
   const report: FollowupReport = { due: candidates.length, created: 0, skipped: [] };
 
   for (const candidate of candidates) {
@@ -112,6 +113,7 @@ export async function prepareFollowups(now = new Date()): Promise<FollowupReport
       domain: '',
       contactName: candidate.contactName,
       intro: template.intro ?? '',
+      signature,
     });
 
     await db.insert(outreach).values({

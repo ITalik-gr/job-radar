@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Select } from '@mantine/core';
 import { api } from '../lib/api';
@@ -13,7 +12,7 @@ export function TemplateSelect({
   kind,
   value,
   onChange,
-  width = 168,
+  width = 240,
 }: {
   kind: 'vacancy' | 'studio';
   value: string | null;
@@ -24,13 +23,18 @@ export function TemplateSelect({
 
   const options = (data?.templates ?? [])
     .filter((row) => row.kind === kind && !row.archived)
-    .map((row) => ({ value: row.slug, label: row.name }));
+    /*
+     * У підписі і назва, і мова: шаблони ходять парами uk та en, і без мови
+     * список читається як два однакові рядки поспіль.
+     */
+    .map((row) => ({ value: row.slug, label: `${row.name}, ${row.language}` }));
 
-  // Перший шаблон вибирається сам, інакше кнопка "Написав" писала б null у листування.
-  const first = options[0]?.value;
-  useEffect(() => {
-    if (!value && first) onChange(first);
-  }, [value, first, onChange]);
+  /*
+   * Тут більше немає вибору "перший у списку". Початковий шаблон пропонує блок листа
+   * на тій самій картці, і він враховує тип компанії, тобто пропонує розумніше.
+   * Поки обидва ставили значення самі, вигравав той, чий ефект спрацював останнім,
+   * і підказка за типом компанії мовчки затиралась першим рядком списку.
+   */
 
   return (
     <Select

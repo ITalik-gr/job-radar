@@ -1,10 +1,13 @@
+import * as cheerio from 'cheerio';
 import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { companies, contacts, type Company } from '../db/schema.js';
 import { fetchText } from '../lib/http.js';
 import { log } from '../lib/log.js';
+import { normalizeDomain } from '../lib/normalize.js';
 import { withRun } from '../lib/runs.js';
-import { detectTech } from './discover.js';
+import { detectStack } from './discover.js';
+import { normalizeEmail, rememberContact } from './outreach.js';
 
 /**
  * Збір контактів і ознак живості з сайту компанії.
@@ -18,6 +21,21 @@ import { detectTech } from './discover.js';
  */
 
 /** Сторінки, де живуть команда і контакти. Порядок від найціннішого до найзагальнішого. */
+/**
+ * Сторінки послуг. Люди звідти не збираються, а стек збирається: студія описує там
+ * словами, що вона робить клієнтам, і це часто не збігається з тим, на чому зроблений
+ * її власний сайт. Контора, яка робить headless-магазини, сама може сидіти на WordPress.
+ */
+export const SERVICE_PATHS = [
+  '/services',
+  '/what-we-do',
+  '/expertise',
+  '/technologies',
+  '/tech-stack',
+  '/solutions',
+  '/capabilities',
+];
+
 export const TEAM_PATHS = [
   '/team',
   '/our-team',
@@ -239,23 +257,96 @@ export function extractPeople(html: string, sourceUrl: string): FoundContact[] {
   return [...found.values()];
 }
 
+/**
+ * HTML-сутності назад у символи. Пошта регулярно пишеться саме так, щоб її не
+ * зібрали роботи: `&#104;&#101;&#108;...` або хоча б `&#64;` замість равлика.
+ */
+export function decodeEntities(html: string): string {
+  return html
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;/gi, ' ');
+}
+
+/**
+ * Розшифровка Cloudflare Email Protection.
+ *
+ * Cloudflare замінює адресу на `<a href="/cdn-cgi/l/email-protection#1a2b3c">` або
+ * `<span data-cfemail="1a2b3c">`, а справжній текст збирає скриптом уже в браузері.
+ * У HTML її після цього немає взагалі, і саме тому пошта, яку видно очима на сайті,
+ * не знаходилась. Схема проста: перший байт це ключ, решта байтів з ним у XOR.
+ */
+export function decodeCfEmail(hex: string): string | null {
+  if (!/^[0-9a-f]{4,}$/i.test(hex) || hex.length % 2 !== 0) return null;
+  const key = parseInt(hex.slice(0, 2), 16);
+  let out = '';
+  for (let i = 2; i < hex.length; i += 2) {
+    out += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ key);
+  }
+  return out.includes('@') ? out : null;
+}
+
+/**
+ * Розмаскування ручних хитрощів: "hello (at) studio dot com" і сусіди. Такі написи
+ * ставлять саме для того, щоб адресу не забрав робот, але людина її читає, тому
+ * і радар мусить, інакше він зупиняється там, де власник читає адресу очима.
+ */
+export function unmaskEmails(text: string): string {
+  return text
+    .replace(/\s*[([{<]?\s*(?:at|@|＠|собака)\s*[)\]}>]?\s*/gi, (match) =>
+      /@|＠|\bat\b|собака/i.test(match) ? '@' : match,
+    )
+    .replace(/\s*[([{<]?\s*(?:dot|крапка)\s*[)\]}>]?\s*/gi, '.');
+}
+
 export function extractEmails(html: string): { email: string; generic: boolean }[] {
   const seen = new Set<string>();
   const result: { email: string; generic: boolean }[] = [];
 
   const add = (raw: string) => {
-    const email = raw.toLowerCase().trim();
+    const email = raw.toLowerCase().trim().replace(/^mailto:/, '');
     // Хвости на кшталт .png трапляються, коли адреса склеїлась з іменем файла.
     if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) return;
     if (/\.(png|jpe?g|gif|svg|webp|css|js)$/.test(email)) return;
-    if (/^(example|test|your|name|email|user)@/.test(email)) return;
+    if (/^(example|test|your|name|email|user|domain|sentry|wordpress)@/.test(email)) return;
     if (seen.has(email)) return;
     seen.add(email);
     result.push({ email, generic: GENERIC_MAILBOX.test(email) });
   };
 
-  for (const match of html.matchAll(/mailto:([^"'?>\s]+)/gi)) add(decodeURIComponent(match[1]!));
-  for (const match of html.matchAll(/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g)) add(match[0]);
+  const decoded = decodeEntities(html);
+
+  // Cloudflare йде першим: після нього адреса зʼявляється там, де її взагалі не було.
+  for (const match of decoded.matchAll(/data-cfemail="([0-9a-f]+)"/gi)) {
+    const email = decodeCfEmail(match[1]!);
+    if (email) add(email);
+  }
+  for (const match of decoded.matchAll(/\/cdn-cgi\/l\/email-protection#([0-9a-f]+)/gi)) {
+    const email = decodeCfEmail(match[1]!);
+    if (email) add(email);
+  }
+
+  for (const match of decoded.matchAll(/mailto:([^"'?>\s]+)/gi)) {
+    try {
+      add(decodeURIComponent(match[1]!));
+    } catch {
+      // Побитий percent-encoding це не привід валити розбір усієї сторінки.
+    }
+  }
+
+  const plain = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
+  for (const match of decoded.matchAll(plain)) add(match[0]);
+
+  /*
+   * Той самий пошук по видимому тексту, а не по розмітці. Адреса часто розрізана
+   * тегами: `<span>hello</span>@<span>studio.com</span>`, і в сирому HTML вона не
+   * збігається з жодним шаблоном, а в тексті сторінки збігається.
+   */
+  const text = unmaskEmails(
+    cheerio.load(decoded)('body').text().replace(/\s*\n\s*/g, ' '),
+  );
+  for (const match of text.matchAll(plain)) add(match[0]);
 
   return result;
 }
@@ -294,7 +385,8 @@ export function extractSignals(html: string): SiteSignals {
     copyrightYear: years.length > 0 ? Math.max(...years) : null,
     hasBlog: /href="[^"]*\/(blog|news|insights|articles)\b/i.test(html),
     lastPostAt: isoDates.length > 0 ? Math.max(...isoDates.filter(Number.isFinite)) : null,
-    techHints: detectTech(html),
+    // Розмітка і текст разом: перше каже, на чому зроблений сайт, друге, що вони вміють.
+    techHints: detectStack(html),
   };
 }
 
@@ -326,19 +418,67 @@ export function findTeamLinks(html: string, base: string): string[] {
   return [...urls];
 }
 
+/**
+ * Адреси скриптів того самого домену. Потрібні для сайтів, які малюють вміст у
+ * браузері: у HTML там порожній `<div id="root">`, а пошта лежить у бандлі, який
+ * цей div заповнює. Ходити туди дорого, тому це останній крок і тільки коли в
+ * розмітці не знайшлось жодної адреси.
+ */
+export function findScripts(html: string, base: string): string[] {
+  const host = new URL(base).hostname;
+  const urls: string[] = [];
+
+  for (const match of html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/gi)) {
+    try {
+      const url = new URL(match[1]!, base);
+      if (url.hostname !== host) continue;
+      if (!/\.m?js(\?|$)/i.test(url.pathname)) continue;
+      urls.push(url.href);
+    } catch {
+      // Побитий src це не привід валити обхід.
+    }
+  }
+
+  /*
+   * Спершу головні бандли: у них лежить каркас сторінки з підвалом і контактами.
+   * Дрібні чанки це найчастіше окремі маршрути, і адреси в них немає.
+   */
+  const weight = (url: string) => (/(main|index|app|bundle|entry)/i.test(url) ? 0 : 1);
+  return [...new Set(urls)].sort((a, b) => weight(a) - weight(b));
+}
+
+/** Скільки тексту видно без скриптів. Порожня сторінка означає рендер у браузері. */
+export function visibleTextLength(html: string): number {
+  const $ = cheerio.load(html);
+  $('script, style, noscript, svg').remove();
+  return $('body').text().replace(/\s+/g, ' ').trim().length;
+}
+
 export interface EnrichResult {
   companyId: number;
   domain: string;
   contacts: FoundContact[];
   signals: SiteSignals | null;
   pagesFetched: number;
+  /** Сайт малює вміст скриптом: у HTML тексту майже немає. Пояснює порожній результат. */
+  clientRendered: boolean;
+  /**
+   * Головна взагалі не відкрилась серверу: таймаут, 403 від захисту, мертвий домен.
+   * Це не те саме, що "нічого не знайшли", і поводитись з цим треба інакше.
+   */
+  reachable: boolean;
 }
 
 /**
  * Обійти сайт однієї компанії. Ліміт сторінок навмисно малий: цінність швидко падає,
  * а `fetchText` тримає паузу на домен, тому кожна зайва сторінка це секунда прогону.
  */
-export async function enrichCompany(company: Company, maxPages = 5): Promise<EnrichResult> {
+export async function enrichCompany(
+  company: Company,
+  maxPages = 5,
+  maxServicePages = 2,
+  maxScripts = 2,
+): Promise<EnrichResult> {
   const base = `https://${company.domain}`;
   const result: EnrichResult = {
     companyId: company.id,
@@ -346,6 +486,8 @@ export async function enrichCompany(company: Company, maxPages = 5): Promise<Enr
     contacts: [],
     signals: null,
     pagesFetched: 0,
+    clientRendered: false,
+    reachable: false,
   };
 
   let homepage = '';
@@ -353,7 +495,10 @@ export async function enrichCompany(company: Company, maxPages = 5): Promise<Enr
     const res = await fetchText(base);
     homepage = res.body;
     result.pagesFetched += 1;
+    result.reachable = true;
     result.signals = extractSignals(homepage);
+    // Двісті символів це менше за один абзац: такий HTML це каркас, а не сторінка.
+    result.clientRendered = visibleTextLength(homepage) < 200;
   } catch (error) {
     log.warn({ domain: company.domain, err: String(error) }, 'головна не відкрилась, enrichment пропущено');
     return result;
@@ -363,6 +508,15 @@ export async function enrichCompany(company: Company, maxPages = 5): Promise<Enr
   const emails: { email: string; generic: boolean; sourceUrl: string }[] = [];
 
   const harvest = (html: string, url: string) => {
+    /*
+     * Стек добирається з кожної відкритої сторінки, а не тільки з головної.
+     * На головній часто стоїть слоган і три картинки, а перелік технологій живе
+     * на сторінці послуг, і саме він показує, чи має сенс писати цій студії.
+     */
+    if (result.signals) {
+      result.signals.techHints = [...new Set([...result.signals.techHints, ...detectStack(html)])];
+    }
+
     if (isTeamPage(url)) {
       for (const person of extractPeople(html, url)) {
         if (!byName.has(person.name!)) byName.set(person.name!, person);
@@ -379,7 +533,10 @@ export async function enrichCompany(company: Company, maxPages = 5): Promise<Enr
     ...TEAM_PATHS.map((path) => `${base}${path}`),
   ];
 
-  for (const url of [...new Set(candidates)].slice(0, maxPages)) {
+  // Сторінки послуг ідуть окремим невеликим бюджетом, щоб не з'їдати ліміт у людей.
+  const servicePages = SERVICE_PATHS.map((path) => `${base}${path}`);
+
+  for (const url of [...new Set([...candidates.slice(0, maxPages), ...servicePages.slice(0, maxServicePages)])]) {
     if (url === base) continue;
     try {
       const res = await fetchText(url);
@@ -387,6 +544,24 @@ export async function enrichCompany(company: Company, maxPages = 5): Promise<Enr
       harvest(res.body, url);
     } catch {
       // 404 на вгаданому шляху це нормальний результат.
+    }
+  }
+
+  /*
+   * Досі жодної адреси. Найчастіша причина це сайт на React або іншому клієнтському
+   * рушії: розмітка порожня, а підвал з поштою збирає скрипт уже в браузері. Тоді
+   * читаємо самі бандли, адреса лежить у них рядком.
+   */
+  if (emails.length === 0) {
+    for (const url of findScripts(homepage, base).slice(0, maxScripts)) {
+      try {
+        const res = await fetchText(url);
+        result.pagesFetched += 1;
+        for (const item of extractEmails(res.body)) emails.push({ ...item, sourceUrl: url });
+        if (emails.length > 0) break;
+      } catch {
+        // Бандл міг переїхати або бути завеликим, це не привід валити обхід.
+      }
     }
   }
 
@@ -451,9 +626,28 @@ export async function saveEnrichment(result: EnrichResult): Promise<{ added: num
     );
   }
 
-  if (result.signals) {
-    const patch: Record<string, unknown> = { lastChecked: Date.now() };
+  const hasEmail = result.contacts.some((item) => item.email);
 
+  /*
+   * Позначка часу ставиться завжди, навіть коли сайт не відкрився зовсім.
+   *
+   * Раніше вона писалась тільки при успіху, і компанія з мертвою або закритою
+   * головною лишалась із порожнім `last_checked`, тобто вічно першою в черзі:
+   * кожна наступна партія бралась саме за неї і знову впиралась у ту саму стіну.
+   */
+  const patch: Record<string, unknown> = { lastChecked: Date.now() };
+
+  /*
+   * Два різні випадки, а черга одна: сторінку має відкрити браузер.
+   *
+   * Перший, сайт намальований скриптом, і в сирому HTML немає нічого. Другий,
+   * головна не віддалась серверу взагалі: захист відповів 403 на запит без
+   * справжнього браузера. У браузері власника обидва відкриються нормально,
+   * тому обидва йдуть у чергу розширення, а не в нікуди.
+   */
+  patch.needsBrowser = !hasEmail && (result.clientRendered || !result.reachable);
+
+  if (result.signals) {
     // Ознаки живості зберігаються, а не тільки рахуються: на них спирається скоринг.
     if (result.signals.copyrightYear) patch.copyrightYear = result.signals.copyrightYear;
     if (result.signals.lastPostAt) patch.lastPostAt = result.signals.lastPostAt;
@@ -465,8 +659,9 @@ export async function saveEnrichment(result: EnrichResult): Promise<{ added: num
         .where(eq(companies.id, result.companyId));
       patch.techHints = [...new Set([...(company[0]?.techHints ?? []), ...result.signals.techHints])];
     }
-    await db.update(companies).set(patch).where(eq(companies.id, result.companyId));
   }
+
+  await db.update(companies).set(patch).where(eq(companies.id, result.companyId));
 
   return { added: fresh.length };
 }
@@ -514,10 +709,37 @@ export async function candidatesForEnrichment(options: EnrichOptions = {}): Prom
         ? sql`${companies.domain} <> ''`
         : and(sql`${companies.domain} <> ''`, sql`${companies.id} not in ${withContacts}`),
     )
-    .orderBy(priority, sql`case when ${companies.sourceUrl} is null then 1 else 0 end`, companies.id)
+    /*
+     * Останній критерій це час дотику, найдавніші попереду. Компанія, чий сайт не
+     * відкрився, лишається без контактів і без нього назавжди трималась би на початку
+     * черги: кожна наступна партія бралась би за ту саму двадцятку.
+     */
+    .orderBy(
+      priority,
+      sql`case when ${companies.sourceUrl} is null then 1 else 0 end`,
+      sql`coalesce(${companies.lastChecked}, 0)`,
+      companies.id,
+    )
     .limit(options.limit ?? 25);
 
   return rows;
+}
+
+/** Скільки компаній ще чекає на збір контактів. Інтерфейс за цим числом зупиняє прохід. */
+export async function pendingEnrichment(options: EnrichOptions = {}): Promise<number> {
+  const db = getDb();
+  const withContacts = db.selectDistinct({ id: contacts.companyId }).from(contacts);
+
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(companies)
+    .where(
+      options.all
+        ? sql`${companies.domain} <> ''`
+        : and(sql`${companies.domain} <> ''`, sql`${companies.id} not in ${withContacts}`),
+    );
+
+  return row?.count ?? 0;
 }
 
 /** `itemsFound` і `itemsNew` потрібні обгортці `withRun`, решта полів для звіту. */
@@ -530,11 +752,18 @@ export interface EnrichStats {
   withEmail: number;
   contactsAdded: number;
   pagesFetched: number;
+  /** Скільки компаній лишилось після цієї партії. Нуль означає, що збір закінчено. */
+  remaining: number;
+  /** Сайтів, які малюють вміст скриптом. Пояснює порожній результат, а не ховає його. */
+  clientRendered: number;
+  /** Сайтів, які взагалі не відкрились серверу: таймаут, 403 від захисту, мертвий домен. */
+  unreachable: number;
 }
 
 export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> {
   return withRun('enrich', async () => {
     const targets = await candidatesForEnrichment(options);
+    const pending = await pendingEnrichment(options);
     const stats: EnrichStats = {
       itemsFound: targets.length,
       itemsNew: 0,
@@ -544,6 +773,9 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
       withEmail: 0,
       contactsAdded: 0,
       pagesFetched: 0,
+      clientRendered: 0,
+      unreachable: 0,
+      remaining: Math.max(0, pending - targets.length),
     };
 
     for (const company of targets) {
@@ -551,6 +783,8 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
         const result = await enrichCompany(company);
         stats.checked += 1;
         stats.pagesFetched += result.pagesFetched;
+        if (result.clientRendered) stats.clientRendered += 1;
+        if (!result.reachable) stats.unreachable += 1;
 
         const people = result.contacts.filter((item) => item.name);
         if (people.length > 0) stats.withPeople += 1;
@@ -562,6 +796,11 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
       } catch (error) {
         // Один недоступний сайт не має валити прохід по решті сотні.
         stats.errors.push(`${company.domain}: ${error instanceof Error ? error.message : String(error)}`);
+        // Позначка часу навіть на невдачі, інакше ця компанія вічно перша в черзі.
+        await getDb()
+          .update(companies)
+          .set({ lastChecked: Date.now() })
+          .where(eq(companies.id, company.id));
       }
     }
 
@@ -581,4 +820,96 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
 
     return stats;
   });
+}
+
+/**
+ * Черга для розширення: домени, з яких серверний обхід нічого не дістав, бо сторінку
+ * малює скрипт. Розширення відкриває їх у власному браузері власника, читає з готового
+ * DOM і присилає знайдене сюди ж.
+ *
+ * Ліміт малий навмисно: це прохід по чужих сайтах у справжньому браузері, з паузами,
+ * як гортає людина. Розділ 4 CLAUDE.md.
+ */
+export interface BrowserTarget {
+  companyId: number;
+  name: string;
+  domain: string;
+}
+
+export async function browserQueue(limit = 20): Promise<BrowserTarget[]> {
+  const db = getDb();
+  const withEmail = db
+    .selectDistinct({ id: contacts.companyId })
+    .from(contacts)
+    .where(sql`${contacts.email} is not null`);
+
+  const rows = await db
+    .select({ companyId: companies.id, name: companies.name, domain: companies.domain })
+    .from(companies)
+    .where(and(eq(companies.needsBrowser, true), sql`${companies.id} not in ${withEmail}`))
+    .orderBy(sql`coalesce(${companies.lastChecked}, 0)`)
+    .limit(Math.min(limit, 50));
+
+  return rows;
+}
+
+export interface BrowserFindings {
+  companyId?: number | null;
+  domain: string;
+  emails?: { email: string; name?: string | null; role?: string | null }[];
+  techHints?: string[];
+  copyrightYear?: number | null;
+  lastPostAt?: number | null;
+}
+
+export interface BrowserSaveResult {
+  companyId: number | null;
+  contactsAdded: number;
+  techAdded: number;
+}
+
+/**
+ * Прийняти те, що розширення прочитало з намальованої сторінки.
+ *
+ * Прапорець `needs_browser` знімається в будь-якому разі, навіть коли нічого не
+ * знайшлось: сторінку вже відкривали у браузері, і ганяти її туди щоразу заново
+ * означало б вічну чергу з тих самих доменів.
+ */
+export async function saveBrowserFindings(input: BrowserFindings): Promise<BrowserSaveResult> {
+  const db = getDb();
+  const domain = normalizeDomain(input.domain);
+  if (!domain) throw new Error(`невалідний домен: ${input.domain}`);
+
+  const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
+  if (!company) return { companyId: null, contactsAdded: 0, techAdded: 0 };
+
+  let contactsAdded = 0;
+  for (const item of (input.emails ?? []).slice(0, MAX_GENERIC + MAX_PEOPLE)) {
+    const email = normalizeEmail(item.email);
+    if (!email) continue;
+    const { created } = await rememberContact(company.id, email, item.name ?? null, item.role ?? null);
+    if (created) contactsAdded += 1;
+  }
+
+  const techHints = [...new Set([...company.techHints, ...(input.techHints ?? [])])];
+  const patch: Record<string, unknown> = {
+    needsBrowser: false,
+    lastChecked: Date.now(),
+    techHints,
+  };
+  if (input.copyrightYear) patch.copyrightYear = input.copyrightYear;
+  if (input.lastPostAt) patch.lastPostAt = input.lastPostAt;
+
+  await db.update(companies).set(patch).where(eq(companies.id, company.id));
+
+  log.info(
+    { domain, contactsAdded, tech: techHints.length },
+    'дані з браузера збережено',
+  );
+
+  return {
+    companyId: company.id,
+    contactsAdded,
+    techAdded: techHints.length - company.techHints.length,
+  };
 }

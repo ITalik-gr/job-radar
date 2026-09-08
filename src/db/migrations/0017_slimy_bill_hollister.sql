@@ -1,0 +1,1 @@
+ALTER TABLE `companies` ADD `needs_browser` integer DEFAULT false NOT NULL;

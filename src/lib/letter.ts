@@ -25,6 +25,12 @@ export interface LetterContext {
    * готовим рядком, бо рішення, чий саме це текст, приймається до підстановки.
    */
   intro?: string | null;
+  /**
+   * Підпис. Лежить окремо від тексту шаблона, бо він однаковий у всіх листах,
+   * а правити його в десяти шаблонах по черзі означає рано чи пізно розійтись
+   * у них між собою.
+   */
+  signature?: string | null;
 }
 
 /** Підписи для редактора шаблонів: власник має бачити, що взагалі можна вставити. */
@@ -37,6 +43,7 @@ export const LETTER_PLACEHOLDERS: { token: string; hint: string }[] = [
   { token: 'their_stack', hint: 'стек із їхнього сайту, через кому' },
   { token: 'vacancy_title', hint: 'назва вакансії, якщо лист із Черги' },
   { token: 'intro', hint: 'перший абзац: від моделі або статичний з шаблона' },
+  { token: 'signature', hint: 'підпис, спільний для всіх листів' },
   { token: 'city', hint: 'місто компанії' },
   { token: 'country', hint: 'країна компанії' },
 ];
@@ -64,7 +71,7 @@ export interface RenderedLetter {
  * попередив до того, як лист піде.
  */
 export function renderLetter(template: string, context: LetterContext): RenderedLetter {
-  const values: Record<string, string> = {
+  const base: Record<string, string> = {
     company: context.company ?? '',
     domain: context.domain ?? '',
     contact_name: context.contactName ?? '',
@@ -72,15 +79,59 @@ export function renderLetter(template: string, context: LetterContext): Rendered
     niche: context.kind ? (NICHE_LABELS[context.kind] ?? '') : '',
     their_stack: (context.stack ?? []).join(', '),
     vacancy_title: context.vacancyTitle ?? '',
-    intro: context.intro ?? '',
     city: context.city ?? '',
     country: context.country ?? '',
+    signature: context.signature ?? '',
   };
+
+  /*
+   * Перший абзац підставляється не як готовий рядок, а сам проходить підстановку.
+   * Інакше `{{company}}`, написаний у полі "Перший абзац", доїжджав би до пошти
+   * фігурними дужками: заміна робиться за один прохід і вставлений текст повторно
+   * не переглядається.
+   *
+   * Токена `intro` всередині самого абзацу немає навмисно: він потрапить у
+   * `unknown` і власник побачить попередження замість тихої рекурсії.
+   */
+  const introMissing = new Set<string>();
+  const introUnknown = new Set<string>();
+  const intro = substitute(context.intro ?? '', base, introMissing, introUnknown);
+
+  const values: Record<string, string> = { ...base, intro };
 
   const missing = new Set<string>();
   const unknown = new Set<string>();
+  const text = substitute(template, values, missing, unknown);
 
-  const text = template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_match, rawToken: string) => {
+  /*
+   * Претензії до абзацу зараховуються лише тоді, коли шаблон його справді бере.
+   * Абзац, написаний "про запас" для шаблона без мітки, не має блокувати лист.
+   */
+  if (HAS_INTRO.test(template)) {
+    for (const token of introMissing) missing.add(token);
+    for (const token of introUnknown) unknown.add(token);
+  }
+
+  return {
+    // Підстановка порожнього значення лишає подвійні пробіли і висячі коми.
+    text: text.replace(/[ \t]{2,}/g, ' ').replace(/ ,/g, ',').replace(/\n{3,}/g, '\n\n').trim(),
+    missing: [...missing],
+    unknown: [...unknown],
+  };
+}
+
+const TOKEN = /\{\{\s*([a-z_]+)\s*\}\}/gi;
+
+/** Чи бере шаблон перший абзац узагалі. Без цього абзац перевіряється даремно. */
+export const HAS_INTRO = /\{\{\s*intro\s*\}\}/i;
+
+function substitute(
+  template: string,
+  values: Record<string, string>,
+  missing: Set<string>,
+  unknown: Set<string>,
+): string {
+  return template.replace(TOKEN, (_match, rawToken: string) => {
     const token = rawToken.toLowerCase();
     if (!(token in values)) {
       unknown.add(token);
@@ -90,13 +141,6 @@ export function renderLetter(template: string, context: LetterContext): Rendered
     if (!value) missing.add(token);
     return value;
   });
-
-  return {
-    // Підстановка порожнього значення лишає подвійні пробіли і висячі коми.
-    text: text.replace(/[ \t]{2,}/g, ' ').replace(/ ,/g, ',').replace(/\n{3,}/g, '\n\n').trim(),
-    missing: [...missing],
-    unknown: [...unknown],
-  };
 }
 
 /** Посилання `mailto:` з темою і тілом. Порожня адреса означає, що кнопка неактивна. */

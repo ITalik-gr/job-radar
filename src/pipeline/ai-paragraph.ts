@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { config } from '../config.js';
 import { getDb } from '../db/client.js';
 import { facts } from '../db/schema.js';
 import { log } from '../lib/log.js';
@@ -19,7 +20,7 @@ import type { DraftCandidate, Language } from './outreach.js';
  * генерувати його означало б ризикувати вигаданим досвідом у листі незнайомцю.
  */
 
-export const AI_PROMPT_VERSION = 'outreach-intro-v1';
+export const AI_PROMPT_VERSION = 'outreach-intro-v2';
 
 export const paragraphSchema = z.object({
   paragraph: z.string(),
@@ -81,18 +82,29 @@ export function companyFacts(candidate: DraftCandidate): CompanyFacts {
 
 export function buildPrompt(language: Language, ownerFacts: string[]): string {
   return [
-    'Ти пишеш перший абзац холодного листа розробника до веб-студії.',
+    'Ти пишеш перший абзац холодного листа розробника до компанії.',
     '',
-    'Правила:',
-    '1. Рівно 2 речення. Не більше.',
-    '2. Абзац про КОМПАНІЮ, не про відправника. Відправник згадується з другого абзацу.',
-    '3. Використовуй ТІЛЬКИ факти з блоку COMPANY нижче. Нічого не додавай.',
-    '4. Якщо фактів замало для конкретного речення, напиши загальніше,',
-    '   але НЕ вигадуй проєкти, клієнтів, нагороди, цифри чи новини.',
-    '5. Заборонено: em dash, знак оклику, слова excited, passionate, thrilled,',
+    'У блоці LETTER лежить увесь лист, у якому мітка {{intro}} це місце твого абзацу.',
+    'Прочитай його: далі в листі відправник каже, хто він і що пропонує. Твій абзац',
+    'мусить підводити саме до цього тексту і не повторювати того, що в ньому вже є.',
+    '',
+    'Що це за абзац:',
+    '1. Це причина, чому лист пишеться саме цій компанії. Одне-два речення.',
+    '2. Звертайся до читача на "ти або ви" ("you", "ваш"), це лист людині, а не довідка.',
+    '3. НЕ переказуй опис компанії з їхнього сайту. Речення "X is a web development',
+    '   company based in London that specializes in..." це не лист, це витяг з каталогу,',
+    '   і читач знає про себе більше за тебе. Замість опису назви те, що робить',
+    '   звернення доречним: їхній стек, тип роботи, ринок, розмір команди.',
+    '4. Без компліментів і без оцінок їхньої роботи ("great work", "love your site"):',
+    '   ти їхніх проєктів не бачив, і це чути.',
+    '',
+    'Обмеження:',
+    '5. Використовуй ТІЛЬКИ факти з блоку COMPANY. Якщо фактів мало, напиши загальніше,',
+    '   але НЕ вигадуй проєктів, клієнтів, нагород, цифр і новин.',
+    '6. Заборонено: em dash, знак оклику, слова excited, passionate, thrilled,',
     '   reach out, I hope this finds you well, конструкції "not X but Y".',
-    '6. Без привітання і без звертання, вони додаються шаблоном.',
-    `7. Мова: ${language}.`,
+    '7. Без привітання і без підпису, вони вже є в листі.',
+    `8. Мова: ${language}.`,
     ...(ownerFacts.length > 0
       ? ['', 'Про відправника дозволено згадати тільки це:', ...ownerFacts.map((item) => `- ${item}`)]
       : []),
@@ -152,9 +164,48 @@ export function coinedTokens(paragraph: string, source: string): string[] {
  * текст лишається тим самим текстом. Решта порушень означає відкат, бо чинити
  * чужу вигадку кодом неможливо.
  */
+/** Чи звертається абзац до читача. Лист без звертання це довідка про компанію. */
+export function addressesReader(paragraph: string, language: Language): boolean {
+  const lower = paragraph.toLowerCase();
+  const markers =
+    language === 'uk'
+      ? [/\bви\b/, /\bвас\b/, /\bвам\b/, /\bваш/, /\bти\b/, /\bтво/]
+      : [/\byou\b/, /\byour\b/, /\byou're\b/, /\byouve\b/, /\byou've\b/];
+  return markers.some((marker) => marker.test(lower));
+}
+
+/** Найдовший спільний відрізок слів між абзацом і описом компанії. */
+export function longestSharedRun(paragraph: string, description: string | null): number {
+  if (!description) return 0;
+  const clean = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+
+  const a = clean(paragraph);
+  const b = clean(description);
+  let best = 0;
+
+  for (let i = 0; i < a.length; i += 1) {
+    for (let j = 0; j < b.length; j += 1) {
+      let run = 0;
+      while (i + run < a.length && j + run < b.length && a[i + run] === b[j + run]) run += 1;
+      if (run > best) best = run;
+    }
+  }
+
+  return best;
+}
+
+/** Довший збіг означає, що абзац переписано з опису компанії, а не написано. */
+export const MAX_SHARED_RUN = 7;
+
 export function validateParagraph(
   response: ParagraphResponse,
   sourceJson: string,
+  context: { language?: Language; description?: string | null } = {},
 ): Validation {
   const paragraph = response.paragraph.replace(/\s*—\s*/g, ', ').trim();
 
@@ -186,6 +237,21 @@ export function validateParagraph(
     return { ok: false, reason: `вигадані сутності: ${coined.join(', ')}` };
   }
 
+  /*
+   * Дві перевірки проти найчастішого браку: абзац, який переказує опис компанії
+   * з каталогу. Формально він бездоганний, фактів не вигадує і всі попередні
+   * перевірки проходить, але як лист не працює: читач знає про себе більше, ніж
+   * там написано, і бачить, що перед ним автозаповнення.
+   */
+  if (context.language && !addressesReader(paragraph, context.language)) {
+    return { ok: false, reason: 'абзац не звертається до читача, це опис компанії' };
+  }
+
+  const shared = longestSharedRun(paragraph, context.description ?? null);
+  if (shared > MAX_SHARED_RUN) {
+    return { ok: false, reason: `переказ опису компанії, ${shared} слів поспіль` };
+  }
+
   return { ok: true, paragraph };
 }
 
@@ -200,8 +266,12 @@ export interface ParagraphResult {
 export type ModelCaller = (system: string, user: string) => Promise<string>;
 
 async function defaultCaller(system: string, user: string): Promise<string> {
-  // Температура 0.7: абзац має звучати як текст людини, а не як витяг з бази.
-  const raw = await callModelWith(system, user, 0.7);
+  /*
+   * Температура 0.7: абзац має звучати як текст людини, а не як витяг з бази.
+   * Модель окрема і сильніша за класифікаційну: тут один виклик на компанію,
+   * якій справді пишеться лист, і його читатиме людина.
+   */
+  const raw = await callModelWith(system, user, 0.7, config.llm.outreachModel);
   await noteLlmCall(raw.inputTokens, raw.outputTokens);
   return raw.text;
 }
@@ -217,9 +287,16 @@ export async function activeFacts(language: Language): Promise<string[]> {
  * повторна генерація буває тільки по явній кнопці: фонові перегенерації це
  * рахунок, який росте сам собою і нічого не покращує.
  */
+export interface ParagraphContext {
+  /** Тіло шаблона з міткою {{intro}}. Модель має бачити, у що вписується абзац. */
+  letter?: string | null;
+  subject?: string | null;
+}
+
 export async function generateParagraph(
   candidate: DraftCandidate,
   language: Language,
+  context: ParagraphContext = {},
   caller: ModelCaller = defaultCaller,
 ): Promise<ParagraphResult> {
   if ((await remainingBudget()) <= 0) {
@@ -228,7 +305,20 @@ export async function generateParagraph(
 
   const sourceJson = JSON.stringify(companyFacts(candidate), null, 2);
   const system = buildPrompt(language, await activeFacts(language));
-  const user = `COMPANY:\n${sourceJson}`;
+
+  /*
+   * Лист передається цілком. Без нього модель бачила лише картку компанії і
+   * писала довідку про неї: формально за правилами, а як перший абзац листа
+   * ні до чого. Абзац мусить підводити до тексту, який іде далі, а побачити
+   * той текст можна тільки одним способом, показати його.
+   */
+  const user = [
+    context.subject ? `SUBJECT:\n${context.subject}` : null,
+    context.letter ? `LETTER:\n${context.letter}` : null,
+    `COMPANY:\n${sourceJson}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   // Один ретрай на невалідний JSON, далі відкат. Ганяти модель по колу дорого.
   let lastReason = 'модель не відповіла';
@@ -240,7 +330,10 @@ export async function generateParagraph(
         continue;
       }
 
-      const validation = validateParagraph(parsed.data, sourceJson);
+      const validation = validateParagraph(parsed.data, sourceJson, {
+        language,
+        description: candidate.description,
+      });
       if (validation.ok) {
         return {
           paragraph: validation.paragraph!,

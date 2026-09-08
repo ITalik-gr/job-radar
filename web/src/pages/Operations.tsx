@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -15,7 +15,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Play } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { api } from '../lib/api';
 
 /**
@@ -40,6 +40,15 @@ interface Operation {
   /** Довгі операції попереджають про себе: воркер має ліміт часу на запит. */
   slow?: boolean;
   fields?: Field[];
+  /**
+   * Операція виконується партіями: за один запит обробляється `size` записів,
+   * і так поки не набереться замовлена кількість або поки на сервері не закінчаться
+   * кандидати. Інакше сотня компаній за один запит не встигає, і воркер знімає його
+   * з відповіддю 503, не зробивши нічого.
+   */
+  batch?: { field: string; size: number };
+  /** Прохід по мережах Getro: одна мережа це один запит. */
+  networks?: boolean;
 }
 
 interface OperationGroup {
@@ -73,6 +82,7 @@ const GROUPS: OperationGroup[] = [
         hint: 'Techstars, Accel, Underscore і решта мереж Getro',
         path: '/sources/getro/run',
         slow: true,
+        networks: true,
       },
       {
         id: 'catalog-dou',
@@ -95,6 +105,7 @@ const GROUPS: OperationGroup[] = [
         hint: 'обходить компанії без ATS: /careers, /jobs, футер. Знайдене більше не шукається',
         path: '/discover',
         slow: true,
+        batch: { field: 'limit', size: 5 },
         fields: [{ name: 'limit', label: 'компаній', kind: 'number', def: 40 }],
       },
       {
@@ -103,6 +114,7 @@ const GROUPS: OperationGroup[] = [
         hint: 'сторінки /team і /about: імена, ролі, пошта, ознаки живості сайту',
         path: '/enrich',
         slow: true,
+        batch: { field: 'limit', size: 5 },
         fields: [{ name: 'limit', label: 'компаній', kind: 'number', def: 25 }],
       },
     ],
@@ -268,6 +280,8 @@ const LABELS: Record<string, string> = {
   taken: 'узято',
   sent: 'надіслано',
   ok: 'працює',
+  remaining: 'лишилось у черзі',
+  batches: 'партій',
 };
 
 function Result({ value }: { value: Record<string, unknown> }) {
@@ -288,6 +302,84 @@ function Result({ value }: { value: Record<string, unknown> }) {
   );
 }
 
+type Totals = Record<string, unknown>;
+
+/**
+ * Складання підсумку з кількох партій. Числа додаються, решта береться з останньої
+ * відповіді: інакше після десяти запитів на екрані лишалась би статистика останніх
+ * пʼятьох компаній, наче решти проходу не було.
+ */
+function merge(into: Totals, part: Record<string, unknown>): Totals {
+  const out: Totals = { ...into };
+  for (const [key, value] of Object.entries(part)) {
+    if (key === 'remaining' || key === 'next' || key === 'slug') out[key] = value;
+    else if (typeof value === 'number') out[key] = ((out[key] as number) ?? 0) + value;
+    else if (Array.isArray(value)) out[key] = [...((out[key] as unknown[]) ?? []), ...value];
+    else out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Партіями до замовленої кількості. Зупиняється раніше, якщо сервер каже, що
+ * кандидатів більше немає: без цієї умови цикл ганяв би порожні запити до кінця числа.
+ */
+async function runInBatches(
+  operation: Operation,
+  values: Record<string, number | string>,
+  report: (text: string) => void,
+  stop: { current: boolean },
+): Promise<Totals> {
+  const field = operation.batch!.field;
+  const size = operation.batch!.size;
+  const total = Math.max(1, Number(values[field]) || size);
+
+  let done = 0;
+  let totals: Totals = { batches: 0 };
+
+  while (done < total && !stop.current) {
+    const take = Math.min(size, total - done);
+    report(`партія ${(totals.batches as number) + 1}, оброблено ${done} з ${total}`);
+
+    const data = await api.run(operation.path, { ...values, [field]: take });
+    totals = merge(totals, data);
+    totals.batches = ((totals.batches as number) ?? 0) + 1;
+
+    const processed = Number(data.checked ?? data.itemsFound ?? take) || 0;
+    done += processed;
+
+    // Нуль оброблених означає, що брати більше нема кого, і наступна партія буде така сама.
+    if (processed === 0 || Number(data.remaining ?? 0) === 0) break;
+  }
+
+  totals.processed = done;
+  return totals;
+}
+
+/**
+ * Прохід по мережах Getro: одна мережа це один запит. Курсор дає сервер, тому
+ * порядок і склад списку живуть в одному місці, а не дублюються у фронті.
+ */
+async function runByNetworks(
+  operation: Operation,
+  report: (text: string) => void,
+  stop: { current: boolean },
+): Promise<Totals> {
+  const { networks } = await api.getroNetworks();
+  let totals: Totals = { batches: 0 };
+
+  for (const [index, network] of networks.entries()) {
+    if (stop.current) break;
+    report(`мережа ${network}, ${index + 1} з ${networks.length}`);
+
+    const data = await api.run(operation.path, { slug: network });
+    totals = merge(totals, data);
+    totals.batches = ((totals.batches as number) ?? 0) + 1;
+  }
+
+  return totals;
+}
+
 function OperationCard({ operation }: { operation: Operation }) {
   const client = useQueryClient();
   const [values, setValues] = useState<Record<string, number | string>>(
@@ -295,15 +387,27 @@ function OperationCard({ operation }: { operation: Operation }) {
   );
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
+  const [progress, setProgress] = useState<string | null>(null);
+  const stop = useRef(false);
+
   const run = useMutation({
-    mutationFn: () => api.run(operation.path, values),
+    mutationFn: async () => {
+      stop.current = false;
+
+      if (operation.networks) return runByNetworks(operation, setProgress, stop);
+      if (operation.batch) return runInBatches(operation, values, setProgress, stop);
+
+      return api.run(operation.path, values);
+    },
     onSuccess: (data) => {
+      setProgress(null);
       setResult(data);
       notifications.show({ color: 'green', title: operation.label, message: 'готово' });
       // Після будь-якої операції цифри в інтерфейсі застарілі, тому перечитуємо все.
       void client.invalidateQueries();
     },
     onError: (error: Error) => {
+      setProgress(null);
       setResult({ error: error.message });
       notifications.show({ color: 'red', title: operation.label, message: error.message });
     },
@@ -364,8 +468,30 @@ function OperationCard({ operation }: { operation: Operation }) {
           >
             Запустити
           </Button>
+
+          {/* Партії йдуть довго, і зупинити їх має бути можливо не закриваючи вкладку. */}
+          {run.isPending && (operation.batch || operation.networks) && (
+            <Button
+              size="xs"
+              mt={operation.fields?.length ? 22 : 0}
+              variant="default"
+              leftSection={<Square size={14} />}
+              onClick={() => {
+                stop.current = true;
+                setProgress('зупиняю після поточної партії');
+              }}
+            >
+              Зупинити
+            </Button>
+          )}
         </Group>
       </Group>
+
+      {progress && (
+        <Text size="xs" c="dimmed" mt={6}>
+          {progress}
+        </Text>
+      )}
 
       {result && <Result value={result} />}
     </Paper>

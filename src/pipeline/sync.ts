@@ -101,7 +101,11 @@ export async function syncSource(id: string, options: SyncOptions = {}): Promise
         }
       }
     } else {
-      const items = await source.fetch({});
+      /*
+       * Slug тут не обовʼязковий, але передається: Getro читає його як id мережі
+       * і робить за раз тільки її. Решта джерел цього поля не помічає.
+       */
+      const items = await source.fetch({ slug: options.slug });
       found += items.length;
       add(await ingestVacancies(items.slice(0, options.limit ?? items.length), ingestOptions));
     }

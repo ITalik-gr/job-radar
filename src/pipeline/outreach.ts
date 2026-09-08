@@ -12,6 +12,7 @@ import {
 } from '../db/schema.js';
 import { renderLetter, type LetterContext } from '../lib/letter.js';
 import { log } from '../lib/log.js';
+import { readSetting, writeSetting } from '../lib/settings-store.js';
 import { rules } from './rules.js';
 import { generateParagraph } from './ai-paragraph.js';
 import { enrich } from './enrich.js';
@@ -166,6 +167,8 @@ export function buildDraft(
   language: Language,
   /** Готовий перший абзац. Порожнє означає статичний текст із шаблона. */
   intro?: string | null,
+  /** Спільний підпис. Порожнє означає, що листи йдуть без нього. */
+  signature?: string | null,
 ): Omit<
   PreparedDraft,
   'companyId' | 'vacancyId' | 'contactId' | 'aiUsed' | 'aiParagraph' | 'aiFallbackReason'
@@ -180,10 +183,23 @@ export function buildDraft(
     city: candidate.city,
     country: candidate.country,
     intro: intro ?? template.intro ?? '',
+    signature: signature ?? '',
   };
 
   const subject = renderLetter(template.subject ?? '', context);
-  const body = renderLetter(template.body, context);
+
+  /*
+   * Підпис дописується в кінець, якщо шаблон не ставить його сам міткою і якщо
+   * його там ще немає. Мітка це правильний спосіб, але старі шаблони писались до
+   * її появи, і лишати їх без підпису означало б мовчки відправляти листи, які
+   * закінчуються на півслові.
+   */
+  const hasToken = /\{\{\s*signature\s*\}\}/i.test(template.body);
+  const firstLine = (signature ?? '').split('\n')[0]?.trim() ?? '';
+  const needsTail =
+    Boolean(signature?.trim()) && !hasToken && (!firstLine || !template.body.includes(firstLine));
+
+  const body = renderLetter(needsTail ? `${template.body}\n\n{{signature}}` : template.body, context);
 
   const missing = [...new Set([...subject.missing, ...body.missing])];
   const unknown = [...new Set([...subject.unknown, ...body.unknown])];
@@ -225,7 +241,23 @@ export function buildDraft(
  * розділі 11 CLAUDE.md і в тому, що другий абзац холодного листа це факти про
  * людину, і згенерований він означав би вигаданий досвід у листі незнайомцю.
  */
-const SIGNATURE = ['Alex Example', 'Front-end / Full-stack developer', 'example.dev'].join('\n');
+export const SIGNATURE_KEY = 'outreach.signature';
+
+/** Типовий підпис. Правиться на сторінці Шаблони і лягає в `settings`. */
+export const DEFAULT_SIGNATURE = ['Alex Example', 'Front-end / Full-stack developer', 'example.dev'].join(
+  '\n',
+);
+
+const SIGNATURE = DEFAULT_SIGNATURE;
+
+export async function readSignature(): Promise<string> {
+  return (await readSetting<string>(SIGNATURE_KEY, DEFAULT_SIGNATURE)) || '';
+}
+
+export async function saveSignature(value: string): Promise<string> {
+  await writeSetting(SIGNATURE_KEY, value);
+  return value;
+}
 
 interface OutreachSeed {
   slug: string;
@@ -502,12 +534,24 @@ export interface PrepareReport {
  * шаблон виявився не тим.
  */
 export async function prepareDrafts(
-  options: { limit?: number; dryRun?: boolean; ai?: boolean } = {},
+  options: { limit?: number; dryRun?: boolean; ai?: boolean; enrichLimit?: number } = {},
 ): Promise<PrepareReport> {
   const db = getDb();
   const limit = options.limit ?? 20;
   const list = await outreachTemplates();
   const candidates = await draftCandidates(limit);
+
+  /*
+   * Скільки сайтів дозволено обійти за цей прохід. Обхід іде до складання листа,
+   * а не після: чернетка без адреси лягала в чергу з позначкою "немає адреси, куди
+   * писати", і власник бачив лист, який нікуди не піде, доки не запустить збір
+   * контактів окремо. Тепер порядок зворотний, а бюджет не дає проходу впертись
+   * у ліміт часу воркера на сотні компаній.
+   */
+  let enrichBudget = options.dryRun ? 0 : (options.enrichLimit ?? 5);
+
+  // Один читач на весь прохід: підпис однаковий у всіх листах цієї партії.
+  const signature = await readSignature();
 
   const report: PrepareReport = {
     candidates: candidates.length,
@@ -517,7 +561,39 @@ export async function prepareDrafts(
     drafts: [],
   };
 
-  for (const candidate of candidates) {
+  for (let candidate of candidates) {
+    /*
+     * Адреси немає означає, що сайт компанії ще не обходили, а не що писати нікуди.
+     * Один сайт це кілька сторінок, тому дешевше сходити зараз, ніж класти в чергу
+     * зіпсовану чернетку.
+     */
+    let walked = false;
+    if (!candidate.contact?.email && enrichBudget > 0) {
+      enrichBudget -= 1;
+      walked = true;
+      try {
+        await enrich({ domain: candidate.domain, limit: 1 });
+        const [refreshed] = await draftCandidatesFor([candidate.companyId]);
+        if (refreshed) candidate = { ...refreshed, vacancyId: candidate.vacancyId, vacancyTitle: candidate.vacancyTitle, vacancyStack: candidate.vacancyStack };
+      } catch (error) {
+        log.warn({ domain: candidate.domain, err: String(error) }, 'обхід сайту перед листом не вдався');
+      }
+    }
+
+    /*
+     * Без адреси чернетка не створюється зовсім. Раніше вона лягала в чергу з
+     * помилкою, і черга наповнювалась листами, які нікуди не підуть.
+     */
+    if (!candidate.contact?.email) {
+      report.skipped.push({
+        company: candidate.company,
+        reason: walked
+          ? 'обійшов сайт, адреси на ньому немає'
+          : 'адреси немає, а обхід сайту не влазить у цей прохід',
+      });
+      continue;
+    }
+
     const language = pickLanguage(candidate.country);
     const target = pickTargetType({
       hasVacancy: candidate.vacancyId !== null,
@@ -540,10 +616,10 @@ export async function prepareDrafts(
      * піде з ним.
      */
     const ai = options.ai
-      ? await generateParagraph(candidate, language)
+      ? await generateParagraph(candidate, language, { letter: template.body, subject: template.subject })
       : { paragraph: null, used: false, reason: null, confidence: null };
 
-    const built = buildDraft(candidate, template, language, ai.paragraph);
+    const built = buildDraft(candidate, template, language, ai.paragraph, signature);
     const draft: PreparedDraft = {
       companyId: candidate.companyId,
       vacancyId: candidate.vacancyId,
@@ -639,7 +715,7 @@ export async function listDrafts(): Promise<DraftRow[]> {
 /** Правка тексту людиною. Те, що збережено тут, і піде в пошту без змін. */
 export async function updateDraft(
   id: number,
-  patch: { subject?: string; body?: string },
+  patch: { subject?: string; body?: string; contactEmail?: string | null; contactName?: string | null },
 ): Promise<DraftRow | null> {
   const db = getDb();
   const [existing] = await db.select().from(outreach).where(eq(outreach.id, id));
@@ -648,6 +724,19 @@ export async function updateDraft(
 
   const subject = patch.subject ?? existing.subjectFinal ?? '';
   const body = patch.body ?? existing.bodyFinal ?? '';
+
+  /*
+   * Адресу можна вписати руками просто в чернетці, і вона не лишається всередині
+   * листа: той самий контакт заводиться компанії. Інакше пошту, знайдену очима на
+   * їхньому сайті, довелось би вписувати вдруге на сторінці студії, а наступного
+   * разу радар знову вважав би, що адреси немає.
+   */
+  const email = patch.contactEmail === undefined ? existing.contactEmail : normalizeEmail(patch.contactEmail);
+  const name = patch.contactName === undefined ? existing.contactName : patch.contactName?.trim() || null;
+
+  if (email && email !== existing.contactEmail) {
+    await rememberContact(existing.companyId, email, name);
+  }
 
   /*
    * Після ручної правки помилка перераховується заново: власник міг дописати
@@ -659,11 +748,11 @@ export async function updateDraft(
   if (!body.trim()) error = 'порожнє тіло листа';
   else if (!subject.trim()) error = 'порожня тема листа';
   else if (leftover.length > 0) error = `незаповнені плейсхолдери: ${leftover.join(', ')}`;
-  else if (!existing.contactEmail) error = 'немає адреси, куди писати';
+  else if (!email) error = 'немає адреси, куди писати';
 
   await db
     .update(outreach)
-    .set({ subjectFinal: subject, bodyFinal: body, error })
+    .set({ subjectFinal: subject, bodyFinal: body, contactEmail: email, contactName: name, error })
     .where(eq(outreach.id, id));
 
   const list = await listDrafts();
@@ -689,8 +778,17 @@ export async function regenerateIntro(id: number): Promise<DraftRow | null> {
   if (!candidate) throw new Error('компанію не знайдено');
 
   const language = (draft.language as Language) ?? pickLanguage(candidate.country);
-  const ai = await generateParagraph(candidate, language);
-  const built = buildDraft({ ...candidate, vacancyId: draft.vacancyId }, template, language, ai.paragraph);
+  const ai = await generateParagraph(candidate, language, {
+    letter: template.body,
+    subject: template.subject,
+  });
+  const built = buildDraft(
+    { ...candidate, vacancyId: draft.vacancyId },
+    template,
+    language,
+    ai.paragraph,
+    await readSignature(),
+  );
 
   await db
     .update(outreach)
@@ -701,6 +799,53 @@ export async function regenerateIntro(id: number): Promise<DraftRow | null> {
       aiUsed: ai.used,
       aiParagraph: ai.paragraph,
       aiFallbackReason: ai.reason,
+    })
+    .where(eq(outreach.id, id));
+
+  const list = await listDrafts();
+  return list.find((row) => row.id === id) ?? null;
+}
+
+/**
+ * Інший шаблон для вже готової чернетки.
+ *
+ * Вибір шаблона в розсилці робить код, за парою роль плюс мова, і це правильно
+ * за замовчуванням. Але людина бачить конкретну компанію і знає про неї те, чого
+ * немає в базі, тому мусить мати змогу перекласти лист на інший текст, не збираючи
+ * чернетку заново і не втрачаючи вже написаний першим абзац.
+ *
+ * До моделі тут звернень немає: абзац, якщо він від неї, переноситься як є.
+ */
+export async function retemplateDraft(id: number, slug: string): Promise<DraftRow | null> {
+  const db = getDb();
+  const [draft] = await db.select().from(outreach).where(eq(outreach.id, id));
+  if (!draft) throw new Error(`чернетки ${id} немає`);
+  if (draft.status !== 'draft') throw new Error('міняти шаблон можна тільки в чернетці');
+
+  const [template] = await db.select().from(templates).where(eq(templates.slug, slug));
+  if (!template) throw new Error(`шаблона ${slug} немає`);
+
+  const [candidate] = await draftCandidatesFor([draft.companyId]);
+  if (!candidate) throw new Error('компанію не знайдено');
+
+  const language = (template.language as Language) ?? (draft.language as Language);
+  const built = buildDraft(
+    { ...candidate, vacancyId: draft.vacancyId },
+    template,
+    language,
+    draft.aiParagraph,
+    await readSignature(),
+  );
+
+  await db
+    .update(outreach)
+    .set({
+      templateId: template.id,
+      templateUsed: template.slug,
+      language,
+      subjectFinal: built.subject,
+      bodyFinal: built.body,
+      error: built.error,
     })
     .where(eq(outreach.id, id));
 
@@ -757,7 +902,7 @@ export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCan
 export async function draftForCompany(
   companyId: number,
   vacancyId?: number | null,
-  options: { ai?: boolean; enrich?: boolean } = {},
+  options: { ai?: boolean; enrich?: boolean; templateSlug?: string | null } = {},
 ): Promise<{ draft: PreparedDraft | null; id: number | null; reason: string | null }> {
   const db = getDb();
 
@@ -789,15 +934,15 @@ export async function draftForCompany(
     if (!candidate) return { draft: null, id: null, reason: 'компанію не знайдено' };
   }
 
-  if (!candidate.contact?.email) {
-    return {
-      draft: null,
-      id: null,
-      reason: enriched
-        ? 'обійшов сайт, жодної адреси там немає. Знайти пошту руками і додати контакт'
-        : 'у компанії немає жодної адреси',
-    };
-  }
+  /*
+   * Адреси немає навіть після обходу сайту. Чернетка все одно створюється, з порожнім
+   * полем адреси: лист збирається, текст видно, і лишається вписати пошту руками на
+   * сторінці До відправки. Раніше тут була відмова, і компанія просто зникала з поля
+   * зору, хоча знайти адресу очима на їхньому сайті часто справа хвилини.
+   *
+   * Відправку це не відкриває: `checkSend` без адреси не дає натиснути кнопку.
+   */
+  const missingEmail = !candidate.contact?.email;
 
   if (vacancyId) {
     const [vacancy] = await db.select().from(vacancies).where(eq(vacancies.id, vacancyId));
@@ -815,16 +960,36 @@ export async function draftForCompany(
     contactEmail: candidate.contact?.email,
   });
 
-  const template = matchTemplate(await outreachTemplates(), target, language);
+  /*
+   * Шаблон, вибраний руками на картці, важливіший за підбір за роллю і мовою.
+   * Раніше цей вибір нікуди не йшов: власник ставив шаблон у селекті, тиснув
+   * "У чергу листів" і отримував чернетку зовсім іншим текстом, бо код підбирав
+   * свій. Автоматичний підбір лишається тим, чим і був: значенням за замовчуванням.
+   */
+  const chosen = options.templateSlug
+    ? (await db.select().from(templates).where(eq(templates.slug, options.templateSlug)))[0]
+    : undefined;
+
+  if (options.templateSlug && !chosen) {
+    return { draft: null, id: null, reason: `шаблона ${options.templateSlug} немає` };
+  }
+
+  const template = chosen ?? matchTemplate(await outreachTemplates(), target, language);
   if (!template) {
     return { draft: null, id: null, reason: `немає шаблона ${target} мовою ${language}` };
   }
 
+  // Мова йде за шаблоном: людина вибрала текст, і він написаний однією конкретною.
+  const letterLanguage = chosen ? ((chosen.language as Language) ?? language) : language;
+
   const ai = options.ai
-    ? await generateParagraph(candidate, language)
+    ? await generateParagraph(candidate, letterLanguage, {
+        letter: template.body,
+        subject: template.subject,
+      })
     : { paragraph: null, used: false, reason: null, confidence: null };
 
-  const built = buildDraft(candidate, template, language, ai.paragraph);
+  const built = buildDraft(candidate, template, letterLanguage, ai.paragraph, await readSignature());
   const [row] = await db
     .insert(outreach)
     .values({
@@ -860,8 +1025,47 @@ export async function draftForCompany(
       ...built,
     },
     id: row!.id,
-    reason: null,
+    reason: missingEmail
+      ? enriched
+        ? 'обійшов сайт, адреси не знайшов. Чернетка в черзі, впиши пошту руками'
+        : 'адреси немає. Чернетка в черзі, впиши пошту руками'
+      : null,
   };
+}
+
+/** Адреса приводиться до одного вигляду, інакше та сама пошта заведеться двічі. */
+export function normalizeEmail(value: string | null | undefined): string | null {
+  const email = (value ?? '').trim().toLowerCase();
+  if (!email) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? email : null;
+}
+
+/**
+ * Запамʼятати адресу за компанією. Дублікат не заводиться, а мертва адреса
+ * повертається до життя: якщо власник вписав її руками, значить перевірив.
+ */
+export async function rememberContact(
+  companyId: number,
+  email: string,
+  name: string | null = null,
+  role: string | null = null,
+): Promise<{ created: boolean }> {
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(contacts)
+    .where(and(eq(contacts.companyId, companyId), eq(contacts.email, email)));
+
+  if (existing) {
+    await db
+      .update(contacts)
+      .set({ emailValid: true, name: existing.name ?? name, role: existing.role ?? role })
+      .where(eq(contacts.id, existing.id));
+    return { created: false };
+  }
+
+  await db.insert(contacts).values({ companyId, email, name, role, emailValid: true });
+  return { created: true };
 }
 
 /** Пропустити компанію: чернетка стирається, історія не чіпається. */

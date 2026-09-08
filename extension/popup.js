@@ -126,6 +126,49 @@ $('collect').addEventListener('click', async () => {
   await refresh();
 });
 
+/*
+ * Обхід сайтів, намальованих скриптом. Кнопка живе окремо від каталогів навмисно:
+ * це не збір списків компаній, а добір пошти і стеку по вже відомих доменах, і
+ * працює він на будь-якій вкладці, не тільки на каталозі.
+ */
+async function refreshBrowserWalk() {
+  const state = await chrome.runtime.sendMessage({ type: 'radar:browser-state' });
+  const running = state?.state?.running && !state?.state?.report;
+
+  const button = $('jsWalk');
+  button.textContent = running ? 'Зупинити обхід' : 'Обійти в фоні';
+  button.className = running ? 'btn wide danger' : 'btn wide';
+
+  if (running && state.state.domain) {
+    $('jsNote').textContent = `${state.state.domain}, ${state.state.at} з ${state.state.total}`;
+    return;
+  }
+
+  const report = state?.state?.report;
+  if (report) {
+    $('jsNote').textContent = `оброблено ${report.done}, знайдено контактів ${report.contacts}, порожніх ${report.empty}`;
+  }
+
+  const queue = await chrome.runtime.sendMessage({ type: 'radar:browser-queue' });
+  $('jsCount').textContent = queue?.ok ? queue.count : '?';
+  $('jsWalk').disabled = !queue?.ok || queue.count === 0;
+}
+
+$('jsWalk').addEventListener('click', async () => {
+  const state = await chrome.runtime.sendMessage({ type: 'radar:browser-state' });
+  if (state?.state?.running && !state?.state?.report) {
+    await chrome.runtime.sendMessage({ type: 'radar:browser-stop' });
+    await refreshBrowserWalk();
+    return;
+  }
+
+  $('jsWalk').disabled = true;
+  $('jsNote').textContent = 'відкриваю сайти у фонових вкладках';
+  // Попап закривається при переході по вкладках, тому робота живе у service worker.
+  chrome.runtime.sendMessage({ type: 'radar:browser-walk', limit: 10 });
+  setTimeout(refreshBrowserWalk, 1500);
+});
+
 $('open').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'radar:open-app' }));
 
 for (const [id, key, scale] of [
@@ -150,3 +193,4 @@ for (const [id, key, scale] of [
 
 renderCatalogs();
 refresh();
+refreshBrowserWalk();

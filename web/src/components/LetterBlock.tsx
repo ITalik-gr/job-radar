@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -32,7 +32,11 @@ export function LetterBlock({
   contactName,
   contactEmail,
   vacancyTitle,
+  city,
+  country,
   templateKind,
+  slug: chosen,
+  onSlug,
 }: {
   company: string;
   domain: string;
@@ -41,10 +45,21 @@ export function LetterBlock({
   contactName?: string | null;
   contactEmail?: string | null;
   vacancyTitle?: string | null;
+  city?: string | null;
+  country?: string | null;
   templateKind: 'vacancy' | 'studio';
+  /**
+   * Вибір шаблона, спільний з карткою. Без нього блок мав власний вибір, і виходило
+   * дві різні відповіді на одне питання: у превʼю один текст, а в чергу листів і в
+   * запис "Написав" ішов інший. Порожнє означає, що блок вибирає сам.
+   */
+  slug?: string | null;
+  onSlug?: (slug: string) => void;
 }) {
   const { data } = useQuery({ queryKey: ['templates'], queryFn: () => api.templates() });
-  const [slug, setSlug] = useState<string | null>(null);
+  const [own, setOwn] = useState<string | null>(null);
+  const slug = chosen !== undefined ? chosen : own;
+  const setSlug = (next: string) => (onSlug ? onSlug(next) : setOwn(next));
 
   const options = (data?.templates ?? []).filter((row) => row.kind === templateKind && !row.archived);
 
@@ -56,17 +71,42 @@ export function LetterBlock({
   const suggested = options.find((row) => row.forKind && row.forKind === kind) ?? options[0] ?? null;
   const selected = options.find((row) => row.slug === slug) ?? suggested;
 
+  /*
+   * Підказка блока сильніша за "перший у списку": вона враховує тип компанії.
+   * Тому щойно блок вибрав шаблон сам, картка про це дізнається, і селект унизу
+   * показує те саме, що превʼю.
+   */
+  useEffect(() => {
+    if (onSlug && selected && selected.slug !== slug) onSlug(selected.slug);
+  }, [onSlug, selected, slug]);
+
+  /*
+   * Той самий контекст для теми і тіла, і з першим абзацом усередині. Прев'ю має
+   * показувати рівно те, що піде в пошту, інакше воно не прев'ю, а окремий текст.
+   */
+  const context = useMemo(
+    () => ({
+      company,
+      domain,
+      kind,
+      stack,
+      contactName,
+      vacancyTitle,
+      city,
+      country,
+      intro: selected?.intro ?? '',
+    }),
+    [company, domain, kind, stack, contactName, vacancyTitle, city, country, selected],
+  );
+
   const rendered = useMemo(
-    () =>
-      selected
-        ? renderLetter(selected.body, { company, domain, kind, stack, contactName, vacancyTitle })
-        : null,
-    [selected, company, domain, kind, stack, contactName, vacancyTitle],
+    () => (selected ? renderLetter(selected.body, context) : null),
+    [selected, context],
   );
 
   const subject = useMemo(
-    () => (selected?.subject ? renderLetter(selected.subject, { company, domain, kind, stack, contactName, vacancyTitle }).text : ''),
-    [selected, company, domain, kind, stack, contactName, vacancyTitle],
+    () => (selected?.subject ? renderLetter(selected.subject, context).text : ''),
+    [selected, context],
   );
 
   if (options.length === 0) {

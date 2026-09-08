@@ -5,7 +5,8 @@
   "description": "Збирає компанії з каталогів агенцій у локальний Job Radar",
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "http://localhost:3000/*",
@@ -35,8 +36,7 @@
         "https://techbehemoths.com/*",
         "https://www.techbehemoths.com/*",
         "https://www.awwwards.com/*",
-        "https://wadline.com/*",
-        "https://jobs.dou.ua/*"
+        "https://wadline.com/*"
       ],
       "js": [
         "parsers.js",

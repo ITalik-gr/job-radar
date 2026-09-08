@@ -11,6 +11,7 @@ import {
   generateParagraph,
   validateParagraph,
   type ParagraphResponse,
+  longestSharedRun,
 } from '../src/pipeline/ai-paragraph.js';
 import type { DraftCandidate } from '../src/pipeline/outreach.js';
 
@@ -42,7 +43,7 @@ const source = JSON.stringify(companyFacts(candidate), null, 2);
 function response(over: Partial<ParagraphResponse> = {}): ParagraphResponse {
   return {
     paragraph:
-      'Acme Studio builds ecommerce sites for European brands, and the stack on acme.com is react with next.js. That is close to the kind of work I do day to day right now.',
+      'You build ecommerce work for brands out of Warsaw, and acme.com runs on react with next.js. That is the stack I work in day to day, which is why I am writing to you.',
     facts_used: ['react', 'next.js'],
     confidence: 80,
     ...over,
@@ -82,7 +83,9 @@ describe('вхідні дані', () => {
     const prompt = buildPrompt('uk', ['React і Node']);
     expect(prompt).toContain('Мова: uk');
     expect(prompt).toContain('React і Node');
-    expect(prompt).toContain('Рівно 2 речення');
+    expect(prompt).toContain('Одне-два речення');
+    // Лист має бути перед очима моделі: без нього абзац виходить довідкою про компанію.
+    expect(prompt).toContain('{{intro}}');
   });
 });
 
@@ -196,7 +199,7 @@ describe('валідація абзацу', () => {
 describe('генерація', () => {
   it('невалідний JSON дає один ретрай, потім відкат', async () => {
     const caller = vi.fn().mockResolvedValue('вибачте, ось відповідь без json');
-    const result = await generateParagraph(candidate, 'en', caller);
+    const result = await generateParagraph(candidate, 'en', {}, caller);
     expect(caller).toHaveBeenCalledTimes(2);
     expect(result.used).toBe(false);
     expect(result.paragraph).toBeNull();
@@ -204,14 +207,14 @@ describe('генерація', () => {
 
   it('валідна відповідь повертає текст і впевненість', async () => {
     const caller = vi.fn().mockResolvedValue(JSON.stringify(response()));
-    const result = await generateParagraph(candidate, 'en', caller);
+    const result = await generateParagraph(candidate, 'en', {}, caller);
     expect(result).toMatchObject({ used: true, confidence: 80, reason: null });
-    expect(result.paragraph).toContain('Acme Studio');
+    expect(result.paragraph).toContain('acme.com');
   });
 
   it('невдала валідація не ганяє модель удруге', async () => {
     const caller = vi.fn().mockResolvedValue(JSON.stringify(response({ confidence: 10 })));
-    const result = await generateParagraph(candidate, 'en', caller);
+    const result = await generateParagraph(candidate, 'en', {}, caller);
     expect(caller).toHaveBeenCalledTimes(1);
     expect(result.used).toBe(false);
     expect(result.reason).toContain('впевненість');
@@ -219,6 +222,58 @@ describe('генерація', () => {
 
   it('markdown-огорожа знімається, а не ламає розбір', async () => {
     const caller = vi.fn().mockResolvedValue(`\`\`\`json\n${JSON.stringify(response())}\n\`\`\``);
-    expect((await generateParagraph(candidate, 'en', caller)).used).toBe(true);
+    expect((await generateParagraph(candidate, 'en', {}, caller)).used).toBe(true);
+  });
+});
+
+/*
+ * Найчастіший брак це не вигадка, а переказ: абзац переписує опис компанії з
+ * каталогу. Формально бездоганний, усі попередні перевірки проходить, а як лист
+ * не працює, бо читач знає про себе більше, ніж написано в тому описі.
+ */
+describe('абзац, який виявився довідкою', () => {
+  const source = JSON.stringify(companyFacts(candidate));
+
+  it('без звертання до читача це не лист', () => {
+    const result = validateParagraph(
+      response({
+        paragraph:
+          'Acme Studio is a development company in Warsaw that works on websites and interfaces. The team ships react and next.js work for clients.',
+      }),
+      source,
+      { language: 'en' },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('не звертається');
+  });
+
+  it('переказ опису компанії відкочується', () => {
+    const result = validateParagraph(
+      response({
+        paragraph:
+          'Acme Studio builds ecommerce sites for European brands, and you keep the stack on react. I work in the same stack day to day on client projects.',
+      }),
+      source,
+      { language: 'en', description: candidate.description },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('переказ опису');
+  });
+
+  it('свій текст із тими самими фактами проходить', () => {
+    const result = validateParagraph(response(), source, {
+      language: 'en',
+      description: candidate.description,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('спільний відрізок рахується словами, а не символами', () => {
+    expect(longestSharedRun('builds ecommerce sites for brands', 'Acme builds ecommerce sites for brands.')).toBe(5);
+    expect(longestSharedRun('нічого спільного', 'зовсім інший текст')).toBe(0);
+    expect(longestSharedRun('будь-що', null)).toBe(0);
   });
 });

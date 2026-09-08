@@ -131,6 +131,44 @@ describe('шаблони', () => {
     expect(renamed.slug).toBe(created.slug);
   });
 
+  /*
+   * Форма редактора шле всі поля одним патчем. Тест тримає рівно цей набір, бо
+   * саме він одного разу розʼїхався: мова, роль і перший абзац не доїжджали до бази.
+   */
+  it('патч зберігає всі редаговані поля разом', async () => {
+    const created = await createTemplate({ name: 'Повний набір' });
+
+    const saved = await updateTemplate(created.id, {
+      name: 'Повний набір 2',
+      slug: created.slug,
+      kind: 'studio',
+      forKind: 'design',
+      subject: 'Тема для {{company}}',
+      intro: 'Перший абзац про {{company}}',
+      body: '{{intro}} далі текст',
+      note: 'коли доречно',
+      language: 'en',
+      targetType: 'studio_named',
+    });
+
+    expect(saved).toMatchObject({
+      name: 'Повний набір 2',
+      kind: 'studio',
+      forKind: 'design',
+      subject: 'Тема для {{company}}',
+      intro: 'Перший абзац про {{company}}',
+      body: '{{intro}} далі текст',
+      note: 'коли доречно',
+      language: 'en',
+      targetType: 'studio_named',
+    });
+  });
+
+  it('універсальний шаблон зберігається порожнім типом компанії', async () => {
+    const created = await createTemplate({ name: 'Універсальний', forKind: 'design' });
+    expect((await updateTemplate(created.id, { forKind: null })).forKind).toBeNull();
+  });
+
   it('архів ховає шаблон і повертає його назад', async () => {
     const created = await createTemplate({ name: 'Разовий' });
     await archiveTemplate(created.id);

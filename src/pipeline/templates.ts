@@ -25,7 +25,7 @@ export interface TemplateInput {
   body?: string;
   note?: string | null;
   archived?: boolean;
-  /** uk | en. Мова тексту, за нею шаблон підбирається під країну компанії. */
+  /** uk | en. Мова тексту, за нею шаблон підбирається під країну компанії. Типове en. */
   language?: string;
   /**
    * Роль у розсилці: vacancy | studio_named | studio_generic | followup.
@@ -123,7 +123,7 @@ export async function createTemplate(input: TemplateInput): Promise<Template> {
       intro: input.intro ?? null,
       body: input.body ?? '',
       note: input.note ?? null,
-      language: input.language ?? 'uk',
+      language: input.language ?? 'en',
       targetType: input.targetType || null,
     })
     .returning();

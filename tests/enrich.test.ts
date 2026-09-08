@@ -4,7 +4,21 @@ import { rmSync } from 'node:fs';
 import { config } from '../src/config.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { upsertCompany } from '../src/pipeline/companies.js';
-import { candidatesForEnrichment } from '../src/pipeline/enrich.js';
+import { refreshCompany } from '../src/pipeline/refresh.js';
+import { eq } from 'drizzle-orm';
+import { getDb } from '../src/db/client.js';
+import { companies } from '../src/db/schema.js';
+import {
+  candidatesForEnrichment,
+  pendingEnrichment,
+  decodeCfEmail,
+  unmaskEmails,
+  visibleTextLength,
+  findScripts,
+  browserQueue,
+  saveBrowserFindings,
+  saveEnrichment,
+} from '../src/pipeline/enrich.js';
 import {
   extractEmails,
   extractPeople,
@@ -218,6 +232,7 @@ describe('кого enrichment бере першим', () => {
     await upsertCompany({ name: 'Giant', domain: 'giant.com', source: 'greenhouse' });
     await upsertCompany({ name: 'Agency', domain: 'agency.com', source: 'clutch', tags: ['Web Design'] });
     await upsertCompany({ name: 'Seed', domain: 'seed.com', source: 'getro', tags: ['startup'] });
+    await upsertCompany({ name: 'Studio', domain: 'studio.com', source: 'clutch', tags: ['Web Design'] });
   });
 
   /*
@@ -230,5 +245,201 @@ describe('кого enrichment бере першим', () => {
 
     expect(order[0]).toBe('agency.com');
     expect(order.indexOf('seed.com')).toBeLessThan(order.indexOf('giant.com'));
+  });
+
+  /*
+   * Прохід іде партіями по кілька компаній, тому черга мусить рухатись. Компанія,
+   * чий сайт не відкрився, лишається без контактів і без цього правила трималась би
+   * на початку черги вічно: кожна партія бралась би за ту саму.
+   */
+  it('перевірена нещодавно йде в кінець черги серед рівних', async () => {
+    const before = (await candidatesForEnrichment({ limit: 10 })).map((company) => company.domain);
+    expect(before.indexOf('agency.com')).toBeLessThan(before.indexOf('studio.com'));
+
+    await getDb()
+      .update(companies)
+      .set({ lastChecked: Date.now() })
+      .where(eq(companies.domain, 'agency.com'));
+
+    const after = (await candidatesForEnrichment({ limit: 10 })).map((company) => company.domain);
+    expect(after.indexOf('studio.com')).toBeLessThan(after.indexOf('agency.com'));
+  });
+
+  it('каже, скільки компаній лишилось у черзі', async () => {
+    expect(await pendingEnrichment()).toBe(4);
+  });
+});
+
+/*
+ * Пошта, яку видно очима на сайті, регулярно не знаходилась. Причин рівно чотири,
+ * і жодна з них не про те, що адреси немає: її ховає Cloudflare, ховають сутності,
+ * ріжуть теги, або її взагалі немає в HTML, бо сторінку малює скрипт.
+ */
+describe('пошта, яку ховає верстка', () => {
+  it('Cloudflare Email Protection розшифровується', () => {
+    // Той самий XOR, яким його кодує Cloudflare: перший байт це ключ.
+    const plain = 'hello@studio.com';
+    const key = 0x2a;
+    const hex =
+      key.toString(16).padStart(2, '0') +
+      [...plain].map((ch) => (ch.charCodeAt(0) ^ key).toString(16).padStart(2, '0')).join('');
+
+    expect(decodeCfEmail(hex)).toBe(plain);
+    expect(extractEmails(`<a href="/cdn-cgi/l/email-protection#${hex}">Email</a>`)[0]?.email).toBe(plain);
+    expect(extractEmails(`<span data-cfemail="${hex}">[protected]</span>`)[0]?.email).toBe(plain);
+  });
+
+  it('сміття замість hex не ламає розбір', () => {
+    expect(decodeCfEmail('zzzz')).toBeNull();
+    expect(decodeCfEmail('2a2b')).toBeNull();
+  });
+
+  it('адреса, записана сутностями, читається', () => {
+    const html = '<p>&#104;&#101;&#108;&#108;&#111;&#64;studio.com</p>';
+    expect(extractEmails(html)[0]?.email).toBe('hello@studio.com');
+  });
+
+  it('адреса, розрізана тегами, збирається з тексту сторінки', () => {
+    const html = '<p><span>hello</span>@<span>studio.com</span></p>';
+    expect(extractEmails(html)[0]?.email).toBe('hello@studio.com');
+  });
+
+  it('написання словами теж читається', () => {
+    expect(unmaskEmails('hello (at) studio dot com')).toBe('hello@studio.com');
+  });
+
+  it('порожня розмітка це ознака клієнтського рендера', () => {
+    expect(visibleTextLength('<body><div id="root"></div><script>var a=1</script></body>')).toBe(0);
+    expect(visibleTextLength(`<body><p>${'слово '.repeat(60)}</p></body>`)).toBeGreaterThan(200);
+  });
+
+  it('бандли того самого домену беруться, чужі ні, головні першими', () => {
+    const html = `
+      <script src="/assets/chunk-42.js"></script>
+      <script src="https://cdn.other.com/analytics.js"></script>
+      <script src="/assets/main-abc.js"></script>
+      <script src="/style.css"></script>
+    `;
+    const found = findScripts(html, 'https://studio.com');
+
+    expect(found[0]).toBe('https://studio.com/assets/main-abc.js');
+    expect(found).toHaveLength(2);
+    expect(found.some((url) => url.includes('other.com'))).toBe(false);
+  });
+});
+
+/*
+ * Черга для браузера. Сайт, намальований скриптом, серверний обхід читати не вміє,
+ * тому такі домени чекають на розширення, а не пропадають з поля зору.
+ */
+describe('черга для браузера', () => {
+  it('приймає знайдене, заводить контакт і знімає прапорець', async () => {
+    const db = getDb();
+    const { company } = await upsertCompany({ name: 'Spa', domain: 'spa-site.com', source: 'test' });
+    await db.update(companies).set({ needsBrowser: true }).where(eq(companies.id, company.id));
+
+    expect((await browserQueue()).map((row) => row.domain)).toContain('spa-site.com');
+
+    const saved = await saveBrowserFindings({
+      domain: 'spa-site.com',
+      emails: [{ email: 'Hello@Spa-Site.com', name: 'Ola', role: 'CTO' }],
+      techHints: ['sanity', 'next.js'],
+      copyrightYear: 2026,
+    });
+
+    expect(saved.contactsAdded).toBe(1);
+
+    const [row] = await db.select().from(companies).where(eq(companies.id, company.id));
+    expect(row!.needsBrowser).toBe(false);
+    expect(row!.techHints).toEqual(expect.arrayContaining(['sanity', 'next.js']));
+    expect(row!.copyrightYear).toBe(2026);
+    expect((await browserQueue()).map((item) => item.domain)).not.toContain('spa-site.com');
+  });
+
+  /*
+   * Прапорець знімається навіть коли нічого не знайшлось: сторінку вже відкривали
+   * у браузері, і ганяти її туди щоразу заново означало б вічну чергу з тих самих.
+   */
+  it('порожній результат теж закриває чергу', async () => {
+    const db = getDb();
+    const { company } = await upsertCompany({ name: 'Mute', domain: 'mute-site.com', source: 'test' });
+    await db.update(companies).set({ needsBrowser: true }).where(eq(companies.id, company.id));
+
+    const saved = await saveBrowserFindings({ domain: 'mute-site.com', emails: [], techHints: [] });
+    expect(saved.contactsAdded).toBe(0);
+
+    const [row] = await db.select().from(companies).where(eq(companies.id, company.id));
+    expect(row!.needsBrowser).toBe(false);
+  });
+
+  it('невідомий домен не створює компанію', async () => {
+    const saved = await saveBrowserFindings({ domain: 'nobody-knows-this.com', emails: [] });
+    expect(saved.companyId).toBeNull();
+  });
+});
+
+/*
+ * Сайт, який не відкрився серверу, це не глухий кут. Захист відповідає 403 саме на
+ * запит без справжнього браузера, а у браузері власника та сама сторінка відкриється,
+ * тому такі домени йдуть у ту саму чергу, що й намальовані скриптом.
+ */
+describe('сайт, який не відкрився серверу', () => {
+  it('потрапляє в чергу для браузера і отримує позначку часу', async () => {
+    const db = getDb();
+    const { company } = await upsertCompany({ name: 'Closed', domain: 'closed-site.com', source: 'test' });
+
+    await saveEnrichment({
+      companyId: company.id,
+      domain: 'closed-site.com',
+      contacts: [],
+      signals: null,
+      pagesFetched: 0,
+      clientRendered: false,
+      reachable: false,
+    });
+
+    const [row] = await db.select().from(companies).where(eq(companies.id, company.id));
+    expect(row!.needsBrowser).toBe(true);
+    // Позначка часу тепер ставиться завжди, інакше компанія вічно перша в черзі.
+    expect(row!.lastChecked).not.toBeNull();
+    expect((await browserQueue()).map((item) => item.domain)).toContain('closed-site.com');
+  });
+
+  it('знайдена адреса знімає потребу в браузері', async () => {
+    const db = getDb();
+    const { company } = await upsertCompany({ name: 'Found', domain: 'found-site.com', source: 'test' });
+
+    await saveEnrichment({
+      companyId: company.id,
+      domain: 'found-site.com',
+      contacts: [
+        {
+          name: null,
+          role: 'general',
+          email: 'hello@found-site.com',
+          linkedin: null,
+          xHandle: null,
+          sourceUrl: 'https://found-site.com',
+        },
+      ],
+      signals: null,
+      pagesFetched: 1,
+      clientRendered: true,
+      reachable: true,
+    });
+
+    const [row] = await db.select().from(companies).where(eq(companies.id, company.id));
+    expect(row!.needsBrowser).toBe(false);
+  });
+});
+
+/*
+ * Повний перегляд по кнопці. Сам обхід тут не перевіряється: він ходить у мережу,
+ * а його частини (discovery, enrichment, збереження) накриті окремо. Тут важливо
+ * інше, щоб кнопка на видаленій компанії давала зрозумілу помилку, а не мовчала.
+ */
+describe('перегляд однієї компанії', () => {
+  it('неіснуюча компанія це помилка з номером', async () => {
+    await expect(refreshCompany(999_999)).rejects.toThrow('999999');
   });
 });

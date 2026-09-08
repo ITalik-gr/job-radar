@@ -31,12 +31,13 @@ import {
   ExternalLink,
   Mail,
   Palette,
+  RefreshCw,
   Search,
   MailPlus,
   Send,
   ThumbsDown,
 } from 'lucide-react';
-import { api, formatDate, type StudioCard } from '../lib/api';
+import { api, formatDate, type RefreshReport, type StudioCard } from '../lib/api';
 import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { TemplateSelect } from '../components/TemplateSelect';
@@ -149,8 +150,60 @@ function TagList({ tags, limit = 10 }: { tags: string[]; limit?: number }) {
 function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string, unknown>) => void }) {
   const [template, setTemplate] = useState<string | null>(null);
 
+  const client = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [contactName, setContactName] = useState('');
+
+  const addContact = useMutation({
+    mutationFn: () =>
+      api.addContact(card.companyId, { email: email.trim(), name: contactName.trim() || undefined }),
+    onSuccess: (result) => {
+      setEmail('');
+      setContactName('');
+      void client.invalidateQueries({ queryKey: ['studios'] });
+      notifications.show({
+        color: 'green',
+        title: card.name,
+        message: result.created ? `контакт ${result.email} додано` : `${result.email} уже був у контактах`,
+      });
+    },
+    onError: (error: Error) =>
+      notifications.show({ color: 'red', title: 'не додалось', message: error.message }),
+  });
+
+  /*
+   * Обхід сайту однієї компанії по кнопці. Загальний прохід іде партіями і бере
+   * компанії за пріоритетом, тобто конкретна студія, яку власник дивиться прямо
+   * зараз, може чекати на нього днями. Тут вона обходиться відразу.
+   */
+  const [report, setReport] = useState<RefreshReport | null>(null);
+
+  /*
+   * Повний перегляд однієї компанії: заново на сайт, career-сторінка, стек, контакти.
+   * Нічні проходи роблять те саме, але за розкладом і партіями, тому конкретна студія,
+   * яку власник дивиться зараз, могла б чекати своєї черги днями.
+   */
+  const refresh = useMutation({
+    mutationFn: () => api.refreshCompany(card.companyId),
+    onSuccess: (result) => {
+      setReport(result);
+      void client.invalidateQueries({ queryKey: ['studios'] });
+      notifications.show({
+        color: result.contactsAdded > 0 || result.techAdded.length > 0 ? 'green' : 'yellow',
+        title: card.name,
+        message: !result.reachable
+          ? 'сайт не відкрився серверу. Він у черзі для розширення: попап, "Обійти в фоні"'
+          : result.clientRendered && result.emails.length === 0
+            ? 'сайт малює вміст скриптом. Він у черзі для розширення: попап, "Обійти в фоні"'
+            : `сторінок ${result.pagesFetched}, контактів +${result.contactsAdded}, стек +${result.techAdded.length}`,
+      });
+    },
+    onError: (error: Error) =>
+      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+  });
+
   const toDrafts = useMutation({
-    mutationFn: () => api.draftForCompany(card.companyId),
+    mutationFn: () => api.draftForCompany(card.companyId, null, template),
     onSuccess: (result) =>
       notifications.show({
         color: result.id && !result.reason ? 'green' : 'yellow',
@@ -165,13 +218,14 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
     useMemo(
       () => ({
         d: () => toDrafts.mutate(),
+        k: () => refresh.mutate(),
         i: () => onAct({ action: 'interesting' }),
         n: () => onAct({ action: 'not_interesting' }),
         e: () => onAct({ action: 'contacted', templateUsed: template }),
         b: () => onAct({ action: 'blacklist' }),
         s: () => onAct({ action: 'snooze', days: 60 }),
       }),
-      [onAct, template, toDrafts],
+      [onAct, template, toDrafts, refresh],
     ),
   );
 
@@ -347,6 +401,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
           {card.contacts.length === 0 ? (
             <Text c="dimmed" size="sm">
               іменних контактів немає. Пошта на сайті майже завжди hello@ або info@, її читає менеджер.
+              Кнопка "Знайти контакти" внизу обійде сайт цієї компанії просто зараз.
             </Text>
           ) : (
             <Stack gap={6}>
@@ -369,6 +424,70 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             </Stack>
           )}
 
+          {/*
+            Звіт останнього перегляду. Показується як є, з подробицями: кнопкою
+            перевіряють, чи працює пошук, а саме "оновлено" не каже нічого про те,
+            чи сайт узагалі відкрився і звідки взявся стек.
+          */}
+          {report && (
+            <Alert mt="md" color={report.reachable ? 'gray' : 'yellow'} p="xs">
+              <Stack gap={4}>
+                <Text size="xs">
+                  сторінок відкрито: {report.pagesFetched}
+                  {!report.reachable && ', головна не відкрилась серверу'}
+                  {report.reachable && report.clientRendered && ', сторінка малюється скриптом'}
+                  {report.needsBrowser && '. Домен у черзі для розширення'}
+                </Text>
+                <Text size="xs">
+                  career-сторінка: {report.careersUrl ?? 'не знайдена'}
+                  {report.careersSlug ? ` (${report.careersKind}: ${report.careersSlug})` : ''}
+                </Text>
+                <Text size="xs">
+                  стек: {report.techHints.length} усього
+                  {report.techAdded.length > 0 ? `, нове: ${report.techAdded.join(', ')}` : ', нічого нового'}
+                </Text>
+                <Text size="xs">
+                  пошта: {report.emails.length > 0 ? report.emails.join(', ') : 'не знайдена'}
+                  {report.contactsAdded > 0 ? `, додано ${report.contactsAdded}` : ''}
+                  {report.people > 0 ? `, людей з іменами: ${report.people}` : ''}
+                </Text>
+              </Stack>
+            </Alert>
+          )}
+
+          {/*
+            Пошта, знайдена очима. Парсер дістає не все: адреса буває в картинці,
+            у формі, під скриптом. Побачив, вписав, і вона одразу є і тут, і в чернетці.
+          */}
+          <Group gap="xs" mt="sm" align="end">
+            <TextInput
+              size="xs"
+              w={240}
+              label="додати пошту руками"
+              placeholder="hello@company.com"
+              value={email}
+              onChange={(event) => setEmail(event.currentTarget.value)}
+              onKeyDown={(event) => event.key === 'Enter' && email.trim() && addContact.mutate()}
+            />
+            <TextInput
+              size="xs"
+              w={160}
+              label="імʼя, якщо відоме"
+              placeholder="необовʼязково"
+              value={contactName}
+              onChange={(event) => setContactName(event.currentTarget.value)}
+            />
+            <Button
+              size="xs"
+              variant="default"
+              disabled={!email.trim()}
+              loading={addContact.isPending}
+              onClick={() => addContact.mutate()}
+            >
+              Додати
+            </Button>
+          </Group>
+
           <SimilarBlock companyId={card.companyId} />
 
           <LetterBlock
@@ -377,6 +496,10 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             kind={card.kind}
             stack={card.techHints}
             contactName={card.contacts.find((contact) => contact.name)?.name ?? null}
+            city={card.city}
+            country={card.country}
+            slug={template}
+            onSlug={setTemplate}
             contactEmail={
               card.contacts.find((contact) => contact.name && contact.email)?.email ??
               card.contacts.find((contact) => contact.email)?.email ??
@@ -469,7 +592,18 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               У чергу листів
             </Button>
           </Tooltip>
-          <TemplateSelect kind="studio" value={template} onChange={setTemplate} width={150} />
+          <Tooltip label="заново зайти на сайт: career-сторінка, стек, пошта, контакти, ознаки живості">
+            <Button
+              variant="default"
+              leftSection={<RefreshCw size={15} />}
+              rightSection={<Kbd size="xs">k</Kbd>}
+              loading={refresh.isPending}
+              onClick={() => refresh.mutate()}
+            >
+              Оновити з сайту
+            </Button>
+          </Tooltip>
+          <TemplateSelect kind="studio" value={template} onChange={setTemplate} width={240} />
           <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
             <Button
               leftSection={<Send size={15} />}

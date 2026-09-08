@@ -279,6 +279,12 @@ export async function ingestVacancies(
 }
 
 /**
+ * Скільки ідентифікаторів іде в один `in (...)`. Ліміт D1 це сто параметрів на запит,
+ * і один з них зайнятий позначкою часу, тому запас лишається навмисно широким.
+ */
+const CLOSE_BATCH = 90;
+
+/**
  * Вакансії, яких більше немає у відповіді джерела, закриваються.
  * Дані не видаляються ніколи: різниця first_seen і closed_at це майбутній датасет.
  */
@@ -297,7 +303,18 @@ export async function closeMissing(
   const stale = open.filter((row) => !seen.has(row.dedupeKey)).map((row) => row.id);
   if (stale.length === 0) return 0;
 
-  await db.update(vacancies).set({ closedAt: Date.now() }).where(inArray(vacancies.id, stale));
+  /*
+   * Закриття йде партіями, бо D1 приймає не більше ста звʼязаних параметрів на запит.
+   * Дошки на кшталт Greenhouse у великої компанії дають сотні вакансій за раз, і один
+   * `in (?, ?, ...)` на весь список падав з "Failed query" рівно там, де джерело
+   * працює найкраще. Локальний SQLite витримує більше, але межа береться найнижча:
+   * той самий код виконується і в Node, і на Workers.
+   */
+  const closedAt = Date.now();
+  for (let i = 0; i < stale.length; i += CLOSE_BATCH) {
+    const batch = stale.slice(i, i + CLOSE_BATCH);
+    await db.update(vacancies).set({ closedAt }).where(inArray(vacancies.id, batch));
+  }
   log.info({ companyId, source, closed: stale.length }, 'вакансії закрито');
   return stale.length;
 }

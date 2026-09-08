@@ -83,3 +83,83 @@ describe('mailto', () => {
     expect(mailtoLink(null, 'Тема', 'Текст')).toBeNull();
   });
 });
+
+/*
+ * Перший абзац це такий самий текст власника, як і тіло листа, і мітки в ньому
+ * мусять працювати. До цього він вставлявся готовим рядком, і `{{company}}`,
+ * написаний в полі абзацу, доїжджав до пошти фігурними дужками.
+ */
+describe('мітки всередині першого абзацу', () => {
+  it('абзац проходить підстановку, а не вставляється як є', () => {
+    const { text } = renderLetter('{{intro}} Далі текст.', {
+      ...context,
+      intro: 'Бачив {{company}} і їхній {{their_stack}}.',
+    });
+
+    expect(text).toBe('Бачив Acme Studio і їхній react, next.js. Далі текст.');
+  });
+
+  it('порожня мітка в абзаці повідомляється, коли шаблон абзац бере', () => {
+    const { text, missing } = renderLetter('{{intro}}', {
+      company: 'Acme',
+      domain: 'acme.com',
+      intro: 'Вітаю, {{contact_name}}.',
+    });
+
+    expect(text).not.toContain('{{');
+    expect(missing).toContain('contact_name');
+  });
+
+  it('шаблон без мітки абзацу не скаржиться на його вміст', () => {
+    const { missing, unknown } = renderLetter('Просто текст про {{company}}.', {
+      company: 'Acme',
+      domain: 'acme.com',
+      intro: 'Заготовка з {{compnay}} і {{contact_name}}.',
+    });
+
+    expect(missing).toEqual([]);
+    expect(unknown).toEqual([]);
+  });
+
+  it('мітка абзацу всередині самого абзацу це помилка, а не рекурсія', () => {
+    const { text, unknown } = renderLetter('{{intro}}', {
+      company: 'Acme',
+      domain: 'acme.com',
+      intro: 'Текст {{intro}} текст',
+    });
+
+    expect(text).toBe('Текст текст');
+    expect(unknown).toContain('intro');
+  });
+
+  it('мітки працюють і в темі листа', () => {
+    const { text } = renderLetter('Frontend для {{company}}, {{country}}', {
+      ...context,
+      country: 'Poland',
+    });
+
+    expect(text).toBe('Frontend для Acme Studio, Poland');
+  });
+});
+
+describe('підпис', () => {
+  it('підставляється на місце мітки', () => {
+    const { text } = renderLetter('Текст.\n\n{{signature}}', {
+      company: 'Acme',
+      domain: 'acme.com',
+      signature: 'Alex\nexample.dev',
+    });
+
+    expect(text).toBe('Текст.\n\nAlex\nexample.dev');
+  });
+
+  it('порожній підпис не лишає дужок і повідомляється', () => {
+    const { text, missing } = renderLetter('Текст.\n\n{{signature}}', {
+      company: 'Acme',
+      domain: 'acme.com',
+    });
+
+    expect(text).not.toContain('{{');
+    expect(missing).toContain('signature');
+  });
+});
