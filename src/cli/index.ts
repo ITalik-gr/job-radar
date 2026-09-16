@@ -45,7 +45,8 @@ import {
   prepareDrafts,
   seedOutreachTemplates,
 } from '../pipeline/outreach.js';
-import { gmailStatus, sendMessage } from '../lib/gmail.js';
+import { gmailStatus } from '../lib/gmail.js';
+import { deliver, mailer } from '../lib/mailer.js';
 import { sendDraft } from '../pipeline/send.js';
 import { sendCounters } from '../pipeline/send-guards.js';
 import { checkReplies } from '../pipeline/replies.js';
@@ -999,7 +1000,7 @@ program
     if (!to) throw new Error('нема адреси: заповнити GMAIL_FROM_EMAIL у .env');
 
     // Кирилиця в темі і тілі навмисно: саме на ній ламається кодування.
-    const result = await sendMessage({
+    const result = await deliver({
       to,
       subject: 'Job Radar: перевірка кодування, тест',
       body: [
@@ -1011,7 +1012,7 @@ program
       ].join('\n'),
     });
 
-    console.log(`надіслано на ${to}`);
+    console.log(`надіслано на ${to} через ${mailer().id}`);
     console.log(`messageId: ${result.messageId}`);
     console.log(`threadId: ${result.threadId}`);
     console.log(`Message-Id: ${result.rfcMessageId ?? 'не віддався'}`);

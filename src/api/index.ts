@@ -8,7 +8,7 @@ import { getDb } from '../db/client.js';
 import { runs, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { authUrl, exchangeCode, gmailStatus, isConfigured as gmailConfigured } from '../lib/gmail.js';
-import { mailer, mailerStatuses } from '../lib/mailer.js';
+import { deliver, mailer, mailerStatuses } from '../lib/mailer.js';
 import {
   draftForCompany,
   discardDraft,
@@ -31,7 +31,6 @@ import { refreshDetails } from '../pipeline/sync.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
 import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
 import { callModelWith } from '../pipeline/classify.js';
-import { sendMessage } from '../lib/gmail.js';
 import { seedOutreachTemplates } from '../pipeline/outreach.js';
 import { seedTemplates } from '../pipeline/templates.js';
 import { GETRO_NETWORKS, nextGetroNetwork } from '../sources/boards/getro.js';
@@ -661,7 +660,7 @@ app.post('/api/gmail/test', async (c) => {
   const to = body.to || config.gmail.fromEmail;
   if (!to) return c.json({ error: 'немає адреси: заповнити GMAIL_FROM_EMAIL' }, 400);
 
-  const result = await sendMessage({
+  const result = await deliver({
     to,
     subject: 'Job Radar: перевірка кодування, тест',
     body: [
