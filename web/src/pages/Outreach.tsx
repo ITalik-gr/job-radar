@@ -21,6 +21,8 @@ import {
 import { notifications } from '@mantine/notifications';
 import { Check, CircleSlash, Mailbox, Send } from 'lucide-react';
 import { api, formatDate, type OutreachRow } from '../lib/api';
+import { companyHref } from '../lib/route';
+import { useSelection } from '../lib/useRoute';
 
 const REPLY_LABELS: Record<string, string> = {
   positive: 'позитивна',
@@ -49,7 +51,13 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
 
 export function OutreachPage() {
   const client = useQueryClient();
-  const [tab, setTab] = useState<string | null>('waiting');
+  /*
+   * Вкладка теж в адресі: `#/outreach/attention` це посилання на те, що
+   * потребує уваги, і його можна лишити собі на завтра або кинути в нагадування.
+   */
+  const [chosen, setChosen] = useSelection('outreach');
+  const tab = chosen ?? 'waiting';
+  const setTab = (value: string | null) => setChosen(value === 'waiting' ? null : value);
   // Клік по рядку показує текст листа: без нього історія це набір дат без змісту.
   const [expanded, setExpanded] = useState<number | null>(null);
   const { data, error, isLoading } = useQuery({ queryKey: ['outreach'], queryFn: () => api.outreach() });
@@ -169,9 +177,22 @@ export function OutreachPage() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Text size="sm" fw={500} truncate>
+                      {/*
+                        Назва веде на картку компанії в застосунку.
+                        Відповідь приходить через тиждень після листа, і перше
+                        питання завжди те саме: що це взагалі була за контора.
+                        Клік по назві не має розгортати рядок, тому подія
+                        зупиняється: посилання і розгортання це різні наміри.
+                      */}
+                      <Anchor
+                        href={companyHref(row.domain)}
+                        size="sm"
+                        fw={500}
+                        truncate
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         {row.company}
-                      </Text>
+                      </Anchor>
                     </Table.Td>
                     <Table.Td>
                       {row.contactName ? (

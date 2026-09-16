@@ -29,6 +29,7 @@ import type { Language, OutreachTarget } from '../../../src/pipeline/outreach';
 import type { TemplateKind } from '../../../src/pipeline/templates';
 import { LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
+import { useSelection } from '../lib/useRoute';
 
 /*
  * Підписи ключами від справжніх типів, а не вільними рядками. Record по юніону
@@ -588,11 +589,34 @@ export function TemplatesPage() {
   const client = useQueryClient();
   const [selected, setSelected] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
+
+  /*
+   * В адресі стоїть ключ шаблона, а не номер: `#/templates/send_studio_named_en`
+   * читається, а `#/templates/7` не каже нічого. Всередині вибір лишається
+   * номером, і саме тому перейменування ключа не скидає вибір: номер не змінився,
+   * а адреса підтягнеться слідом.
+   */
+  const [slug, selectSlug] = useSelection('templates');
   const [signing, setSigning] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('vacancy');
 
   const { data, error, isLoading } = useQuery({ queryKey: ['templates'], queryFn: () => api.templates() });
+
+  const list = data?.templates ?? [];
+  const opened = list.find((row) => row.id === selected) ?? list.find((row) => !row.archived) ?? list[0];
+
+  // Адреса задає вибір, коли прийшли за посиланням або натиснули "назад".
+  useEffect(() => {
+    if (!slug) return;
+    const found = list.find((row) => row.slug === slug);
+    if (found && found.id !== selected) setSelected(found.id);
+  }, [slug, list, selected]);
+
+  // І навпаки: вибір задає адресу, у тому числі після перейменування ключа.
+  useEffect(() => {
+    if (opened && opened.slug !== slug) selectSlug(opened.slug);
+  }, [opened, slug, selectSlug]);
 
   const create = useMutation({
     mutationFn: () => api.createTemplate({ name, kind }),

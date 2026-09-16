@@ -25,6 +25,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   Ban,
+  Building2,
   Check,
   Clock,
   ExternalLink,
@@ -164,6 +165,12 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
             <Anchor href={`https://${card.domain}`} target="_blank" rel="noreferrer" fw={600}>
               {card.company}
             </Anchor>
+            {/* Картка компанії в застосунку: стек, контакти, історія листування. */}
+            <Tooltip label="картка компанії в радарі">
+              <Anchor href={companyHref(card.domain)} size="sm" c="dimmed" style={{ display: 'flex' }}>
+                <Building2 size={14} />
+              </Anchor>
+            </Tooltip>
             <Text size="sm" c="dimmed">
               {card.domain}
             </Text>
@@ -445,6 +452,14 @@ function EmptyReason({ decided, total }: { decided: number; total: number }) {
 
 export function QueuePage() {
   const client = useQueryClient();
+
+  /*
+   * Курсор черги навмисно лишається станом, а не йде в адресу, на відміну від
+   * решти списків. Черга це потік на день: десять карток, по одному рішенню на
+   * кожну, і картка зникає, щойно рішення прийнято. Посилання на "четверту
+   * картку черги" протухає за хвилину і завтра означає зовсім інше, тому
+   * адресувати тут нема чого.
+   */
   const [cursor, setCursor] = useState(0);
   const { data, error, isLoading } = useQuery({ queryKey: ['queue'], queryFn: () => api.queue() });
 

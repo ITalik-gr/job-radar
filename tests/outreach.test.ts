@@ -471,6 +471,96 @@ describe('чернетка по кнопці з Черги', () => {
     await db.delete(contacts).where(eq(contacts.companyId, empty.id));
     await db.delete(companies).where(eq(companies.id, empty.id));
   });
+
+  /*
+   * Найтонше місце вибору адреси. Лист складається один раз, і `{{first_name}}`
+   * у ньому давно перетворився на конкретне "Hi Anna". Перевести чернетку на
+   * адресу Ігоря і лишити текст як є означає мовчки привітатись з Анною: помилки
+   * немає, плейсхолдерів немає, лист іде.
+   */
+  it('зміна контакту переписує імʼя в темі і в тексті', async () => {
+    const db = getDb();
+    const company = (await upsertCompany({ name: 'Swap', domain: 'swap.io', source: 'test' })).company;
+    await db
+      .insert(contacts)
+      .values({ companyId: company.id, name: 'Anna Koval', email: 'anna@swap.io' });
+    const created = await draftForCompany(company.id, null, { enrich: false });
+
+    await updateDraft(created.id!, {
+      subject: 'Anna, front-end for Swap',
+      body: 'Hi Anna,\n\nSaw swap.io.\n\nAlex',
+      contactEmail: 'anna@swap.io',
+      contactName: 'Anna Koval',
+    });
+
+    const updated = await updateDraft(created.id!, {
+      contactEmail: 'ihor@swap.io',
+      contactName: 'Ihor Bondar',
+    });
+
+    expect(updated?.body).toContain('Hi Ihor,');
+    expect(updated?.body).not.toContain('Anna');
+    expect(updated?.subject).toBe('Ihor, front-end for Swap');
+    expect(updated?.error).toBeNull();
+
+    await db.delete(outreach).where(eq(outreach.companyId, company.id));
+    await db.delete(contacts).where(eq(contacts.companyId, company.id));
+    await db.delete(companies).where(eq(companies.id, company.id));
+  });
+
+  /*
+   * Нового імені немає, старе в тексті лишилось. Вигадати звертання нема з чого,
+   * тому чернетка чесно стає проблемною замість того, щоб піти з чужим іменем.
+   */
+  it('адреса без імені лишає чернетку проблемною, а не мовчить', async () => {
+    const db = getDb();
+    const company = (await upsertCompany({ name: 'Orphan', domain: 'orphan.io', source: 'test' })).company;
+    await db
+      .insert(contacts)
+      .values({ companyId: company.id, name: 'Anna Koval', email: 'anna@orphan.io' });
+    const created = await draftForCompany(company.id, null, { enrich: false });
+
+    await updateDraft(created.id!, {
+      subject: 'Front-end for Orphan',
+      body: 'Hi Anna,\n\nSaw orphan.io.\n\nAlex',
+      contactEmail: 'anna@orphan.io',
+      contactName: 'Anna Koval',
+    });
+
+    const updated = await updateDraft(created.id!, {
+      contactEmail: 'hello@orphan.io',
+      contactName: null,
+    });
+
+    expect(updated?.error).toContain('Anna');
+
+    await db.delete(outreach).where(eq(outreach.companyId, company.id));
+    await db.delete(contacts).where(eq(contacts.companyId, company.id));
+    await db.delete(companies).where(eq(companies.id, company.id));
+  });
+
+  /*
+   * Список адрес їде разом з чернеткою, інакше вибрати іншу означало б згадати
+   * її напамʼять. Іменні першими: лист на hello@ читає менеджер, не техлід.
+   */
+  it('чернетка несе всі адреси компанії, іменні першими', async () => {
+    const db = getDb();
+    const company = (await upsertCompany({ name: 'Many', domain: 'many.io', source: 'test' })).company;
+    await db.insert(contacts).values([
+      { companyId: company.id, email: 'hello@many.io' },
+      { companyId: company.id, name: 'Olena Marchuk', role: 'CTO', email: 'olena@many.io' },
+      { companyId: company.id, name: 'Без пошти' },
+    ]);
+    const created = await draftForCompany(company.id, null, { enrich: false });
+
+    const row = (await listDrafts()).find((item) => item.id === created.id);
+    expect(row?.companyContacts.map((item) => item.email)).toEqual(['olena@many.io', 'hello@many.io']);
+    expect(row?.companyContacts[0]?.role).toBe('CTO');
+
+    await db.delete(outreach).where(eq(outreach.companyId, company.id));
+    await db.delete(contacts).where(eq(contacts.companyId, company.id));
+    await db.delete(companies).where(eq(companies.id, company.id));
+  });
 });
 
 describe('правка чернетки', () => {

@@ -84,6 +84,56 @@ export interface StudioPage {
  */
 async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
   const db = getDb();
+  const now = Date.now();
+
+  /*
+   * Відбір робить SQL, а не JavaScript.
+   *
+   * Раніше сюди зачитувалась уся таблиця компаній і вся таблиця контактів, а
+   * фільтри застосовувались уже в памʼяті. На двох тисячах компаній це ще
+   * працювало, але ціна не залежала від запиту: пошук по слову "design", який
+   * лишає пʼятдесят рядків, коштував рівно стільки ж, скільки порожній список.
+   * А оскільки поле пошуку слало запит на кожну літеру, одне слово коштувало
+   * шість таких проходів.
+   *
+   * Тепер до JavaScript доїжджає вже відфільтроване, і ціна запиту нарешті
+   * залежить від того, скільки рядків він насправді просить.
+   */
+  const conditions = [
+    // Компанія без домену нікуди не веде: ні листа, ні сайту, ні обходу.
+    ne(companies.domain, ''),
+    filters.country ? eq(companies.country, filters.country) : undefined,
+    /*
+     * Без явного типу продуктові компанії зі списку прибираються: у них холодний
+     * лист "можу допомогти з проєктом" не працює, для них є Черга з вакансіями.
+     */
+    filters.kind ? eq(companies.kind, filters.kind) : ne(companies.kind, 'product'),
+    filters.minRating === undefined
+      ? undefined
+      : sql`coalesce(${companies.rating}, 0) >= ${filters.minRating}`,
+    // Відкладена компанія не показується, поки не вийде строк.
+    sql`(${companyState.snoozedUntil} is null or ${companyState.snoozedUntil} <= ${now})`,
+    filters.includeContacted
+      ? sql`coalesce(${companyState.status}, 'new') <> 'blacklist'`
+      : notInArray(sql`coalesce(${companyState.status}, 'new')`, HIDDEN_STATUSES),
+  ];
+
+  if (filters.search) {
+    /*
+     * Теги лежать у колонці як JSON-масив, і пошук іде по ньому рядком. Це трохи
+     * ширше за перебір елементів у памʼяті: збіг може випасти на межі двох тегів.
+     * Ціна цієї неточності одна зайва компанія в списку, а виграш у тому, що
+     * решта бази не піднімається в памʼять заради одного слова.
+     */
+    const needle = `%${filters.search.toLowerCase()}%`;
+    conditions.push(
+      sql`(lower(${companies.name}) like ${needle}
+        or lower(${companies.domain}) like ${needle}
+        or lower(${companies.tags}) like ${needle})`,
+    );
+  }
+
+  const where = and(...conditions.filter(Boolean));
 
   const rows = await db
     .select({
@@ -100,51 +150,40 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     })
     .from(companies)
     .leftJoin(companyState, eq(companyState.companyId, companies.id))
-    .where(
-      filters.country
-        ? and(eq(companies.country, filters.country), ne(companies.domain, ''))
-        : undefined,
-    );
+    .where(where);
 
-  const now = Date.now();
   /*
-   * Іменні контакти йдуть перед загальними скриньками. Лист на hello@ читає менеджер,
-   * тому власник має бачити людину першою, а info@ як запасний варіант.
+   * Контакти беруться тим самим відбором, підзапитом, а не списком номерів.
+   *
+   * Список номерів на дві тисячі компаній це дві тисячі параметрів в одному
+   * запиті, і рано чи пізно він упирається в стелю драйвера. Підзапит цієї стелі
+   * не має і на D1 поводиться так само, як локально.
+   *
+   * Порядок задає SQL: іменні контакти поперед загальних скриньок, бо лист на
+   * hello@ читає менеджер, розділ 9 CLAUDE.md.
    */
-  const contactRows = (await db.select().from(contacts)).sort((a, b) => {
-    const named = Number(Boolean(b.name)) - Number(Boolean(a.name));
-    return named !== 0 ? named : (a.name ?? '').localeCompare(b.name ?? '');
-  });
+  const chosen = db
+    .select({ id: companies.id })
+    .from(companies)
+    .leftJoin(companyState, eq(companyState.companyId, companies.id))
+    .where(where);
+
+  const contactRows = await db
+    .select()
+    .from(contacts)
+    .where(sql`${contacts.companyId} in ${chosen}`)
+    .orderBy(sql`${contacts.name} is null`, contacts.name);
+
   const byCompany = new Map<number, typeof contactRows>();
   for (const row of contactRows) {
-    byCompany.set(row.companyId, [...(byCompany.get(row.companyId) ?? []), row]);
+    // Через push, а не через новий масив: копія на кожен контакт це зайва робота
+    // рівно там, де її найбільше, у компаній з довгим списком людей.
+    const list = byCompany.get(row.companyId);
+    if (list) list.push(row);
+    else byCompany.set(row.companyId, [row]);
   }
 
   const cards = rows
-    .filter((row) => {
-      const status = row.status ?? 'new';
-      if (row.snoozedUntil && row.snoozedUntil > now) return false;
-      if (filters.includeContacted) return status !== 'blacklist';
-      return !HIDDEN_STATUSES.includes(status);
-    })
-    .filter((row) => {
-      if (filters.kind) return row.company.kind === filters.kind;
-      /*
-       * Без явного типу продуктові компанії зі списку прибираються: у них холодний
-       * лист "можу допомогти з проєктом" не працює, для них є Черга з вакансіями.
-       */
-      return row.company.kind !== 'product';
-    })
-    .filter((row) => filters.minRating === undefined || (row.company.rating ?? 0) >= filters.minRating)
-    .filter((row) => {
-      if (!filters.search) return true;
-      const needle = filters.search.toLowerCase();
-      return (
-        row.company.name.toLowerCase().includes(needle) ||
-        row.company.domain.includes(needle) ||
-        row.company.tags.some((tag) => tag.toLowerCase().includes(needle))
-      );
-    })
     .map((row) => {
       const breakdown: CompanyBreakdown = scoreCompany({
         company: row.company,

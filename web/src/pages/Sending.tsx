@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
+  Anchor,
+  Autocomplete,
   Badge,
   Button,
   Card,
@@ -18,8 +20,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { CircleAlert, RefreshCw, Send, Trash2 } from 'lucide-react';
+import { Building2, CircleAlert, RefreshCw, Send, Trash2 } from 'lucide-react';
 import { api, type Blocker, type DraftRow, type SendCounters } from '../lib/api';
+import { companyHref } from '../lib/route';
+import { useSelection } from '../lib/useRoute';
 
 /**
  * "До відправки": головний робочий екран розсилки.
@@ -90,16 +94,39 @@ function DraftCard({
   const [subject, setSubject] = useState(draft.subject ?? '');
   const [body, setBody] = useState(draft.body ?? '');
   const [email, setEmail] = useState(draft.contactEmail ?? '');
+  const [name, setName] = useState(draft.contactName);
 
   // Картку могли перегенерувати або відкрити іншу: поля мусять іти за даними.
   useEffect(() => {
     setSubject(draft.subject ?? '');
     setBody(draft.body ?? '');
     setEmail(draft.contactEmail ?? '');
-  }, [draft.id, draft.subject, draft.body, draft.contactEmail]);
+    setName(draft.contactName);
+  }, [draft.id, draft.subject, draft.body, draft.contactEmail, draft.contactName]);
+
+  const options = draft.companyContacts;
+  const chosen = options.find((item) => item.email === email.trim().toLowerCase());
+  const deadEmail = chosen ? !chosen.emailValid : false;
+
+  /*
+   * Вибір адреси тягне за собою імʼя, бо воно стоїть у самому тексті листа.
+   * Ручний ввід імені не чіпає: адресу, якої в базі ще немає, власник щойно
+   * знайшов очима, і хто за нею стоїть, знає тільки він.
+   */
+  const onEmail = (value: string) => {
+    setEmail(value);
+    const match = options.find((item) => item.email === value.trim().toLowerCase());
+    if (match) setName(match.name);
+  };
 
   const save = useMutation({
-    mutationFn: () => api.updateDraft(draft.id, { subject, body, contactEmail: email.trim() || null }),
+    mutationFn: () =>
+      api.updateDraft(draft.id, {
+        subject,
+        body,
+        contactEmail: email.trim() || null,
+        contactName: name,
+      }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['drafts'] });
       // Вписана адреса заводиться контактом компанії, тому картка студії теж застаріла.
@@ -138,14 +165,31 @@ function DraftCard({
   const dirty =
     subject !== (draft.subject ?? '') ||
     body !== (draft.body ?? '') ||
-    email.trim() !== (draft.contactEmail ?? '');
+    email.trim() !== (draft.contactEmail ?? '') ||
+    name !== draft.contactName;
   const words = body.trim().split(/\s+/).filter(Boolean).length;
 
   return (
     <Card withBorder p="md">
       <Group justify="space-between" align="start" mb="xs">
         <div>
-          <Text fw={600}>{draft.company}</Text>
+          {/*
+            Назва веде на картку компанії в застосунку, а не на її сайт.
+            До чернетки власник повертається через тиждень після того, як склав її,
+            і "що це за контора" це перше питання. Сайт відповідає на нього гірше
+            за власну картку: у ній лежать стек, рахунок, контакти і історія.
+          */}
+          <Group gap={6} align="center">
+            <Text fw={600}>{draft.company}</Text>
+            <Tooltip label="картка компанії: стек, контакти, історія листування">
+              <Anchor href={companyHref(draft.domain)} c="dimmed" style={{ display: 'flex' }}>
+                <Building2 size={14} />
+              </Anchor>
+            </Tooltip>
+            <Anchor href={`https://${draft.domain}`} target="_blank" rel="noreferrer" size="xs" c="dimmed">
+              {draft.domain}
+            </Anchor>
+          </Group>
           <Text size="xs" c="dimmed">
             {draft.contactName ? `${draft.contactName}, ` : ''}
             {draft.contactEmail ?? 'адреси немає'}
@@ -193,19 +237,53 @@ function DraftCard({
       )}
 
       {/*
-        Адреса редагується прямо тут. Чернетка без пошти тепер потрапляє в чергу,
-        бо знайти адресу очима на сайті компанії часто швидше, ніж чекати обходу,
-        а вписана вона одразу стає контактом компанії і видно її і на сторінці студії.
+        Адреса або обирається зі знайдених у цієї компанії, або вписується руками.
+
+        Поле саме таке, а не список: половина адрес у базі загальні, і рівно тому
+        власник регулярно знаходить кращу очима на їхньому сайті. Список без
+        ручного вводу змусив би його йти вписувати її в іншому розділі, а ручний
+        ввід без списку змусив би згадувати напамʼять те, що вже лежить у базі.
+        Вписана адреса одразу стає контактом компанії і видно її на картці студії.
       */}
-      <TextInput
+      <Autocomplete
         label="адреса"
         size="xs"
-        placeholder="hello@company.com"
+        placeholder="обери знайдену або впиши свою"
+        data={options.map((item) => item.email)}
         value={email}
-        error={!email.trim() ? 'без адреси лист не піде' : undefined}
-        onChange={(event) => setEmail(event.currentTarget.value)}
-        mb="xs"
+        error={!email.trim() ? 'без адреси лист не піде' : deadEmail ? 'ця адреса дала hard bounce' : undefined}
+        onChange={onEmail}
+        renderOption={({ option }) => {
+          const found = options.find((item) => item.email === option.value);
+          return (
+            <Group gap={6} wrap="nowrap">
+              <Text size="xs">{option.value}</Text>
+              {found?.name && (
+                <Text size="xs" c="dimmed">
+                  {found.name}
+                  {found.role ? `, ${found.role}` : ''}
+                </Text>
+              )}
+              {found && !found.emailValid && (
+                <Badge size="xs" color="red" variant="light">
+                  мертва
+                </Badge>
+              )}
+            </Group>
+          );
+        }}
+        mb={4}
       />
+
+      {/*
+        Кому саме йде лист, показується окремим рядком. Імʼя стоїть у тексті
+        листа, тому вибір адреси змінює і звертання, і це має бути видно до
+        відправки, а не після.
+      */}
+      <Text size="xs" c="dimmed" mb="xs">
+        {name ? `лист звертається до ${name}` : 'звертання без імені'}
+        {options.length > 0 ? `, знайдено адрес: ${options.length}` : ', інших адрес у базі немає'}
+      </Text>
 
       <TextInput
         label="тема"
@@ -274,7 +352,13 @@ function DraftCard({
 
 export function SendingPage() {
   const client = useQueryClient();
-  const [tab, setTab] = useState<string | null>('ready');
+  /*
+   * Вкладка теж в адресі: `#/sending/attention` це посилання на те, що
+   * потребує уваги, і його можна лишити собі на завтра або кинути в нагадування.
+   */
+  const [chosen, setChosen] = useSelection('sending');
+  const tab = chosen ?? 'ready';
+  const setTab = (value: string | null) => setChosen(value === 'ready' ? null : value);
   const [blockersById, setBlockersById] = useState<Record<number, Blocker[]>>({});
   const [now, setNow] = useState(() => Date.now());
 

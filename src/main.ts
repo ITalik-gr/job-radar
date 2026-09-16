@@ -38,6 +38,17 @@ server.on('error', (error: NodeJS.ErrnoException) => {
 if (process.env.SCHEDULER !== 'off') startScheduler();
 if (isConfigured() && process.env.TELEGRAM_BOT !== 'off') void startBot();
 
+/*
+ * Остання лінія оборони. Усі завдання за розкладом уже загорнуті в `safely`, але
+ * процес має жити тижнями без нагляду, і одна не спіймана обіцянка десь у новому
+ * коді за замовчуванням валить Node цілком. Тихо зупинений радар гірший за
+ * помилку в лозі: він виглядає працюючим рівно до того дня, коли власник
+ * помічає, що нових вакансій немає вже тиждень.
+ */
+process.on('unhandledRejection', (reason) => {
+  log.error({ err: reason instanceof Error ? reason.message : String(reason) }, 'не спіймана обіцянка');
+});
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     log.info('зупиняюсь');

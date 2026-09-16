@@ -680,6 +680,15 @@ export interface DraftRow {
   aiFallbackReason: string | null;
   error: string | null;
   queuedAt: number | null;
+  /**
+   * Усі адреси, які радар знайшов у цієї компанії.
+   *
+   * Їдуть разом з чернеткою навмисно: без них єдиним способом поставити іншу
+   * адресу було вписати її руками, тобто згадати напамʼять те, що вже лежить у
+   * базі. Мертві адреси теж тут, але позначені: список має пояснювати, чому
+   * саме ця не годиться, а не мовчки її ховати.
+   */
+  companyContacts: { name: string | null; role: string | null; email: string; emailValid: boolean }[];
 }
 
 /** Чернетки для сторінки "До відправки". Готові і проблемні разом, розділяє UI. */
@@ -693,9 +702,39 @@ export async function listDrafts(): Promise<DraftRow[]> {
     .where(inArray(outreach.status, ['draft', 'approved']))
     .orderBy(desc(outreach.queuedAt));
 
+  /*
+   * Контакти беруться одним запитом на всі чернетки, а не по одному на картку:
+   * карток на екрані десятки, і запит на кожну перетворив би відкриття сторінки
+   * на чергу з півсотні звернень до бази.
+   */
+  const companyIds = [...new Set(rows.map(({ row }) => row.companyId))];
+  const people =
+    companyIds.length > 0
+      ? await db.select().from(contacts).where(inArray(contacts.companyId, companyIds))
+      : [];
+
+  const byCompany = new Map<number, DraftRow['companyContacts']>();
+  for (const person of people) {
+    if (!person.email) continue;
+    const list = byCompany.get(person.companyId) ?? [];
+    list.push({
+      name: person.name,
+      role: person.role,
+      email: person.email,
+      emailValid: person.emailValid,
+    });
+    byCompany.set(person.companyId, list);
+  }
+
+  // Іменні адреси першими: лист на hello@ читає менеджер, розділ 9 CLAUDE.md.
+  for (const list of byCompany.values()) {
+    list.sort((a, b) => Number(Boolean(b.name)) - Number(Boolean(a.name)));
+  }
+
   return rows.map(({ row, company, domain, title }) => ({
     id: row.id,
     companyId: row.companyId,
+    companyContacts: byCompany.get(row.companyId) ?? [],
     company,
     domain,
     vacancyTitle: title,
@@ -722,8 +761,8 @@ export async function updateDraft(
   if (!existing) throw new Error(`чернетки ${id} немає`);
   if (existing.status !== 'draft') throw new Error('правити можна тільки чернетку');
 
-  const subject = patch.subject ?? existing.subjectFinal ?? '';
-  const body = patch.body ?? existing.bodyFinal ?? '';
+  let subject = patch.subject ?? existing.subjectFinal ?? '';
+  let body = patch.body ?? existing.bodyFinal ?? '';
 
   /*
    * Адресу можна вписати руками просто в чернетці, і вона не лишається всередині
@@ -739,6 +778,35 @@ export async function updateDraft(
   }
 
   /*
+   * Зміна адреси це зміна людини, а імʼя вже вшите в готовий текст.
+   *
+   * Лист складається один раз, і `{{first_name}}` у ньому давно перетворився на
+   * конкретне "Hi Anna". Перевести чернетку на іншу адресу і лишити текст як є
+   * означає привітатись з Анною в листі до Ігоря, причому мовчки: у тексті все
+   * гаразд, помилки немає, лист іде. Тому імʼя міняється разом з адресою, і це
+   * саме заміна слова на слово, а не переписування листа моделлю.
+   */
+  const wasCalled = firstName(existing.contactName);
+  const nowCalled = firstName(name);
+
+  let renamed: string | null = null;
+  if (wasCalled && wasCalled !== nowCalled) {
+    const pattern = `\\b${escapeForRegExp(wasCalled)}\\b`;
+
+    if (nowCalled) {
+      subject = subject.replace(new RegExp(pattern, 'g'), nowCalled);
+      body = body.replace(new RegExp(pattern, 'g'), nowCalled);
+    } else if (new RegExp(pattern).test(`${subject}\n${body}`)) {
+      /*
+       * Нового імені немає, а старе в тексті лишилось. Мовчки залишити його не
+       * можна, а вигадати звертання нема з чого, тому чернетка чесно стає
+       * проблемною: власник або впише імʼя, або перебере лист іншим шаблоном.
+       */
+      renamed = `у тексті лишилось імʼя ${wasCalled}, а адреса тепер інша`;
+    }
+  }
+
+  /*
    * Після ручної правки помилка перераховується заново: власник міг дописати
    * імʼя руками, і тоді чернетка вже готова. Тримати стару позначку означало б
    * лишити готовий лист у вкладці "Потребують уваги" назавжди.
@@ -749,6 +817,7 @@ export async function updateDraft(
   else if (!subject.trim()) error = 'порожня тема листа';
   else if (leftover.length > 0) error = `незаповнені плейсхолдери: ${leftover.join(', ')}`;
   else if (!email) error = 'немає адреси, куди писати';
+  else if (renamed) error = renamed;
 
   await db
     .update(outreach)
@@ -1034,6 +1103,16 @@ export async function draftForCompany(
 }
 
 /** Адреса приводиться до одного вигляду, інакше та сама пошта заведеться двічі. */
+/** Перше слово імені: саме воно стоїть у листі як `{{first_name}}`. */
+function firstName(value: string | null | undefined): string | null {
+  return (value ?? '').trim().split(/\s+/)[0] || null;
+}
+
+/** Імʼя йде в регулярку, а в іменах трапляються крапки і дефіси. */
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function normalizeEmail(value: string | null | undefined): string | null {
   const email = (value ?? '').trim().toLowerCase();
   if (!email) return null;

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -26,6 +26,7 @@ import { notifications } from '@mantine/notifications';
 import { Building2, ExternalLink, Mail, Search } from 'lucide-react';
 import { api, formatDate, type CompanyRow } from '../lib/api';
 import { Score } from '../components/Score';
+import { useSelection } from '../lib/useRoute';
 import { ContactRow } from '../components/ContactRow';
 import {
   STATUS_OPTIONS,
@@ -289,10 +290,47 @@ export function CompaniesPage() {
   const [selected, setSelected] = useState<CompanyRow | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  /*
+   * Відкрита компанія це другий сегмент адреси: `#/companies/acme.com`. Домен,
+   * а не номер, навмисно: посилання лишається читабельним, і його видно, куди
+   * воно веде, ще до кліку.
+   */
+  const [domain, select] = useSelection('companies');
+
+  // Пошук чекає, поки людина допише: інакше кожна літера це окремий запит по всій базі.
+  const [search] = useDebouncedValue(filters.q, 300);
+  const query = useMemo(() => ({ ...filters, q: search }), [filters, search]);
+
   const { data, error, isLoading } = useQuery({
-    queryKey: ['companies', filters],
-    queryFn: () => api.companies(filters),
+    queryKey: ['companies', query],
+    queryFn: () => api.companies(query),
   });
+
+  /*
+   * Компанія з адреси знаходиться через список, а не відкривається напряму.
+   *
+   * Причина технічна: деталі беруть рахунок з рядка списку, бо в відповіді
+   * `GET /companies/:id` його немає, він рахується на льоту лише для списку.
+   * Тому якщо компанії в поточному списку немає, спершу вмикається пошук по
+   * її домену. Побічний ефект корисний: фільтр лишається видимим, і зрозуміло,
+   * чому в таблиці один рядок.
+   */
+  useEffect(() => {
+    if (!domain) {
+      setSelected(null);
+      return;
+    }
+    if (selected?.domain === domain) return;
+
+    const found = data?.find((row) => row.domain === domain);
+    if (found) {
+      setSelected(found);
+      return;
+    }
+
+    // Пошук вмикається лише тоді, коли компанії в поточному списку справді немає.
+    if (data && filters.q !== domain) setFilters({ q: domain, status: '', ats: '', country: '' });
+  }, [domain, data, selected, filters.q]);
 
   /*
    * Рядок фіксованої висоти, тому вимірювати нічого не треба: віртуалізатор
@@ -364,7 +402,7 @@ export function CompaniesPage() {
         </Group>
       </Paper>
 
-      {selected && <Detail row={selected} onClose={() => setSelected(null)} />}
+      {selected && <Detail row={selected} onClose={() => select(null)} />}
 
       {isLoading && <Skeleton h={420} />}
 
@@ -417,7 +455,7 @@ export function CompaniesPage() {
                 {rows.map((row: CompanyRow) => (
                   <Table.Tr
                     key={row.id}
-                    onClick={() => setSelected(row)}
+                    onClick={() => select(row.domain)}
                     style={{ cursor: 'pointer' }}
                     bg={selected?.id === row.id ? 'brand.0' : undefined}
                   >

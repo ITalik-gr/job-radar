@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { api, formatDate, type RefreshReport, type StudioCard, type VerdictReport } from '../lib/api';
 import { ContactRow } from '../components/ContactRow';
+import { useSelection } from '../lib/useRoute';
 import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { TemplateSelect } from '../components/TemplateSelect';
@@ -731,19 +732,36 @@ export interface CompanyListProps {
   kind?: string;
   emptyTitle?: string;
   emptyHint?: string;
+  /** Розділ в адресі: `#/studios/acme.com` або `#/startups/acme.com`. */
+  section?: string;
 }
 
 /**
  * Студії і Стартапи це той самий екран з різним зрізом бази, тому сторінка
  * параметризована типом, а не скопійована вдруге на триста рядків.
  */
-export function StudiosPage({ kind, emptyTitle, emptyHint }: CompanyListProps = {}) {
+export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }: CompanyListProps = {}) {
   const client = useQueryClient();
   const [filters, setFilters] = useState({ q: '', country: '', min: '', all: '', named: '', rating: '' });
-  const [cursor, setCursor] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const query = useMemo(() => ({ ...filters, ...(kind ? { kind } : {}) }), [filters, kind]);
+  /*
+   * Відкрита картка це домен в адресі, а не номер у списку. Номер живе рівно до
+   * наступного фільтра: після зміни пошуку третій рядок це вже інша компанія, і
+   * посилання на "третій рядок" не означало б нічого.
+   */
+  const [domain, select] = useSelection(section);
+
+  /*
+   * Пошук чекає, поки людина допише. Без цього кожна натиснута літера це окремий
+   * запит, а запит тут не дешевий: рахунок рахується для всієї бази, і на слові
+   * "design" це шість повних проходів замість одного.
+   */
+  const [search] = useDebouncedValue(filters.q, 300);
+  const query = useMemo(
+    () => ({ ...filters, q: search, ...(kind ? { kind } : {}) }),
+    [filters, search, kind],
+  );
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['studios', query],
@@ -763,18 +781,34 @@ export function StudiosPage({ kind, emptyTitle, emptyHint }: CompanyListProps = 
   });
 
   const cards = data?.cards ?? [];
-  const index = Math.min(cursor, Math.max(0, cards.length - 1));
+
+  /*
+   * Компанії з адреси може не бути в поточному зрізі: власник прийшов за
+   * посиланням, а фільтр її ховає, або він щойно натиснув "не цікаво" і вона
+   * зникла зі списку. Тоді відкривається перша, а адреса підтягується під неї.
+   */
+  const index = Math.max(0, cards.findIndex((card) => card.domain === domain));
   const current = cards[index];
+
+  useEffect(() => {
+    if (!current) return;
+    if (current.domain !== domain) select(current.domain);
+  }, [current, domain, select]);
+
+  const step = (delta: number) => {
+    const next = cards[Math.min(Math.max(index + delta, 0), cards.length - 1)];
+    if (next) select(next.domain);
+  };
 
   useHotkeys(
     useMemo(
       () => ({
-        j: () => setCursor((value) => Math.min(value + 1, cards.length - 1)),
-        arrowdown: () => setCursor((value) => Math.min(value + 1, cards.length - 1)),
-        k: () => setCursor((value) => Math.max(value - 1, 0)),
-        arrowup: () => setCursor((value) => Math.max(value - 1, 0)),
+        j: () => step(1),
+        arrowdown: () => step(1),
+        k: () => step(-1),
+        arrowup: () => step(-1),
       }),
-      [cards.length],
+      [cards, index],
     ),
     cards.length > 0,
   );
@@ -892,7 +926,7 @@ export function StudiosPage({ kind, emptyTitle, emptyHint }: CompanyListProps = 
                 key={card.companyId}
                 card={card}
                 active={position === index}
-                onSelect={() => setCursor(position)}
+                onSelect={() => select(card.domain)}
               />
             ))}
           </ScrollArea>

@@ -345,6 +345,8 @@ export interface DraftRow {
   aiFallbackReason: string | null;
   error: string | null;
   queuedAt: number | null;
+  /** Усі адреси цієї компанії. Мертві теж, але позначені. */
+  companyContacts: { name: string | null; role: string | null; email: string; emailValid: boolean }[];
 }
 
 export interface OutreachStats {

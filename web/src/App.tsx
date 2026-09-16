@@ -35,6 +35,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { api, setToken } from './lib/api';
+import { useRoute } from './lib/useRoute';
 import { useHotkeys } from './lib/hotkeys';
 import { RunMenu } from './components/RunMenu';
 import { QueuePage } from './pages/Queue';
@@ -153,7 +154,14 @@ function StatusRow({
 }
 
 export function App() {
-  const [tab, setTab] = useState<TabId>('queue');
+  /*
+   * Розділ живе в адресі, а не в стані. Завдяки цьому перехід на конкретну
+   * контору це звичайне посилання `#/companies/acme.com` з будь-якого місця,
+   * а не проп через усе дерево, і кнопка "назад" працює як належить.
+   */
+  const { segments, go } = useRoute();
+  const tab: TabId = (TABS.find((item) => item.id === segments[0])?.id ?? 'queue') as TabId;
+  const setTab = (id: TabId) => go([id]);
 
   const { data: stats, error: statsError } = useQuery({
     queryKey: ['stats'],

@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import journal from '../db/migrations/meta/_journal.json' with { type: 'json' };
 import { desc, eq, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { getDb } from '../db/client.js';
@@ -115,8 +116,16 @@ app.use(
   cors({
     origin: (origin, c) =>
       c.req.path.startsWith('/api/import/') ? origin ?? '*' : WEB_ORIGINS.includes(origin) ? origin : null,
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['content-type'],
+    /*
+     * Перелік мусить збігатися з тим, що застосунок реально шле. Правки шаблонів,
+     * чернеток, фактів, правил і контактів ідуть через PATCH, PUT і DELETE, і
+     * поки їх тут не було, будь-яке звернення не з того самого походження
+     * відбивалось ще на preflight. Локально це не виявлялось, бо vite проксює
+     * `/api` і робить запити своїми, тобто пастка чекала на першого, хто
+     * відкриє інтерфейс не через проксі.
+     */
+    allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['content-type', 'x-radar-token', 'authorization'],
   }),
 );
 
@@ -126,6 +135,26 @@ app.use('/api/*', async (c, next) => requireToken(config.token)(c, next));
  * Здоровʼя. З `?deep=1` ще й перевіряє базу: на проді найчастіша причина падінь це
  * незастосовані міграції, і тоді будь-який запит валиться з "no such table".
  */
+/**
+ * Скільки міграцій уже лягло в базу. Таблиця обліку різна: локально це drizzle,
+ * на Cloudflare wrangler веде свою. Обидві дають те саме число, тому питаємо ту,
+ * яка є, а не ту, яку очікували побачити.
+ */
+async function migrationsApplied(): Promise<number | null> {
+  for (const table of ['__drizzle_migrations', 'd1_migrations']) {
+    try {
+      const rows = await getDb().all<{ count: number }>(
+        sql.raw(`select count(*) as count from ${table}`),
+      );
+      const count = rows[0]?.count;
+      if (typeof count === 'number') return count;
+    } catch {
+      // Немає такої таблиці означає, що облік веде інша. Перевіряємо наступну.
+    }
+  }
+  return null;
+}
+
 app.get('/api/health', async (c) => {
   const base = { ok: true, day: todayKey() };
   if (c.req.query('deep') !== '1') return c.json(base);
@@ -164,7 +193,21 @@ app.get('/api/health', async (c) => {
       columns = describe(error);
     }
 
-    const ok = missing.length === 0 && columns === null;
+    /*
+     * Головна перевірка тут саме ця, а не проба колонок вище.
+     *
+     * Проба знає лише ті колонки, які їй колись вписали, тому кожна наступна
+     * міграція проходить повз неї. Саме так і сталось: база відстала на дві
+     * міграції, сторінка Студії віддавала 500 "no such column: needs_browser",
+     * а `deep=1` бадьоро відповідав "ok". Порівняння кількостей не знає нічого
+     * про схему і тому не застаріває: у журналі стільки записів, скільки файлів
+     * міграцій, і в базі має бути рівно стільки ж.
+     */
+    const applied = await migrationsApplied();
+    const total = journal.entries.length;
+    const behind = applied === null ? null : total - applied;
+
+    const ok = missing.length === 0 && columns === null && behind === 0;
 
     return c.json({
       ...base,
@@ -173,7 +216,8 @@ app.get('/api/health', async (c) => {
       tables,
       missing,
       columns,
-      hint: ok ? null : 'pnpm cf:migrate',
+      migrations: { applied, expected: total, behind },
+      hint: ok ? null : 'pnpm db:migrate локально або pnpm cf:migrate на воркері',
     });
   } catch (error) {
     return c.json({ ...base, ok: false, db: 'помилка', error: describe(error) }, 500);

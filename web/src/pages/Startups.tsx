@@ -11,6 +11,7 @@ export function StartupsPage() {
   return (
     <StudiosPage
       kind="startup"
+      section="startups"
       emptyTitle="Стартапів поки немає"
       emptyHint="Запусти джерело getro у розділі Джерела: воно приносить вакансії стартапів з дошок акселераторів, а разом з ними і самі компанії."
     />
