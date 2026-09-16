@@ -12,6 +12,8 @@ import {
 import { scoreCompany } from '../pipeline/company-score.js';
 import { normalizeEmail, rememberContact } from '../pipeline/outreach.js';
 import { refreshCompany } from '../pipeline/refresh.js';
+import { companyVerdict } from '../pipeline/verdict.js';
+import { deleteContact, updateContact } from '../pipeline/contacts.js';
 
 export const companiesRoutes = new Hono();
 
@@ -152,6 +154,18 @@ companiesRoutes.post('/:id/refresh', async (c) =>
   c.json(await refreshCompany(Number(c.req.param('id')))),
 );
 
+/**
+ * Вердикт моделі: яким шаблоном заходити до цієї компанії і за що зачепитись.
+ *
+ * POST, а не GET, навмисно: за кнопкою стоїть виклик моделі і витрата з денної
+ * стелі. Повторне натискання віддається з кешу, поки не змінились ні шаблони,
+ * ні дані компанії, тому дешевизна тут не привід робити з цього GET, який хтось
+ * колись почне смикати списком.
+ */
+companiesRoutes.post('/:id/verdict', async (c) =>
+  c.json(await companyVerdict(Number(c.req.param('id')))),
+);
+
 companiesRoutes.post('/:id/contacts', async (c) => {
   const companyId = Number(c.req.param('id'));
   const body = await c.req
@@ -164,6 +178,33 @@ companiesRoutes.post('/:id/contacts', async (c) => {
   const result = await rememberContact(companyId, email, body.name?.trim() || null, body.role?.trim() || null);
   return c.json({ email, ...result });
 });
+
+/**
+ * Правка знайденого контакту.
+ *
+ * Збір дає половинки: зі сторінки команди приходить імʼя з посадою без адреси,
+ * зі сторінки контактів адреса без імені. Звести їх докупи може тільки людина,
+ * і без цієї ручки єдиним способом було завести ще один рядок.
+ *
+ * Шлях під компанією навмисно: контакт поза компанією не існує, і так у логах
+ * одразу видно, кого саме правили.
+ */
+companiesRoutes.patch('/:id/contacts/:contactId', async (c) => {
+  const body = await c.req
+    .json<{ name?: string | null; role?: string | null; email?: string | null; emailValid?: boolean }>()
+    .catch(() => ({}));
+
+  try {
+    return c.json(await updateContact(Number(c.req.param('contactId')), body));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+/** Видалення контакту: у збір регулярно потрапляє інвестор з відгуку або клієнт з кейсу. */
+companiesRoutes.delete('/:id/contacts/:contactId', async (c) =>
+  c.json(await deleteContact(Number(c.req.param('contactId')))),
+);
 
 companiesRoutes.post('/:id/state', async (c) => {
   const db = getDb();

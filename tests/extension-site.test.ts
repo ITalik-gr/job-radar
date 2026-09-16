@@ -22,6 +22,8 @@ interface SiteResult {
   copyrightYear: number | null;
   lastPostAt: number | null;
   textLength: number;
+  lines: string[];
+  links: string[];
 }
 
 function readSite(html: string): SiteResult {
@@ -41,6 +43,13 @@ const page = `
     <p>We build headless commerce on Shopify Plus with Sanity and Next.js.</p>
     <a href="mailto:hello@studio.example.com">Write to us</a>
     <p>Anna Koval, CTO: <a href="mailto:anna@studio.example.com">anna@studio.example.com</a></p>
+    <nav>
+      <a href="/about-us">About us</a>
+      <a href="/careers?utm_source=nav">Careers</a>
+      <a href="/contact">Contact</a>
+      <a href="/portfolio">Work</a>
+      <a href="https://dribbble.com/studio/about">Dribbble</a>
+    </nav>
     <footer>© 2026 Studio. Last post 2026-08-14.</footer>
   </body></html>
 `;
@@ -80,5 +89,29 @@ describe('читач намальованої сторінки', () => {
     expect(empty.emails).toEqual([]);
     expect(empty.techHints).toEqual([]);
     expect(empty.copyrightYear).toBeNull();
+    expect(empty.links).toEqual([]);
+  });
+
+  /*
+   * Рядки розбирає сервер тим самим кодом, яким розбирає сторінки, завантажені
+   * ним самим. Тому межа тега має рвати рядок так само, як у `toLines`: ім'я і
+   * посада мусять лишитись сусідніми рядками, а не злитись в один.
+   */
+  it('віддає текст рядками по межах тегів', () => {
+    expect(result.lines).toEqual(expect.arrayContaining(['Studio', 'Anna Koval, CTO:']));
+    expect(result.lines.some((line) => line.includes('<'))).toBe(false);
+  });
+
+  /*
+   * Куди йти далі. Контакти першими, бо там пошта, потім "про нас", потім вакансії.
+   * Саме через відсутність цього кроку обхід повертався з нулем: на головній
+   * студії стоїть презентація, а адреси лежать на сусідніх сторінках.
+   */
+  it('дає посилання далі в порядку цінності, без чужих доменів', () => {
+    expect(result.links).toEqual([
+      'https://studio.example.com/contact',
+      'https://studio.example.com/about-us',
+      'https://studio.example.com/careers',
+    ]);
   });
 });

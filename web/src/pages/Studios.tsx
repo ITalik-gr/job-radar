@@ -32,12 +32,14 @@ import {
   Mail,
   Palette,
   RefreshCw,
+  Sparkles,
   Search,
   MailPlus,
   Send,
   ThumbsDown,
 } from 'lucide-react';
-import { api, formatDate, type RefreshReport, type StudioCard } from '../lib/api';
+import { api, formatDate, type RefreshReport, type StudioCard, type VerdictReport } from '../lib/api';
+import { ContactRow } from '../components/ContactRow';
 import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { TemplateSelect } from '../components/TemplateSelect';
@@ -202,6 +204,34 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
       notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
   });
 
+  /*
+   * Вердикт моделі: яким шаблоном заходити і за що зачепитись.
+   *
+   * Порада, а не рішення. Обраний шаблон одразу підставляється в селект унизу,
+   * але змінити його там можна в один клік, і саме на цьому вибір і стоїть:
+   * розсилка як була детермінованою, так і лишається.
+   */
+  const [verdict, setVerdict] = useState<VerdictReport | null>(null);
+
+  const askVerdict = useMutation({
+    mutationFn: () => api.companyVerdict(card.companyId),
+    onSuccess: (result) => {
+      setVerdict(result);
+      if (result.verdict?.template_slug) setTemplate(result.verdict.template_slug);
+      notifications.show({
+        color: result.verdict ? 'green' : 'yellow',
+        title: card.name,
+        message:
+          result.error ??
+          (result.verdict?.skip
+            ? `радить не писати: ${result.verdict.skip_reason ?? 'без причини'}`
+            : `шаблон ${result.verdict?.template_slug}, впевненість ${result.verdict?.confidence}`),
+      });
+    },
+    onError: (error: Error) =>
+      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+  });
+
   const toDrafts = useMutation({
     mutationFn: () => api.draftForCompany(card.companyId, null, template),
     onSuccess: (result) =>
@@ -219,13 +249,14 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
       () => ({
         d: () => toDrafts.mutate(),
         k: () => refresh.mutate(),
+        v: () => askVerdict.mutate(),
         i: () => onAct({ action: 'interesting' }),
         n: () => onAct({ action: 'not_interesting' }),
         e: () => onAct({ action: 'contacted', templateUsed: template }),
         b: () => onAct({ action: 'blacklist' }),
         s: () => onAct({ action: 'snooze', days: 60 }),
       }),
-      [onAct, template, toDrafts, refresh],
+      [onAct, template, toDrafts, refresh, askVerdict],
     ),
   );
 
@@ -405,21 +436,8 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             </Text>
           ) : (
             <Stack gap={6}>
-              {card.contacts.map((contact, position) => (
-                <Group key={position} gap="xs">
-                  <Mail size={14} color="var(--mantine-color-dimmed)" />
-                  <Text fw={500}>{contact.name ?? contact.email}</Text>
-                  {contact.role && (
-                    <Badge color="gray" size="sm">
-                      {contact.role}
-                    </Badge>
-                  )}
-                  {contact.name && contact.email && (
-                    <Anchor href={`mailto:${contact.email}`} size="sm">
-                      {contact.email}
-                    </Anchor>
-                  )}
-                </Group>
+              {card.contacts.map((contact) => (
+                <ContactRow key={contact.id} companyId={card.companyId} contact={contact} />
               ))}
             </Stack>
           )}
@@ -487,6 +505,83 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               Додати
             </Button>
           </Group>
+
+          {/*
+            Вердикт по компанії. Кнопка окремо від решти навмисно: це єдине місце
+            на картці, яке коштує грошей, і натискати його має людина свідомо, а
+            не воно саме при відкритті кожної студії.
+          */}
+          <Group gap="xs" mt="lg" align="center">
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={<Sparkles size={14} />}
+              rightSection={<Kbd size="xs">v</Kbd>}
+              loading={askVerdict.isPending}
+              onClick={() => askVerdict.mutate()}
+            >
+              Що тут писати
+            </Button>
+            {verdict?.source === 'cache' && (
+              <Text size="xs" c="dimmed">
+                з кешу, модель не турбували
+              </Text>
+            )}
+          </Group>
+
+          {verdict && (
+            <Alert
+              mt="xs"
+              p="xs"
+              color={verdict.verdict ? (verdict.verdict.skip ? 'yellow' : 'gray') : 'yellow'}
+            >
+              <Stack gap={6}>
+                {/* Порожній вердикт завжди пояснює себе, правило 3 CLAUDE.md. */}
+                {verdict.error && <Text size="xs">{verdict.error}</Text>}
+
+                {verdict.verdict && (
+                  <>
+                    <Group gap="xs">
+                      <Badge color={verdict.verdict.skip ? 'yellow' : 'green'} size="sm">
+                        {verdict.verdict.skip ? 'не писати' : (verdict.verdict.template_slug ?? 'без шаблона')}
+                      </Badge>
+                      <Text size="xs" c="dimmed">
+                        впевненість {verdict.verdict.confidence}, мова {verdict.verdict.language}
+                      </Text>
+                    </Group>
+
+                    {verdict.verdict.skip
+                      ? verdict.verdict.skip_reason && <Text size="xs">{verdict.verdict.skip_reason}</Text>
+                      : <Text size="xs">{verdict.verdict.angle}</Text>}
+
+                    <Text size="xs" c="dimmed">
+                      {verdict.verdict.why}
+                    </Text>
+
+                    {verdict.verdict.contact && (
+                      <Text size="xs" c="dimmed">
+                        писати: {verdict.verdict.contact}
+                      </Text>
+                    )}
+
+                    {verdict.verdict.risks.length > 0 && (
+                      <Text size="xs" c="dimmed">
+                        ризики: {verdict.verdict.risks.join('; ')}
+                      </Text>
+                    )}
+                  </>
+                )}
+
+                {/*
+                  Детермінований вибір поруч завжди. Без нього незрозуміло, чи модель
+                  щось побачила, чи повторила те, що код і так рахує сам.
+                */}
+                <Text size="xs" c="dimmed">
+                  без моделі пішов би {verdict.fallbackSlug ?? 'жоден шаблон'} ({verdict.fallbackTarget})
+                </Text>
+              </Stack>
+            </Alert>
+          )}
 
           <SimilarBlock companyId={card.companyId} />
 

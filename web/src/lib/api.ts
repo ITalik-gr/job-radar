@@ -93,7 +93,7 @@ export interface CompanyDetail {
     closedAt: number | null;
     llmWhy: string | null;
   }[];
-  contacts: { id: number; name: string | null; role: string | null; email: string | null }[];
+  contacts: CompanyContact[];
   outreach: OutreachRow[];
   snapshots: { id: number; url: string; fetchedAt: number; contentHash: string; blocks: number }[];
 }
@@ -152,8 +152,18 @@ export interface StudioCard {
   openVacancies: number;
   score: number;
   why: { reason: string; weight: number }[];
-  contacts: { name: string | null; role: string | null; email: string | null }[];
+  contacts: CompanyContact[];
   lastContactedAt: number | null;
+}
+
+/** Контакт компанії. `id` потрібен, щоб його можна було правити прямо з картки. */
+export interface CompanyContact {
+  id: number;
+  name: string | null;
+  role: string | null;
+  email: string | null;
+  /** false означає hard bounce: адреса лишається в базі, але писати на неї не можна. */
+  emailValid: boolean;
 }
 
 export interface SourceRow {
@@ -288,6 +298,34 @@ export interface RefreshReport {
   contactsAdded: number;
   emails: string[];
   people: number;
+}
+
+/**
+ * Вердикт моделі по компанії. Порада, а не рішення: поруч завжди лежить
+ * `fallbackSlug`, той самий детермінований вибір, який зробить розсилка.
+ */
+export interface Verdict {
+  template_slug: string | null;
+  alternative_slug: string | null;
+  language: 'uk' | 'en';
+  confidence: number;
+  angle: string;
+  why: string;
+  risks: string[];
+  contact: string | null;
+  skip: boolean;
+  skip_reason: string | null;
+}
+
+export interface VerdictReport {
+  companyId: number;
+  domain: string;
+  source: 'cache' | 'llm' | 'budget' | 'invalid';
+  verdict: Verdict | null;
+  fallbackSlug: string | null;
+  fallbackTarget: string;
+  language: 'uk' | 'en';
+  error: string | null;
 }
 
 /** Чернетка листа на сторінці "До відправки". */
@@ -486,6 +524,19 @@ export const api = {
   /** Повний перегляд однієї компанії: сайт, стек, контакти, career-сторінка. */
   refreshCompany: (companyId: number) =>
     request<RefreshReport>(`/companies/${companyId}/refresh`, { method: 'POST', body: '{}' }),
+  companyVerdict: (companyId: number) =>
+    request<VerdictReport>(`/companies/${companyId}/verdict`, { method: 'POST', body: '{}' }),
+  updateContact: (
+    companyId: number,
+    contactId: number,
+    patch: { name?: string | null; role?: string | null; email?: string | null },
+  ) =>
+    request<{ contact: CompanyContact; merged: number }>(
+      `/companies/${companyId}/contacts/${contactId}`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    ),
+  deleteContact: (companyId: number, contactId: number) =>
+    request<{ deleted: boolean }>(`/companies/${companyId}/contacts/${contactId}`, { method: 'DELETE' }),
   /** Контакт, доданий руками зі сторінки студії. */
   addContact: (companyId: number, body: { email: string; name?: string; role?: string }) =>
     request<{ email: string; created: boolean }>(`/companies/${companyId}/contacts`, {

@@ -26,6 +26,7 @@ import { notifications } from '@mantine/notifications';
 import { Building2, ExternalLink, Mail, Search } from 'lucide-react';
 import { api, formatDate, type CompanyRow } from '../lib/api';
 import { Score } from '../components/Score';
+import { ContactRow } from '../components/ContactRow';
 import {
   STATUS_OPTIONS,
   StatusCell,
@@ -217,22 +218,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
             ) : (
               <Stack gap={6} mt="xs">
                 {data.contacts.map((contact) => (
-                  <Group key={contact.id} gap="xs">
-                    <Mail size={14} color="var(--mantine-color-dimmed)" />
-                    <Text size="sm" fw={500}>
-                      {contact.name ?? 'без імені'}
-                    </Text>
-                    {contact.role && (
-                      <Badge color="gray" size="sm">
-                        {contact.role}
-                      </Badge>
-                    )}
-                    {contact.email && (
-                      <Anchor href={`mailto:${contact.email}`} size="sm">
-                        {contact.email}
-                      </Anchor>
-                    )}
-                  </Group>
+                  <ContactRow key={contact.id} companyId={id} contact={contact} />
                 ))}
               </Stack>
             )}

@@ -1,9 +1,18 @@
 /**
- * Читає намальовану сторінку компанії: пошта, стек, ознаки живості.
+ * Читає намальовану сторінку компанії: пошта, стек, ознаки живості, посилання далі.
  *
  * Виконується через chrome.scripting у фоновій вкладці, тобто вже після того, як
  * сайт домалював себе скриптом. Саме тому тут немає нічого про React або SPA:
  * до цього коду доходить звичайний DOM, у якому все на місці.
+ *
+ * Читається не одна сторінка, а обхід: головна майже ніколи не має ні пошти, ні
+ * імен, вони лежать на "контактах", "про нас" і "вакансіях". Сам обхід веде фон,
+ * а цей файл каже йому, куди йти далі, списком `links`.
+ *
+ * Розбір імен і посад тут НЕ робиться навмисно. Він уже написаний на сервері,
+ * перевірений тестами і працює по рядках тексту, тому сюди він не переписується:
+ * замість цього назовні йде `lines`, той самий плаский текст сторінки, і сервер
+ * розбирає його тим самим кодом, що й сторінки, які відкрив сам.
  *
  * Файл самодостатній навмисно: у вкладку він інжектиться окремо, і нічого з
  * решти розширення там немає. Останній вираз це результат, який забирає фон.
@@ -132,13 +141,89 @@
     .map((m) => Date.parse(`${m[1]}-${m[2]}-${m[3]}`))
     .filter(Number.isFinite);
 
+  /*
+   * Плаский текст сторінки по рядках. Рядок це один текстовий вузол, тобто межа
+   * будь-якого тега розриває рядок, і саме так само ріже HTML серверний `toLines`.
+   * Збіг тут не косметичний: сервер розбирає цей масив тим самим кодом, яким
+   * розбирає сторінки, які завантажив сам, і "Anna Koval" поруч з "CTO" у сусідніх
+   * рядках це те, за що він чіпляє імена.
+   */
+  const LINE_LIMIT = 1500;
+
+  function lines() {
+    const out = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+
+    for (let node = walker.nextNode(); node && out.length < LINE_LIMIT; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent) continue;
+      if (/^(script|style|noscript|svg|template)$/i.test(parent.tagName)) continue;
+      const line = String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+      if (line) out.push(line);
+    }
+
+    return out;
+  }
+
+  /*
+   * Куди йти далі. Пошта і люди майже ніколи не лежать на головній: на ній стоїть
+   * презентація, а адреси на "контактах", імена на "про нас" і на "команді", а
+   * career-сторінка каже, чи вони взагалі наймають.
+   *
+   * Вага задає порядок обходу, бо сторінок за прохід береться лише кілька: спершу
+   * контакти, потім команда, потім вакансії. Чужий домен відкидається: посилання
+   * "contact" часто веде на форму в чужому сервісі, і ходити туди нема за чим.
+   */
+  const LINK_WEIGHT = [
+    [/contacts?(-us)?\b|звяж|контакт/i, 0],
+    [/about(-us)?\b|team|people|company|leadership|про-?нас|команда/i, 1],
+    [/careers?\b|jobs?\b|vacanc|join-?us|вакансі|ваканси/i, 2],
+  ];
+
+  function links() {
+    const here = location.href;
+    const found = new Map();
+
+    for (const node of document.querySelectorAll('a[href]')) {
+      let url;
+      try {
+        url = new URL(node.getAttribute('href'), here);
+      } catch {
+        continue;
+      }
+
+      if (url.hostname !== location.hostname) continue;
+      if (!/^https?:$/.test(url.protocol)) continue;
+
+      url.hash = '';
+      url.search = '';
+      if (url.href === here.split('#')[0]) continue;
+
+      const label = `${url.pathname} ${(node.textContent || '').slice(0, 80)}`;
+      const match = LINK_WEIGHT.find(([pattern]) => pattern.test(label));
+      if (!match) continue;
+
+      const weight = match[1];
+      const known = found.get(url.href);
+      if (known === undefined || weight < known) found.set(url.href, weight);
+    }
+
+    return [...found.entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].length - b[0].length)
+      .map(([url]) => url)
+      .slice(0, 8);
+  }
+
   return {
     domain: location.hostname.replace(/^www\./, ''),
+    url: location.href,
     // Іменні адреси цінніші за hello@, тому вони першими: сервер бере їх у тому ж порядку.
     emails: [...emails.values()].sort((a, b) => Number(a.generic) - Number(b.generic)).slice(0, 12),
     techHints: [...stack],
     copyrightYear: years.length ? Math.max(...years) : null,
     lastPostAt: dates.length ? Math.max(...dates) : null,
     textLength: text.length,
+    lines: lines(),
+    links: links(),
   };
 })();

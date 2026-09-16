@@ -216,8 +216,20 @@ function ownNameFromUrl(sourceUrl: string): string {
 }
 
 export function extractPeople(html: string, sourceUrl: string): FoundContact[] {
+  return peopleFromLines(toLines(html), sourceUrl);
+}
+
+/**
+ * Той самий розбір, але від уже готових рядків тексту.
+ *
+ * Потрібен розширенню: воно читає намальовану сторінку в браузері власника, де
+ * HTML як такого вже немає, зате є DOM, і віддає звідти рівно такий самий плаский
+ * список рядків, який тут робить `toLines`. Тобто сторінка, яку сервер не зміг
+ * відкрити сам, розбирається тим самим кодом і тими самими правилами, а не
+ * другою копією регулярок, яка тихо розійдеться з цією через місяць.
+ */
+export function peopleFromLines(lines: string[], sourceUrl: string): FoundContact[] {
   const ownName = ownNameFromUrl(sourceUrl);
-  const lines = toLines(html);
   const found = new Map<string, FoundContact>();
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -853,6 +865,12 @@ export async function browserQueue(limit = 20): Promise<BrowserTarget[]> {
   return rows;
 }
 
+export interface BrowserPage {
+  url: string;
+  /** Плаский текст сторінки по рядках, у тому ж вигляді, що дає `toLines`. */
+  lines: string[];
+}
+
 export interface BrowserFindings {
   companyId?: number | null;
   domain: string;
@@ -860,12 +878,38 @@ export interface BrowserFindings {
   techHints?: string[];
   copyrightYear?: number | null;
   lastPostAt?: number | null;
+  /** Сторінки, які розширення встигло прочитати: головна і те, на що вона посилалась. */
+  pages?: BrowserPage[];
 }
 
 export interface BrowserSaveResult {
   companyId: number | null;
   contactsAdded: number;
   techAdded: number;
+  /** Скільки сторінок прийшло, скільки адрес і скільки людей з них вийшло. */
+  pagesRead: number;
+  emailsFound: number;
+  peopleFound: number;
+}
+
+/**
+ * Чи ця адреса належить цій людині. `anna@` і `a.koval@` це Anna Koval, а `hello@`
+ * не належить нікому. Потрібно, щоб контакт зберігся одним рядком з іменем, роллю
+ * і поштою, а не двома половинками, з яких лист не напишеш.
+ */
+export function emailBelongsTo(email: string, name: string): boolean {
+  const local = email.split('@')[0]!.toLowerCase();
+  if (GENERIC_MAILBOX.test(email)) return false;
+
+  const parts = name
+    .toLowerCase()
+    .split(/[^\p{L}]+/u)
+    .filter((part) => part.length >= 3);
+  if (parts.length === 0) return false;
+
+  // Ціле слово, інакше "ann" у "announcements@" зійшлося б за підрядком.
+  const tokens = local.split(/[^a-z]+/).filter(Boolean);
+  return parts.some((part) => tokens.includes(part) || (tokens.length === 1 && tokens[0] === parts.join('')));
 }
 
 /**
@@ -880,13 +924,89 @@ export async function saveBrowserFindings(input: BrowserFindings): Promise<Brows
   const domain = normalizeDomain(input.domain);
   if (!domain) throw new Error(`невалідний домен: ${input.domain}`);
 
-  const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
-  if (!company) return { companyId: null, contactsAdded: 0, techAdded: 0 };
+  /*
+   * Спершу по домену, а якщо його немає, по номеру компанії, який дала черга.
+   *
+   * Домен береться з адреси вкладки вже після редиректів, і цього достатньо, щоб
+   * не збігтись: студія з `agency.io` переїхала на `agency.com`, вкладка показує
+   * нову адресу, а в базі стара. Раніше пошук у такому разі не знаходив нічого і
+   * функція мовчки поверталась з нулем: сайт відкривався, пошта знаходилась, і
+   * зникала по дорозі. Номер компанії в запиті був, ним просто ніхто не користався.
+   */
+  const [byDomain] = await db.select().from(companies).where(eq(companies.domain, domain));
+  const [company] = byDomain
+    ? [byDomain]
+    : input.companyId
+      ? await db.select().from(companies).where(eq(companies.id, input.companyId))
+      : [];
 
-  let contactsAdded = 0;
-  for (const item of (input.emails ?? []).slice(0, MAX_GENERIC + MAX_PEOPLE)) {
+  const empty = { companyId: null, contactsAdded: 0, techAdded: 0, pagesRead: 0, emailsFound: 0, peopleFound: 0 };
+  if (!company) {
+    log.warn({ domain, companyId: input.companyId }, 'дані з браузера нікуди покласти: компанії немає');
+    return empty;
+  }
+
+  const pages = input.pages ?? [];
+
+  /*
+   * Люди розбираються тим самим кодом, що й на сторінках, які сервер завантажив
+   * сам. Сторінка команди дає ім'я і посаду, сторінка контактів дає адресу, і
+   * зійтись в один контакт вони мають ще тут, до запису.
+   */
+  const people = new Map<string, FoundContact>();
+  for (const page of pages) {
+    for (const person of peopleFromLines(page.lines ?? [], page.url)) {
+      if (!people.has(person.name!)) people.set(person.name!, person);
+    }
+  }
+
+  const emails = (input.emails ?? []).slice(0, MAX_GENERIC + MAX_PEOPLE);
+
+  for (const item of emails) {
     const email = normalizeEmail(item.email);
     if (!email) continue;
+    const owner = [...people.values()].find(
+      (person) => person.name && !person.email && emailBelongsTo(email, person.name),
+    );
+    if (owner) owner.email = email;
+  }
+
+  let contactsAdded = 0;
+
+  /*
+   * Іменні контакти першими, і лише вони мають право донести до бази пару
+   * ім'я-адреса. Людина без пошти теж зберігається: знати, що технічним директором
+   * працює конкретна Анна, вже досить, щоб далі шукати адресу цілеспрямовано.
+   */
+  const existing = await db.select().from(contacts).where(eq(contacts.companyId, company.id));
+  const known = new Set(existing.map((row) => `${row.name ?? ''}|${row.email ?? ''}`));
+
+  for (const person of people.values()) {
+    if (!person.name) continue;
+
+    if (person.email) {
+      const { created } = await rememberContact(company.id, person.email, person.name, person.role);
+      if (created) contactsAdded += 1;
+      continue;
+    }
+
+    // Без пошти `rememberContact` не працює: він шукає наявний запис саме за нею.
+    if (known.has(`${person.name}|`)) continue;
+    known.add(`${person.name}|`);
+    await db.insert(contacts).values({
+      companyId: company.id,
+      name: person.name,
+      role: person.role,
+      sourceUrl: person.sourceUrl,
+    });
+    contactsAdded += 1;
+  }
+
+  const claimed = new Set([...people.values()].map((person) => person.email).filter(Boolean));
+
+  for (const item of emails) {
+    const email = normalizeEmail(item.email);
+    if (!email || claimed.has(email)) continue;
     const { created } = await rememberContact(company.id, email, item.name ?? null, item.role ?? null);
     if (created) contactsAdded += 1;
   }
@@ -902,14 +1022,26 @@ export async function saveBrowserFindings(input: BrowserFindings): Promise<Brows
 
   await db.update(companies).set(patch).where(eq(companies.id, company.id));
 
-  log.info(
-    { domain, contactsAdded, tech: techHints.length },
-    'дані з браузера збережено',
-  );
-
-  return {
+  const result: BrowserSaveResult = {
     companyId: company.id,
     contactsAdded,
     techAdded: techHints.length - company.techHints.length,
+    pagesRead: pages.length,
+    emailsFound: emails.length,
+    peopleFound: people.size,
   };
+
+  /*
+   * Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх. Браузер щойно
+   * відкрив чотири сторінки чужого сайту і повернувся ні з чим, і це або верстка,
+   * якої розбір не бере, або домен, на якому справді нічого немає. Мовчати про це
+   * не можна: саме так збір і виглядав робочим, поки нічого не збирав.
+   */
+  if (emails.length === 0 && people.size === 0) {
+    log.warn(result, 'браузер прочитав сторінки і не знайшов ні пошти, ні людей');
+  } else {
+    log.info(result, 'дані з браузера збережено');
+  }
+
+  return result;
 }

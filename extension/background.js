@@ -125,7 +125,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
  * секунди і ліміт доменів за прохід. Це чужі сайти, і ходити ними треба так, як
  * ходить людина.
  */
-const BROWSER_WALK = { minGapMs: 3500, settleMs: 2500, loadTimeoutMs: 20000 };
+const BROWSER_WALK = {
+  minGapMs: 3500,
+  settleMs: 2500,
+  loadTimeoutMs: 20000,
+  /*
+   * Пауза між сторінками одного сайту і скільки їх за один домен.
+   *
+   * Три секунди це нижня межа з розділу 4 CLAUDE.md, і тут вона доречна вдвічі:
+   * це не пагінація каталогу, а чужий сайт студії, який зараз читає "людина".
+   * Чотири сторінки це головна плюс контакти, про нас і вакансії, тобто рівно ті,
+   * де лежить те, по що прийшли. Глибше йти нема за чим, а часу коштує більше.
+   */
+  pageGapMs: 3000,
+  maxPages: 4,
+};
 
 async function waitForLoad(tabId, timeoutMs) {
   return new Promise((resolve) => {
@@ -152,20 +166,82 @@ async function waitForLoad(tabId, timeoutMs) {
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function readPage(tabId) {
+  await waitForLoad(tabId, BROWSER_WALK.loadTimeoutMs);
+  // Завантаження це ще не намальована сторінка: рендер і запити даних ідуть після.
+  await pause(BROWSER_WALK.settleMs);
+
+  const [injected] = await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ['site.js'],
+  });
+
+  return injected?.result ?? null;
+}
+
+/** Друга і наступні сторінки доливаються в те, що вже зібрано з головної. */
+function mergePage(into, page) {
+  const known = new Set(into.emails.map((item) => item.email));
+  for (const item of page.emails) {
+    if (known.has(item.email)) continue;
+    known.add(item.email);
+    into.emails.push(item);
+  }
+
+  into.techHints = [...new Set([...into.techHints, ...page.techHints])];
+  into.copyrightYear = Math.max(into.copyrightYear ?? 0, page.copyrightYear ?? 0) || null;
+  into.lastPostAt = Math.max(into.lastPostAt ?? 0, page.lastPostAt ?? 0) || null;
+  into.textLength += page.textLength;
+  into.pages.push({ url: page.url, lines: page.lines });
+}
+
+/**
+ * Обхід одного сайту: головна, а далі те, на що вона посилається.
+ *
+ * Читати лише головну було помилкою, і мовчазною: сторінка відкривалась, скрипт
+ * відпрацьовував, а назад приходив нуль, бо на головній студії стоїть презентація,
+ * а пошта лежить на "контактах" і імена на "про нас". Виглядало це як зламаний
+ * збір, хоча збір працював і дивився не туди.
+ *
+ * Вкладка на весь обхід одна: вона просто переходить за адресами, як це робила б
+ * людина. Так само неактивна, власника нікуди не перекидає.
+ */
 async function readSite(target) {
   const tab = await chrome.tabs.create({ url: `https://${target.domain}`, active: false });
 
   try {
-    await waitForLoad(tab.id, BROWSER_WALK.loadTimeoutMs);
-    // Завантаження це ще не намальована сторінка: рендер і запити даних ідуть після.
-    await pause(BROWSER_WALK.settleMs);
+    const home = await readPage(tab.id);
+    if (!home) return null;
 
-    const [injected] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['site.js'],
-    });
+    const found = {
+      domain: home.domain,
+      emails: [...home.emails],
+      techHints: [...home.techHints],
+      copyrightYear: home.copyrightYear,
+      lastPostAt: home.lastPostAt,
+      textLength: home.textLength,
+      pages: [{ url: home.url, lines: home.lines }],
+      /** Адреси, на які не вдалось зайти. Порожній результат має пояснення, а не мовчання. */
+      failed: [],
+    };
 
-    return injected?.result ?? null;
+    for (const url of (home.links ?? []).slice(0, BROWSER_WALK.maxPages - 1)) {
+      const { browserWalk: state } = await chrome.storage.session.get({ browserWalk: null });
+      if (state?.stop) break;
+
+      await pause(BROWSER_WALK.pageGapMs);
+
+      try {
+        await chrome.tabs.update(tab.id, { url });
+        const page = await readPage(tab.id);
+        if (page) mergePage(found, page);
+        else found.failed.push(url);
+      } catch (error) {
+        found.failed.push(`${url}: ${String(error?.message ?? error)}`);
+      }
+    }
+
+    return found;
   } finally {
     await chrome.tabs.remove(tab.id).catch(() => undefined);
   }
@@ -173,7 +249,7 @@ async function readSite(target) {
 
 async function browserWalk(limit) {
   const { targets } = await call(`/import/browser/queue?limit=${limit}`);
-  const report = { total: targets.length, done: 0, contacts: 0, empty: 0, errors: [] };
+  const report = { total: targets.length, done: 0, pages: 0, contacts: 0, people: 0, empty: 0, errors: [] };
 
   for (const [index, target] of targets.entries()) {
     const { browserWalk: state } = await chrome.storage.session.get({ browserWalk: null });
@@ -186,11 +262,21 @@ async function browserWalk(limit) {
     try {
       const found = await readSite(target);
       if (found) {
+        report.pages += found.pages.length;
         const saved = await post('/import/browser/site', { ...found, companyId: target.companyId });
         report.contacts += saved.contactsAdded ?? 0;
-        if (!found.emails?.length) report.empty += 1;
+        report.people += saved.peopleFound ?? 0;
+        /*
+         * Порожньо це коли сервер нічого не впізнав, а не коли не було пошти.
+         * Ім'я техліда без адреси теж знахідка: далі по ньому шукається пошта.
+         */
+        if (!saved.emailsFound && !saved.peopleFound) {
+          report.empty += 1;
+          report.errors.push(`${target.domain}: ${found.pages.length} стор. прочитано, нічого не знайдено`);
+        }
       } else {
         report.empty += 1;
+        report.errors.push(`${target.domain}: сторінка не прочиталась`);
       }
       report.done += 1;
     } catch (error) {

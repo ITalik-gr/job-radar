@@ -40,7 +40,15 @@ export interface StudioCard {
   openVacancies: number;
   score: number;
   why: { reason: string; weight: number }[];
-  contacts: { name: string | null; role: string | null; email: string | null }[];
+  /** `id` потрібен, щоб контакт можна було правити прямо з картки. */
+  contacts: {
+    id: number;
+    name: string | null;
+    role: string | null;
+    email: string | null;
+    /** false означає hard bounce: адреса лишається, але писати на неї не можна. */
+    emailValid: boolean;
+  }[];
   lastContactedAt: number | null;
 }
 
@@ -171,9 +179,11 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         score: breakdown.score,
         why: [...breakdown.positives, ...breakdown.negatives].sort((a, b) => b.weight - a.weight),
         contacts: (byCompany.get(row.company.id) ?? []).map((contact) => ({
+          id: contact.id,
           name: contact.name,
           role: contact.role,
           email: contact.email,
+          emailValid: contact.emailValid,
         })),
         lastContactedAt: row.lastContactedAt,
       } satisfies StudioCard;

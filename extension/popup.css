@@ -333,6 +333,11 @@ details[open] summary {
   color: var(--ink-3);
 }
 
+/* Підсумок обходу з нулями має бути видно одразу, а не читатись як звичайний хінт. */
+.hint[data-tone='warn'] {
+  color: var(--warn-ink);
+}
+
 .row {
   display: flex;
   align-items: center;

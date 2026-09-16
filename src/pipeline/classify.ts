@@ -81,12 +81,36 @@ function anthropic(): Anthropic {
   return client;
 }
 
-async function callAnthropic(text: string, system = SYSTEM_PROMPT, temperature = 0, model?: string) {
+/**
+ * Кешований системний промпт.
+ *
+ * Anthropic тримає розібраний початок запиту кілька хвилин і бере за нього
+ * десяту частину ціни. Сенс є там, де цей початок довгий і однаковий підряд:
+ * вердикт по компанії возить у системному блоці всі шаблони листів, і при
+ * перегляді десятка студій поспіль цей блок незмінний.
+ *
+ * Мінімальна довжина блоку залежить від моделі: на Haiku 4.5 це 4096 токенів,
+ * і коротший блок не кешується взагалі, мовчки. Тому прапорець це прохання, а
+ * не гарантія, і код на нього не спирається.
+ */
+function systemBlocks(system: string, cached: boolean) {
+  return cached
+    ? [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' as const } }]
+    : system;
+}
+
+async function callAnthropic(
+  text: string,
+  system = SYSTEM_PROMPT,
+  temperature = 0,
+  model?: string,
+  cacheSystem = false,
+) {
   const response = await anthropic().messages.create({
     model: model ?? config.llm.model,
     max_tokens: 1024,
     temperature,
-    system,
+    system: systemBlocks(system, cacheSystem),
     messages: [{ role: 'user', content: text }],
   });
 
@@ -143,10 +167,12 @@ export async function callModelWith(
   temperature = 0,
   /** Модель на цей виклик. Порожнє означає ту, якою класифікуються вакансії. */
   model?: string,
+  /** Попросити Anthropic кешувати системний блок. У Workers AI кешу немає, там прапорець мовчить. */
+  cacheSystem = false,
 ): Promise<RawCall> {
   return config.llm.provider === 'workers-ai'
     ? callWorkersAi(user, system, temperature)
-    : callAnthropic(user, system, temperature, model);
+    : callAnthropic(user, system, temperature, model, cacheSystem);
 }
 
 /** Облік витрат для викликів поза класифікацією. */

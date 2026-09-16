@@ -7,7 +7,7 @@ import { upsertCompany } from '../src/pipeline/companies.js';
 import { refreshCompany } from '../src/pipeline/refresh.js';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../src/db/client.js';
-import { companies } from '../src/db/schema.js';
+import { companies, contacts } from '../src/db/schema.js';
 import {
   candidatesForEnrichment,
   pendingEnrichment,
@@ -16,6 +16,7 @@ import {
   visibleTextLength,
   findScripts,
   browserQueue,
+  emailBelongsTo,
   saveBrowserFindings,
   saveEnrichment,
 } from '../src/pipeline/enrich.js';
@@ -375,6 +376,65 @@ describe('черга для браузера', () => {
   it('невідомий домен не створює компанію', async () => {
     const saved = await saveBrowserFindings({ domain: 'nobody-knows-this.com', emails: [] });
     expect(saved.companyId).toBeNull();
+  });
+
+  /*
+   * Домен береться з адреси вкладки вже після редиректів, тому він розходиться з
+   * базою щоразу, коли студія переїхала. Раніше на цьому все й закінчувалось:
+   * пошта знаходилась і зникала, а виглядало це як порожній сайт.
+   */
+  it('знаходить компанію по номеру, коли домен у вкладці інший', async () => {
+    const { company } = await upsertCompany({ name: 'Moved', domain: 'moved-old.com', source: 'test' });
+
+    const saved = await saveBrowserFindings({
+      companyId: company.id,
+      domain: 'moved-new.com',
+      emails: [{ email: 'hello@moved-new.com' }],
+    });
+
+    expect(saved.companyId).toBe(company.id);
+    expect(saved.contactsAdded).toBe(1);
+  });
+
+  /*
+   * Головна віддає презентацію, контакти віддають адресу, а сторінка команди імена
+   * з посадами. Зійтись в один контакт вони мають ще до запису, інакше в базі
+   * лежать дві половинки, з яких лист не напишеш.
+   */
+  it('збирає імʼя з однієї сторінки і пошту з іншої в один контакт', async () => {
+    const db = getDb();
+    const { company } = await upsertCompany({ name: 'Multi', domain: 'multi-site.com', source: 'test' });
+
+    const saved = await saveBrowserFindings({
+      companyId: company.id,
+      domain: 'multi-site.com',
+      emails: [{ email: 'anna.koval@multi-site.com' }, { email: 'hello@multi-site.com' }],
+      pages: [
+        { url: 'https://multi-site.com/', lines: ['We build things'] },
+        { url: 'https://multi-site.com/team', lines: ['Anna Koval', 'CTO', 'Ihor Bondar', 'Head of Engineering'] },
+      ],
+    });
+
+    expect(saved.pagesRead).toBe(2);
+    expect(saved.peopleFound).toBe(2);
+
+    const rows = await db.select().from(contacts).where(eq(contacts.companyId, company.id));
+    const anna = rows.find((row) => row.name === 'Anna Koval');
+    expect(anna?.email).toBe('anna.koval@multi-site.com');
+    expect(anna?.role).toBe('CTO');
+
+    // Загальна скринька лишається окремим рядком і нікому не приписується.
+    expect(rows.find((row) => row.email === 'hello@multi-site.com')?.name).toBeNull();
+    // Людина без адреси теж зберігається: далі по імені шукається пошта.
+    expect(rows.find((row) => row.name === 'Ihor Bondar')?.email).toBeNull();
+  });
+
+  it('не приписує загальну скриньку людині з схожим іменем', () => {
+    expect(emailBelongsTo('anna@studio.com', 'Anna Koval')).toBe(true);
+    expect(emailBelongsTo('a.koval@studio.com', 'Anna Koval')).toBe(true);
+    expect(emailBelongsTo('hello@studio.com', 'Anna Koval')).toBe(false);
+    // "ann" усередині "announcements" це не Anna: збіг має бути по цілому слову.
+    expect(emailBelongsTo('announcements@studio.com', 'Anna Koval')).toBe(false);
   });
 });
 

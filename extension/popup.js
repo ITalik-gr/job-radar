@@ -146,7 +146,22 @@ async function refreshBrowserWalk() {
 
   const report = state?.state?.report;
   if (report) {
-    $('jsNote').textContent = `оброблено ${report.done}, знайдено контактів ${report.contacts}, порожніх ${report.empty}`;
+    const parts = [
+      `сайтів ${report.done}`,
+      `сторінок ${report.pages ?? 0}`,
+      `контактів ${report.contacts}`,
+      `людей ${report.people ?? 0}`,
+    ];
+
+    /*
+     * Порожній результат показується текстом помилки, а не числом у хвості.
+     * Правило 3 в CLAUDE.md: нуль це помилка, і мовчати про неї не можна, інакше
+     * обхід виглядає робочим рівно доти, доки хтось не полізе в базу перевіряти.
+     */
+    if (report.empty > 0) parts.push(`порожніх ${report.empty}`);
+    $('jsNote').textContent = parts.join(', ');
+    $('jsNote').dataset.tone = report.empty > 0 || report.errors?.length ? 'warn' : '';
+    if (report.errors?.length) $('jsNote').title = report.errors.join('\n');
   }
 
   const queue = await chrome.runtime.sendMessage({ type: 'radar:browser-queue' });
