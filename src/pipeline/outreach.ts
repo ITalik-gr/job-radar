@@ -243,10 +243,15 @@ export function buildDraft(
  */
 export const SIGNATURE_KEY = 'outreach.signature';
 
-/** Типовий підпис. Правиться на сторінці Шаблони і лягає в `settings`. */
-export const DEFAULT_SIGNATURE = ['Alex Example', 'Front-end / Full-stack developer', 'example.dev'].join(
-  '\n',
-);
+/**
+ * Default signature: empty on purpose.
+ *
+ * It used to carry the author's own name, title and site. In a fork that meant
+ * a stranger installs the radar, writes a letter and sends it signed by someone
+ * else, silently, because nothing in the flow asks about it. Empty is the only
+ * safe default: the letter is signed by whoever fills it in on the Templates page.
+ */
+export const DEFAULT_SIGNATURE = '';
 
 const SIGNATURE = DEFAULT_SIGNATURE;
 

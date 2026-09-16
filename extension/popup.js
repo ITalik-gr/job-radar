@@ -5,7 +5,7 @@ const SETTINGS = {
   minDelay: 4000,
   maxDelay: 9000,
   maxPages: 25,
-  apiUrl: 'https://job-radar.example.workers.dev',
+  apiUrl: '',
   token: '',
 };
 
@@ -53,7 +53,46 @@ function setNote(text, tone) {
   else delete node.dataset.tone;
 }
 
+/*
+ * Nothing works until the radar address is set, so the popup says that plainly
+ * instead of showing a health check that can only fail. The default used to be
+ * the author's own worker, which meant an unconfigured extension looked healthy
+ * while sending its findings to a stranger.
+ */
+async function refreshSetup() {
+  const state = await chrome.runtime.sendMessage({ type: 'radar:configured' });
+  const configured = Boolean(state?.configured);
+
+  $('setup').hidden = configured;
+  for (const id of ['collect', 'walk', 'jsWalk']) {
+    if (!configured) $(id).disabled = true;
+  }
+
+  return configured;
+}
+
+$('setupSave').addEventListener('click', async () => {
+  const apiUrl = $('setupUrl').value.trim().replace(/\/$/, '');
+  if (!apiUrl) return;
+
+  await chrome.storage.local.set({ apiUrl, token: $('setupToken').value.trim() });
+  await send({ type: 'radar:settings', settings: { apiUrl } });
+  await refreshSetup();
+  await refresh();
+  await refreshBrowserWalk();
+});
+
+$('setupUrl').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') $('setupSave').click();
+});
+
 async function refresh() {
+  if (!(await refreshSetup())) {
+    $('healthText').textContent = 'адреса не задана';
+    $('health').querySelector('.dot').dataset.tone = 'bad';
+    return;
+  }
+
   const health = await chrome.runtime.sendMessage({ type: 'radar:health' });
   $('healthText').textContent = health?.ok ? 'на звʼязку' : (health?.error ?? 'не запущений');
   $('health').querySelector('.dot').dataset.tone = health?.ok ? 'ok' : 'bad';
@@ -132,6 +171,14 @@ $('collect').addEventListener('click', async () => {
  * працює він на будь-якій вкладці, не тільки на каталозі.
  */
 async function refreshBrowserWalk() {
+  // Без адреси черги не існує, і питати її означає лише отримати помилку у відповідь.
+  const setup = await chrome.runtime.sendMessage({ type: 'radar:configured' });
+  if (!setup?.configured) {
+    $('jsCount').textContent = '?';
+    $('jsWalk').disabled = true;
+    return;
+  }
+
   const state = await chrome.runtime.sendMessage({ type: 'radar:browser-state' });
   const running = state?.state?.running && !state?.state?.report;
 

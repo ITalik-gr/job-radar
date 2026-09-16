@@ -205,9 +205,13 @@ export const config = {
     get tokenPath() {
       return str('GMAIL_TOKEN_PATH', 'data/.gmail-token.json');
     },
-    /** Імʼя в полі From. Лист від "you@example.com" без імені виглядає як розсилка. */
+    /**
+     * Name in the From field. A letter from a bare address reads as bulk mail,
+     * so this should be filled in. Empty by default: a fork must not send mail
+     * signed with someone else's name.
+     */
     get fromName() {
-      return str('GMAIL_FROM_NAME', 'Alex Example');
+      return str('GMAIL_FROM_NAME', '');
     },
     get fromEmail() {
       return str('GMAIL_FROM_EMAIL', '');

@@ -652,9 +652,6 @@ app.post('/api/gmail/test', async (c) => {
       '',
       'Якщо тема і цей рядок читаються без кракозябр, кодування правильне.',
       '',
-      'Alex Example',
-      'Front-end / Full-stack developer',
-      'example.dev',
       '',
     ].join('\n'),
   });

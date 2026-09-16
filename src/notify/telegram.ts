@@ -34,7 +34,8 @@ async function send(text: string): Promise<void> {
   });
 }
 
-export const WEB_URL = envValue('WEB_URL') ?? 'https://job-radar.example.workers.dev';
+/** Where notification links point. Local interface unless the radar is deployed. */
+export const WEB_URL = envValue('WEB_URL') ?? 'http://localhost:5173';
 
 function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -13,3 +13,9 @@ imports/**/*.csv
 .DS_Store
 dist/
 imports/statrups
+
+# Особисті файли власника. У репо їм не місце: там імʼя, телефон і пошта,
+# а репозиторій готується до публікації. Лежать на диску, git їх не бачить.
+DEV_CONTEXT.md
+JOB_SEARCH_CONTEXT.md
+UPWORK_CONTEXT_ITALIK.md

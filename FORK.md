@@ -1,151 +1,214 @@
-# Як зробити з цього те, що людина ставить собі сама
+# Making this something people can run themselves
 
-Рішення: **форк, а не сервіс**. Кожен клонує репо, вписує своє і запускає локально
-або деплоїть власний воркер зі своєю базою. Реєстрації, спільного сервера і чужих
-даних на одному хості немає і не планується.
+The decision: **fork it, do not host it**. You clone the repo, fill in your own
+values, and run it on your laptop or deploy your own worker with your own
+database. There is no sign up, no shared server, and nobody else's data on your
+host.
 
-Цей файл про те, що для цього треба доробити. Він же список відомих проблем.
-
----
-
-## 0. Чому не сервіс
-
-Не через складність, а тому що це інший продукт із набагато гіршим профілем ризику.
-
-**Схема не знає про користувачів.** У жодній таблиці немає `user_id`. `settings`
-ключується самим ключем, `facts` це глобальний whitelist, правила глобальні, і
-запобіжники розсилки (`DAILY_SEND_LIMIT`, `MIN_GAP_MS`, прогрів у `send-guards.ts`)
-теж глобальні. Мультитенантність тут не фіча, а прохід по кожній таблиці і кожному
-запиту. Розділ 11 CLAUDE.md забороняє це прямо, але справа не в забороні: так
-спроєктовані дані.
-
-**Чужі поштові токени.** OUTREACH.md §0 тримає refresh-токен Gmail файлом, а не в
-базі, саме щоб бекап бази не був доступом до пошти. У сервісі довелось би зберігати
-токени чужих скриньок: шифрування, ротація ключів, план на витік. Плюс `gmail.send`
-і `gmail.readonly` це restricted scopes Google, а вони вимагають платного security
-assessment і кількох тижнів очікування.
-
-**Оператор платформи для холодних розсилок.** Зараз листи йдуть з власної пошти, 20
-на добу, з прогрівом. Запобіжники написані, щоб берегти репутацію однієї обережної
-людини, а не стримувати сотню незнайомців. Те саме зі скрейпінгом: власне розширення
-у власному браузері і та сама дія як послуга стороннім це різні розмови.
-
-У форку всі ці питання зникають: пошта твоя, ключ твій, база твоя, відповідальність
-теж твоя.
+This file tracks what is left before that is true, and doubles as the list of
+known problems.
 
 ---
 
-## 1. Що вже готове
+## 0. Why not a service
 
-Не з нуля, і це головна причина, чому форк дешевий.
+Not because it would be hard, but because it is a different product with a much
+worse risk profile.
 
-- деплой на Workers і D1 уже налаштований, `pnpm deploy` і `pnpm cf:migrate` у скриптах
-- конфіг уже повністю через змінні оточення, з лінивими геттерами і `setRuntimeEnv`
-  для воркера (`src/config.ts`)
-- правила відбору вже переїхали з коду у файл `config/scoring.json` і в таблицю
-  `settings`, бо на Workers немає файлової системи. Правляться зі сторінки Правила
-- факти про власника для персоналізації вже в таблиці `facts` і правляться в інтерфейсі
-- шаблони листів уже в базі, а не в коді
-- є `.env.example` з поясненням кожної змінної і README з кроками запуску
-- `/api/health?deep=1` каже, чи база відстала від коду
+**The schema does not know about users.** No table has a `user_id`. `settings`
+is keyed by the key alone, `facts` is one global whitelist, the scoring rules are
+global, and so are the sending guards (`DAILY_SEND_LIMIT`, `MIN_GAP_MS`, the
+warmup ramp in `send-guards.ts`). Multi tenancy here is not a feature, it is a
+pass over every table and every query.
 
----
+**Other people's mail tokens.** OUTREACH.md keeps the Gmail refresh token in a
+file rather than the database, precisely so that a database backup is not access
+to the mailbox. A service would hold strangers' tokens: encryption at rest, key
+rotation, a breach plan. On top of that `gmail.send` and `gmail.readonly` are
+restricted scopes, and Google gates those behind a paid security assessment.
 
-## 2. Що заважає прямо зараз
+**You would be running a cold email platform.** Today the mail leaves the
+owner's own mailbox, twenty a day, with a warmup ramp. Those guards are built to
+protect one careful person's sender reputation, not to police a hundred
+strangers. Same with scraping: your own extension in your own browser and the
+same thing offered to others are different conversations.
 
-### 2.1. Розширення шле дані на чужий воркер
-
-**Це головна проблема цього списку.**
-
-`extension/background.js:6` і `extension/popup.js:8` містять адресу за замовчуванням
-`https://job-radar.example.workers.dev`. Хто завгодно, хто клонує репо і поставить
-розширення не змінивши налаштування, надішле зібрані ним компанії у чужий радар і не
-дізнається про це: інтерфейс попапа покаже "на звʼязку" і зростаючі лічильники, бо
-чужий сервер справді відповідає.
-
-Що зробити:
-
-- прибрати адресу з дефолтів, лишити порожню
-- поки адреса порожня, попап показує не "не запущений", а прямий текст "впиши адресу
-  свого радара", і кнопки збору неактивні
-- те саме в `extension/README.md:18` і `:66`, де ця адреса подана як "прод"
-
-До того часу крок з вписуванням адреси позначений у README як обовʼязковий, з поясненням,
-чому мовчазна відправка не тобі виглядає як робочий збір.
-
-### 2.2. Особисті дані в дефолтах коду
-
-Впаяні значення, які у форку мовчки підставляться чужій людині:
-
-| Де | Що |
-|---|---|
-| `src/config.ts:210` | `GMAIL_FROM_NAME` з дефолтом "Alex Example" |
-| `src/pipeline/outreach.ts:247` | `DEFAULT_SIGNATURE` з імʼям, посадою і сайтом |
-| `src/api/index.ts:655` | той самий підпис у дефолті роута |
-| `src/cli/index.ts:1010` | той самий підпис у CLI |
-| `src/notify/telegram.ts:37` | `WEB_URL` з дефолтом на чужий воркер |
-
-Небезпечний тут саме підпис: людина ставить радар, пише листа і відправляє його за
-чужим підписом. Дефолт має бути порожнім, а лист без підпису має бути помилкою в
-чернетці, як уже зроблено для відсутньої адреси.
-
-### 2.3. `wrangler.jsonc` вказує на чужу базу
-
-`database_id` у файлі це конкретна D1 власника. Форк, який зробить `pnpm cf:migrate`
-не змінивши його, отримає помилку авторизації, і добре, що отримає. Треба замінити
-на плейсхолдер і описати крок `wrangler d1 create` в README (уже описаний).
-
-### 2.4. Профіль власника вшитий у ваги
-
-CLAUDE.md §12 описує стек і прогалини конкретної людини, і саме з нього виведені
-ваги в `config/scoring.json`: `react +3`, `angular` у стоп-словах, мінус за C1 і
-відеозвінки. Для форку це означає, що чужий радар за замовчуванням шукає роботу для
-когось іншого.
-
-Файл редагується зі сторінки Правила, тому технічно все працює. Бракує кроку
-"розкажи про себе" при першому запуску: зараз новачок мусить сам здогадатись, що
-ваги треба переписати під себе, інакше результати будуть чужі.
+In a fork every one of those questions disappears. Your mail, your key, your
+database, your responsibility.
 
 ---
 
-## 3. Що варто зробити далі
+## 1. Already in place
 
-Не блокери, але без них перший запуск неприємний.
+This is the reason a fork is cheap rather than a rewrite.
 
-**Перевірка готовності при старті.** Зараз `pnpm start` підніметься з порожнім
-`.env` і мовчатиме. Корисніше один раз сказати вголос: ключа моделі немає,
-класифікація вимкнена; `USER_AGENT_CONTACT` не заданий, чужі сайти бачитимуть
-"unknown"; `RADAR_TOKEN` порожній, а воркер задеплоєний. Частина цього вже є в
-`pnpm cli doctor`, треба лише винести в старт.
-
-**Порожня база це глухий кут.** Після `db:migrate` інтерфейс показує порожні списки,
-і незрозуміло, що робити далі. Потрібен або стартовий набір джерел, які можна
-запустити в один клік зі сторінки Джерела, або підказка прямо в порожньому стані.
-
-**Ліцензія.** Файлу немає. Без неї формально ніхто не має права форкати.
-
----
-
-## 4. Що не працюватиме у воркері, і це нормально
-
-Не баги, а свідомі межі. Їх треба просто назвати в документації, щоб людина не
-шукала поламане:
-
-- **розсилка з Gmail**: токен лежить файлом на диску, на Workers диска немає
-- **планувальник**: `node-cron` живе всередині процесу, воркер не процес
-- **перевірка відповідей і фолоу-апи**: залежать від пошти, тобто те саме
-
-Тобто воркер це інтерфейс і збір, а розсилка це локальний `pnpm start`. Гібрид
-робочий: одна база D1, воркер дивиться, ноутбук пише.
+- Workers and D1 deployment is wired up, `pnpm deploy` and `pnpm cf:migrate`
+- configuration is fully environment driven, with lazy getters and `setRuntimeEnv`
+  for the worker (`src/config.ts`)
+- scoring rules live in `config/scoring.json` and the `settings` table rather than
+  in code, because Workers has no filesystem. Editable from the Rules page
+- personal facts used for letter personalization live in the `facts` table and are
+  editable in the interface
+- letter templates live in the database, not in code
+- `.env.example` explains every variable, README has the setup steps
+- `/api/health?deep=1` reports whether the database has fallen behind the code
 
 ---
 
-## 5. Якщо колись таки хостити людям
+## 2. Fixed
 
-Правильна форма це **не мультитенантність, а окремий інстанс на людину**: свій
-воркер, своя D1, свої секрети. Один власник на один радар, рівно як спроєктовано.
-Тоді це скрипт розгортання і сторінка з кнопкою, а не переписана схема даних.
+### 2.1. The extension used to post to someone else's worker
 
-Найближче до цього: кнопка "Deploy to Cloudflare" у README, яка створює воркер і
-базу в акаунті того, хто натиснув. Токени і ключі лишаються в його акаунті, чужих
-даних не існує, і жодне з питань розділу 0 не виникає.
+`extension/background.js` and `extension/popup.js` shipped with the author's own
+worker as the default address. Anyone who installed the extension without opening
+settings sent their scraped companies to a stranger's radar and could not tell:
+the popup said "connected" and the counters went up, because that other server
+did answer.
+
+Now there is no default. The popup opens on a setup panel until an address is
+filled in, and collection stays disabled until then. An empty address fails
+loudly, which is the only honest default here.
+
+### 2.2. Personal defaults in code
+
+The signature, the From name and the notification base URL all carried one
+person's identity as a fallback. The dangerous one was the signature: install the
+radar, write a letter, and send it signed by someone else, silently, because
+nothing in the flow asks.
+
+`DEFAULT_SIGNATURE` and `GMAIL_FROM_NAME` are empty now, and `WEB_URL` points at
+`localhost`.
+
+### 2.3. Account and database ids
+
+`wrangler.jsonc` pinned a specific D1 database id and carried the author's
+Cloudflare account id, worker URL and name as plain vars. The config schema marks
+`database_id` optional, so it is gone: wrangler binds the database by name at
+deploy time. Everything that identifies a person moved out of the file and is set
+with `wrangler secret put`, which also means a deploy no longer overwrites it.
+
+`DEPLOY.md`, `README.md` and `STATUS.md` no longer name a specific worker, and the
+deploy workflow reads its health check URL from a repository variable.
+
+---
+
+## 3. Still open
+
+### 3.1. The owner's profile is baked into the weights
+
+CLAUDE.md section 12 describes one person's stack and gaps, and the weights in
+`config/scoring.json` follow from it: `react +3`, `angular` among the stop words,
+a penalty for C1 English plus a video interview. For a fork this means the radar
+looks for someone else's job by default.
+
+The file is editable from the Rules page, so nothing is broken. What is missing is
+a "tell me about yourself" step on first run, because right now a newcomer has to
+work out on their own that the weights describe a stranger.
+
+### 3.2. Everything is commented in Ukrainian
+
+Rule 8 in CLAUDE.md now requires English for comments, names, log messages and
+`.md` files. New code follows it and a touched file gets converted whole, so that
+no file ends up half and half. The bulk of `src/` and `web/` is still Ukrainian
+and needs a deliberate pass.
+
+Interface copy is a separate question and is not covered by that rule. Options:
+leave the UI Ukrainian, switch it to English, or add i18n. Not decided.
+
+### 3.3. First run is a dead end
+
+`pnpm start` comes up with an empty `.env` and says nothing. It would be more
+useful to say out loud, once: no model key, classification is off; no
+`USER_AGENT_CONTACT`, other people's sites will see "unknown"; empty
+`RADAR_TOKEN` on a deployed worker. Some of this already exists in
+`pnpm cli doctor` and only needs moving into startup.
+
+After `db:migrate` the interface shows empty lists with no hint about what to do
+next. `imports/seed-companies.csv` is the intended first import and the README
+mentions it, but the empty state in the app does not.
+
+### 3.4. Sending is Gmail only
+
+See section 5.
+
+### 3.5. No license
+
+There is no LICENSE file, so formally nobody may fork this.
+
+### 3.6. The author's data is still in git history
+
+Removing it means rewriting history. See section 6.
+
+---
+
+## 4. What will never work on a worker
+
+Deliberate limits, not bugs. They need naming in the docs so nobody hunts for a
+fault that is not there.
+
+- **sending from Gmail**: the token is a file on disk, and Workers has no disk
+- **the scheduler**: `node-cron` lives inside a process, and a worker is not one
+- **reply detection and follow ups**: they depend on mail, so the same applies
+
+The worker is the interface and the collector; sending is the local `pnpm start`.
+The hybrid works well: one D1 database, the worker reads, the laptop writes.
+
+---
+
+## 5. Sending through something other than Gmail
+
+Gmail via OAuth is the right default for one person writing from their own
+mailbox: it threads correctly, it detects replies, and it costs nothing. It is
+also the single hardest part of the setup, it cannot run on a worker, and it is
+useless to anyone who does not use Gmail.
+
+The shape to aim for is a small provider interface with Gmail as one
+implementation, so that the pipeline keeps calling one function and the guards
+stay where they are.
+
+What matters when choosing:
+
+- **threading.** Follow ups must land in the same thread, which needs a provider
+  that returns and accepts a message id
+- **reply detection.** Gmail reads the inbox. An API-only sender does not, so
+  replies would have to arrive by webhook, or reply detection stays a Gmail
+  feature and other providers simply do not offer it
+- **worker support.** An HTTP API works on Workers; SMTP does not
+
+Candidates worth a look, in rough order of fit: Resend, Postmark, SMTP through
+`nodemailer` for anyone with an existing mailbox. All three send; only Gmail
+currently reads.
+
+---
+
+## 6. Getting the author's data out of git history
+
+Short version: you cannot remove content from history without rewriting it. Every
+commit after the touched one gets a new hash. The question is not whether history
+changes but who is inconvenienced when it does, and with a single author and no
+open pull requests the answer is nobody.
+
+`DEV_CONTEXT.md` is the problem: a full personal dossier with a phone number, and
+it has been in the repo since the first commit.
+
+Two workable routes:
+
+**A. Rewrite the existing repo.** `git filter-repo` drops the file from every
+commit, then a force push. Cheap, keeps the commit-by-commit history, and works
+because there are no collaborators. What it does not do is erase anything already
+mirrored: GitHub keeps unreferenced objects reachable by hash for a while, forks
+and caches keep their own copies. For a repo that has always been private this is
+fine; treat anything that was ever public as leaked.
+
+**B. Publish a fresh repo.** Keep the private repo exactly as it is, history and
+all, and create a separate public one from the cleaned tree with a single initial
+commit. Nothing to rewrite, nothing to force push, and no chance of a stray blob
+surviving, because the new repo never contained one. The cost is losing the
+commit history in public.
+
+**B is the safer choice** and the usual one for opening up a personal project.
+The history is valuable to exactly one person, who keeps it either way.
+
+Whichever route: personal files (`DEV_CONTEXT.md` and friends) move out of the
+working tree or into `.gitignore` first, and the phone number and addresses get
+rotated out of anything that stays.

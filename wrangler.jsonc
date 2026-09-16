@@ -23,17 +23,22 @@
 	"ai": {
 		"binding": "AI"
 	},
+	/*
+	 * No database_id on purpose: the schema marks it optional, and wrangler binds
+	 * the database by name at deploy time. That keeps one person's database out of
+	 * everyone else's checkout, which matters now that this repo is meant to be
+	 * cloned. Create yours once with `wrangler d1 create job-radar`, or rename it
+	 * here and create it under that name.
+	 */
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "job-radar",
-			"database_id": "your-d1-database-id",
 			"migrations_dir": "src/db/migrations"
 		},
 		{
 			"binding": "job_radar",
-			"database_name": "job-radar",
-			"database_id": "your-d1-database-id"
+			"database_name": "job-radar"
 		}
 	],
 	"triggers": {
@@ -54,15 +59,22 @@
 		"OUTREACH_MODEL": "claude-sonnet-5",
 		// anthropic | workers-ai. Друге це включена квота платного плану замість рахунку за токени.
 		"LLM_PROVIDER": "anthropic",
-		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-		// AI Gateway: у ньому видно кожен виклик моделі, його вартість і кеш.
-		// Без цих двох змінних запити йдуть повз шлюз, і в ньому чесні нулі.
-		"CF_AI_ACCOUNT_ID": "your-cloudflare-account-id",
-		"AI_GATEWAY_ID": "job-radar",
-		// Куди Google повертає код підключення пошти. Має збігатись з консоллю Google.
-		"GMAIL_REDIRECT_URI": "https://job-radar.example.workers.dev/api/gmail/callback",
-		"GMAIL_FROM_NAME": "Alex Example"
+		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 	},
+	/*
+	 * Everything that identifies a person lives outside this file, as secrets:
+	 * `wrangler secret put NAME`. Secrets survive a deploy, plain vars here do not,
+	 * so putting them in this list would mean every fork overwriting them with the
+	 * author's values on the next push.
+	 *
+	 * Set these after the first deploy:
+	 *   RADAR_TOKEN          password for the API, without it the worker is open to anyone
+	 *   ANTHROPIC_API_KEY    classification and the company verdict
+	 *   CF_AI_ACCOUNT_ID     your Cloudflare account, only needed for AI Gateway
+	 *   AI_GATEWAY_ID        gateway name, same
+	 *   GMAIL_FROM_NAME      the name letters are signed with
+	 *   GMAIL_REDIRECT_URI   https://<your-worker>/api/gmail/callback, must match Google console
+	 */
 	"observability": {
 		"enabled": true
 	}

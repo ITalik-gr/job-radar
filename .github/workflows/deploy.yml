@@ -60,6 +60,10 @@ jobs:
       # Крок нічого не міняє в базі, лише голосно каже, що треба зробити pnpm cf:migrate.
       - name: Перевірити схему на проді
         run: |
+          if [ -z "$WEB_URL" ]; then
+            echo "WEB_URL не заданий, перевірку схеми пропускаю"
+            exit 0
+          fi
           body=$(curl -s --max-time 20 "$WEB_URL/api/health?deep=1")
           echo "$body"
           echo "$body" | grep -q '"db":"ok"' || {
@@ -67,4 +71,6 @@ jobs:
             exit 1
           }
         env:
-          WEB_URL: https://job-radar.example.workers.dev
+          # Адреса свого воркера. Задається змінною репозиторію (Settings, Variables),
+          # щоб у публічному репо не стояла чужа. Порожня означає, що крок пропускається.
+          WEB_URL: ${{ vars.WEB_URL }}

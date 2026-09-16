@@ -23,7 +23,7 @@
 
 ```bash
 pnpm wrangler d1 migrations apply job-radar --remote
-pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
+pnpm cf:doctor https://<your-worker>.workers.dev/ --token <RADAR_TOKEN>
 ```
 
 `doctor` покаже, які таблиці є, яких бракує і що робити. Те саме віддає
@@ -60,7 +60,7 @@ pnpm cf:migrate
 pnpm deploy
 ```
 
-Після викатки воркер живе на `https://job-radar.example.workers.dev`.
+Після викатки воркер живе на `https://<your-worker>.workers.dev`.
 
 ## Деплой на пуш, GitHub Actions
 
@@ -109,7 +109,7 @@ pnpm wrangler d1 migrations apply job-radar --remote
 
 ```bash
 pnpm wrangler d1 migrations apply job-radar --remote
-pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
+pnpm cf:doctor https://<your-worker>.workers.dev/ --token <RADAR_TOKEN>
 ```
 
 `doctor` мусить показати 12 таблиць.
@@ -159,7 +159,7 @@ pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
 1. Дашборд Cloudflare, розділ AI, AI Gateway, Create Gateway, імʼя `job-radar`
 2. Локально в `.env`:
    ```
-   ANTHROPIC_BASE_URL=https://gateway.ai.cloudflare.com/v1/your-cloudflare-account-id/job-radar/anthropic
+   ANTHROPIC_BASE_URL=https://gateway.ai.cloudflare.com/v1/<CF_ACCOUNT_ID>/job-radar/anthropic
    ```
 3. На проді те саме змінною воркера:
    ```bash
@@ -179,7 +179,7 @@ pnpm cf:doctor https://job-radar.example.workers.dev/ --token <RADAR_TOKEN>
 Локально потрібен токен, бо біндінга поза Workers не буває:
 
 ```
-CF_AI_ACCOUNT_ID=your-cloudflare-account-id
+CF_AI_ACCOUNT_ID=<CF_ACCOUNT_ID>
 CF_AI_API_TOKEN=<токен з правами Workers AI Read і Run>
 
 # Імена саме CF_AI_*, а не CLOUDFLARE_*. Wrangler читає .env і бере звідти
@@ -209,7 +209,7 @@ CF_AI_API_TOKEN=<токен з правами Workers AI Read і Run>
 
 ## Перший вхід
 
-Відкрити `https://job-radar.example.workers.dev/?token=<RADAR_TOKEN>`.
+Відкрити `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`.
 Токен збережеться в браузері, далі заходити можна без нього. На телефоні так само.
 
 Без токена API віддає 401. Це єдиний захист, і його досить для інструмента на одну людину,
@@ -219,7 +219,7 @@ CF_AI_API_TOKEN=<токен з правами Workers AI Read і Run>
 
 У попапі розширення вписати:
 
-- **адреса радара**: `https://job-radar.example.workers.dev`
+- **адреса радара**: `https://<your-worker>.workers.dev`
 - **токен**: той самий `RADAR_TOKEN`
 
 Далі збирач шле компанії прямо в хмару, локальний сервер більше не потрібен.
@@ -229,7 +229,7 @@ CF_AI_API_TOKEN=<токен з правами Workers AI Read і Run>
 Команди бота на Workers працюють через вебхук, полінгу там немає:
 
 ```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://job-radar.example.workers.dev/api/telegram/webhook"
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-worker>.workers.dev/api/telegram/webhook"
 ```
 
 Сповіщення за розкладом (дайджест, фолоу-апи, алерти) працюють і без вебхука.
