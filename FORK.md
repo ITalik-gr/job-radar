@@ -127,15 +127,11 @@ After `db:migrate` the interface shows empty lists with no hint about what to do
 next. `imports/seed-companies.csv` is the intended first import and the README
 mentions it, but the empty state in the app does not.
 
-### 3.4. Sending is Gmail only
-
-See section 5.
-
-### 3.5. No license
+### 3.4. No license
 
 There is no LICENSE file, so formally nobody may fork this.
 
-### 3.6. The author's data is still in git history
+### 3.5. The author's data is still in git history
 
 Removing it means rewriting history. See section 6.
 
@@ -146,38 +142,43 @@ Removing it means rewriting history. See section 6.
 Deliberate limits, not bugs. They need naming in the docs so nobody hunts for a
 fault that is not there.
 
-- **sending from Gmail**: the token is a file on disk, and Workers has no disk
+- **sending from Gmail**: the token is a file on disk, and Workers has no disk.
+  Sending through Resend does work there, see section 5
 - **the scheduler**: `node-cron` lives inside a process, and a worker is not one
-- **reply detection and follow ups**: they depend on mail, so the same applies
+- **reply detection**: it reads a mailbox, which only the Gmail provider does
 
-The worker is the interface and the collector; sending is the local `pnpm start`.
-The hybrid works well: one D1 database, the worker reads, the laptop writes.
+So the worker is the interface, the collector, and now a sender too. The laptop is
+still needed for the schedule and for noticing answers. The hybrid works well: one
+D1 database, the worker reads, the laptop writes.
 
 ---
 
-## 5. Sending through something other than Gmail
+## 5. Sending without Gmail
 
-Gmail via OAuth is the right default for one person writing from their own
-mailbox: it threads correctly, it detects replies, and it costs nothing. It is
-also the single hardest part of the setup, it cannot run on a worker, and it is
-useless to anyone who does not use Gmail.
+Done. `src/lib/mailer.ts` is a small provider interface, `MAIL_PROVIDER` picks
+one, and `src/pipeline/send.ts` calls it and nothing else, so every guard in
+`send-guards.ts` still stands in front of every provider.
 
-The shape to aim for is a small provider interface with Gmail as one
-implementation, so that the pipeline keeps calling one function and the guards
-stay where they are.
+**Gmail** stays the default: it threads properly and it reads the mailbox, which
+is the only reason reply detection exists. Its costs are the OAuth setup, a Google
+Cloud project, and a token file, which is why it cannot run on a worker.
 
-What matters when choosing:
+**Resend** is one HTTPS call. An API key and a verified domain, no token file, and
+therefore the first sender that works from the worker.
 
-- **threading.** Follow ups must land in the same thread, which needs a provider
-  that returns and accepts a message id
-- **reply detection.** Gmail reads the inbox. An API-only sender does not, so
-  replies would have to arrive by webhook, or reply detection stays a Gmail
-  feature and other providers simply do not offer it
-- **worker support.** An HTTP API works on Workers; SMTP does not
+The asymmetry that matters: Resend only sends. Replies land in whatever mailbox
+the From address belongs to and the radar never sees them, so reply detection and
+bounce handling stay Gmail features. `readsReplies` on the provider says so and
+the status endpoint reports it, rather than letting someone assume answers are
+being tracked.
 
-Candidates worth a look, in rough order of fit: Resend, Postmark, SMTP through
-`nodemailer` for anyone with an existing mailbox. All three send; only Gmail
-currently reads.
+Threading without Gmail works because the sender mints its own `Message-Id` and
+sets `In-Reply-To` and `References` on a follow up. Resend answers with its own id,
+which is not the RFC header, so taking it from the response would leave follow ups
+with nothing to point at.
+
+Still open here: SMTP through `nodemailer`, which would cover anyone with an
+existing mailbox and no wish to sign up anywhere. It does not run on a worker.
 
 ---
 

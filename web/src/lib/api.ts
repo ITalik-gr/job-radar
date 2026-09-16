@@ -280,6 +280,17 @@ export interface GmailStatus {
   connectedAt: number | null;
   expiresAt: number | null;
   hint: string | null;
+  /** Хто відправляє: gmail або resend. */
+  provider: 'gmail' | 'resend';
+  /** Чи вміє цей провайдер читати скриньку. false означає, що відповіді не помічаються. */
+  readsReplies: boolean;
+  providers: {
+    id: 'gmail' | 'resend';
+    connected: boolean;
+    fromEmail: string | null;
+    readsReplies: boolean;
+    hint: string | null;
+  }[];
 }
 
 /** Звіт повного перегляду компанії. Показується як є: кнопкою перевіряють пошук. */

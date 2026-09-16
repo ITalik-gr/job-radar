@@ -8,6 +8,7 @@ import { getDb } from '../db/client.js';
 import { runs, vacancies } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { authUrl, exchangeCode, gmailStatus, isConfigured as gmailConfigured } from '../lib/gmail.js';
+import { mailer, mailerStatuses } from '../lib/mailer.js';
 import {
   draftForCompany,
   discardDraft,
@@ -480,7 +481,23 @@ ${token.refreshToken}</pre>
  * розсилки має показувати його завжди, і мовчазне "листи не йдуть" тут гірше
  * за будь-яку помилку.
  */
-app.get('/api/gmail/status', (c) => c.json(gmailStatus()));
+/*
+ * Status of the mailbox connection, plus which provider is actually in use.
+ *
+ * The provider block matters because of one silent failure: switching to an API
+ * sender turns reply detection off, since there is no mailbox to read. Nothing
+ * errors, letters keep going out, and the Contacts page simply says nobody
+ * answered. So the answer carries `readsReplies` and the interface shows it.
+ */
+app.get('/api/gmail/status', (c) => {
+  const active = mailer();
+  return c.json({
+    ...gmailStatus(),
+    provider: active.id,
+    readsReplies: active.readsReplies,
+    providers: mailerStatuses(),
+  });
+});
 
 app.get('/api/templates', async (c) => {
   /*

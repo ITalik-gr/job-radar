@@ -504,9 +504,28 @@ export function OperationsPage() {
   return (
     <ScrollArea.Autosize mah="calc(100dvh - 60px)">
       <Stack gap="lg" p="lg">
-        {gmail && !gmail.connected && (
+        {gmail && gmail.provider === 'gmail' && !gmail.connected && (
           <Alert color="yellow" title="Пошта не підключена">
             Операції розсилки працюватимуть, але надіслати лист буде нічим.
+          </Alert>
+        )}
+
+        {/*
+          Мовчазна відмінність між провайдерами. Resend уміє тільки слати: відповіді
+          приходять у скриньку, куди радар не має доступу, і "ніхто не відповів"
+          на сторінці Контакти означатиме лише те, що ніхто не дивився.
+        */}
+        {gmail && !gmail.readsReplies && (
+          <Alert color="yellow" title={`Відправка через ${gmail.provider}, відповіді не відстежуються`}>
+            Цей провайдер лише надсилає листи. Перевірка відповідей і баунсів читає скриньку,
+            а доступу до неї тут немає, тому позначати відповіді доведеться руками на сторінці
+            Контакти. Щоб відповіді помічались самі, потрібен MAIL_PROVIDER=gmail.
+          </Alert>
+        )}
+
+        {gmail && gmail.provider !== 'gmail' && !gmail.providers.find((row) => row.id === gmail.provider)?.connected && (
+          <Alert color="red" title={`${gmail.provider} не налаштований`}>
+            {gmail.providers.find((row) => row.id === gmail.provider)?.hint ?? 'перевір змінні оточення'}
           </Alert>
         )}
 

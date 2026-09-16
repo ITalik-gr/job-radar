@@ -195,6 +195,19 @@ export const config = {
    * Разом з даними його тримати не можна, а бекап бази з рефреш-токеном усередині
    * це доступ до пошти власника в архіві.
    */
+  /**
+   * Who sends the letters. `gmail` is the default and the only provider that can
+   * also read the mailbox, which is what reply detection needs. `resend` is an
+   * HTTPS call with no token file, so it is the only one that works on a worker.
+   */
+  mail: {
+    get provider(): 'gmail' | 'resend' {
+      return str('MAIL_PROVIDER', 'gmail') === 'resend' ? 'resend' : 'gmail';
+    },
+    get resendKey() {
+      return str('RESEND_API_KEY', '');
+    },
+  },
   gmail: {
     get clientId() {
       return str('GOOGLE_CLIENT_ID', '');
