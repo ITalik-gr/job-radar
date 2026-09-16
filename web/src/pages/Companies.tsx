@@ -22,6 +22,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { Building2, ExternalLink, Mail, Search } from 'lucide-react';
 import { api, formatDate, type CompanyRow } from '../lib/api';

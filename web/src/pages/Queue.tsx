@@ -38,6 +38,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { api, formatSalary, waitingDays, type QueueCard } from '../lib/api';
+import { companyHref } from '../lib/route';
 import { useHotkeys } from '../lib/hotkeys';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { TemplateSelect } from '../components/TemplateSelect';

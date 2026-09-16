@@ -12,7 +12,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
     "dev:api": "tsx src/db/migrate.ts && tsx watch src/api/index.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "start": "tsx src/main.ts",
