@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 
 /**
- * Гарячі клавіші для розбору черги. Власник проходить десять карток щодня,
- * і мишею це виходить утричі довше, ніж однією рукою на клавіатурі.
- * Спрацьовують лише коли фокус не в полі введення і не натиснуто модифікатор.
+ * Hotkeys for working through the queue. The owner goes over ten cards a day,
+ * and with a mouse that takes three times longer than one hand on the keyboard.
+ * They fire only when focus is outside an input and no modifier is held.
  */
 export function useHotkeys(map: Record<string, (() => void) | undefined>, enabled = true): void {
   useEffect(() => {

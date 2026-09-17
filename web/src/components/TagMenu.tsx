@@ -5,12 +5,12 @@ import { Ban, ChevronDown, Minus, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 
 /**
- * Тег зі стеку вакансії, який можна одразу відправити у правила. Раніше побачити
- * термін і змінити його вагу були дві різні задачі в різних місцях: тег у картці,
- * а вага в config/scoring.json, який на проді взагалі не редагується.
+ * A tag from the vacancy stack that can go straight into the rules. Before this, seeing
+ * a term and changing its weight were two tasks in two places: the tag on the card, the
+ * weight in config/scoring.json, which cannot be edited in production at all.
  *
- * Ваги і стоп-слова діють на нові та перераховані записи, тому після правки
- * нагадуємо про перерахунок, а не робимо його тихо: перерахунок ходить по всій базі.
+ * Weights and stop words apply to new and rescored records, so after an edit we remind
+ * about rescoring rather than doing it silently: a rescore walks the whole database.
  */
 export function TagMenu({ term }: { term: string }) {
   const client = useQueryClient();
@@ -23,7 +23,7 @@ export function TagMenu({ term }: { term: string }) {
     notifications.show({
       color: 'green',
       title: term,
-      message: `${message}. Щоб застосувати до наявних вакансій: Запустити, Перерахувати рахунки`,
+      message: `${message}. To apply it to existing vacancies: Run, Rescore`,
     });
     void client.invalidateQueries({ queryKey: ['rules'] });
   };
@@ -37,13 +37,13 @@ export function TagMenu({ term }: { term: string }) {
 
   const setWeight = useMutation({
     mutationFn: (next: number | null) => api.termWeight(term, next),
-    onSuccess: (_result, next) => done(next === null ? 'вагу прибрано' : `вага ${next}`),
+    onSuccess: (_result, next) => done(next === null ? 'weight removed' : `weight ${next}`),
     onError: fail,
   });
 
   const setStop = useMutation({
     mutationFn: (remove: boolean) => api.stopWord(term, remove),
-    onSuccess: (_result, remove) => done(remove ? 'прибрано зі стоп-слів' : 'у стоп-словах'),
+    onSuccess: (_result, remove) => done(remove ? 'removed from stop words' : 'added to stop words'),
     onError: fail,
   });
 
@@ -65,10 +65,10 @@ export function TagMenu({ term }: { term: string }) {
       <Menu.Dropdown>
         <Menu.Label>
           {stopped
-            ? 'у стоп-словах, вакансії з ним відсіюються'
+            ? 'a stop word, vacancies with it are filtered out'
             : weight === undefined
-              ? 'ваги немає, термін ні на що не впливає'
-              : `поточна вага ${weight}`}
+              ? 'no weight, the term affects nothing'
+              : `current weight ${weight}`}
         </Menu.Label>
 
         <Menu.Item
@@ -76,9 +76,9 @@ export function TagMenu({ term }: { term: string }) {
           onClick={() => setWeight.mutate(current + 1)}
           disabled={setWeight.isPending}
         >
-          Підняти вагу
+          Raise weight
           <Text size="xs" c="dimmed">
-            стане {current + 1}
+            becomes {current + 1}
           </Text>
         </Menu.Item>
 
@@ -87,9 +87,9 @@ export function TagMenu({ term }: { term: string }) {
           onClick={() => setWeight.mutate(current - 1)}
           disabled={setWeight.isPending}
         >
-          Понизити вагу
+          Lower weight
           <Text size="xs" c="dimmed">
-            стане {current - 1}
+            becomes {current - 1}
           </Text>
         </Menu.Item>
 
@@ -99,7 +99,7 @@ export function TagMenu({ term }: { term: string }) {
             onClick={() => setWeight.mutate(null)}
             disabled={setWeight.isPending}
           >
-            Прибрати вагу
+            Remove weight
           </Menu.Item>
         )}
 
@@ -107,13 +107,13 @@ export function TagMenu({ term }: { term: string }) {
 
         {stopped ? (
           <Menu.Item leftSection={<Ban size={15} />} onClick={() => setStop.mutate(true)}>
-            Прибрати зі стоп-слів
+            Remove from stop words
           </Menu.Item>
         ) : (
           <Menu.Item color="red" leftSection={<Ban size={15} />} onClick={() => setStop.mutate(false)}>
-            У стоп-слова
+            Add to stop words
             <Text size="xs" c="dimmed">
-              вакансії з цим словом більше не показуються
+              vacancies with this word will no longer show
             </Text>
           </Menu.Item>
         )}

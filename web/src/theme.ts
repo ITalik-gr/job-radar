@@ -1,9 +1,9 @@
 import { createTheme, type MantineColorsTuple } from '@mantine/core';
 
 /*
- * Синій узятий із перевіреної послідовної шкали: відтінок 6 (#2a78d6) проходить
- * контраст 3:1 на білому і використовується і в інтерфейсі, і як єдиний колір графіків.
- * Сірий теплий, щоб площини не відлискували синім поруч з акцентом.
+ * The blue comes from a checked sequential scale: shade 6 (#2a78d6) clears 3:1 contrast
+ * on white and serves both the interface and the single chart colour.
+ * The grey is warm so that surfaces do not cast blue next to the accent.
  */
 const brand: MantineColorsTuple = [
   '#eff5fd',
@@ -40,7 +40,7 @@ export const theme = createTheme({
   fontFamilyMonospace: 'ui-monospace, "SF Mono", Menlo, monospace',
   defaultRadius: 'md',
 
-  // Базовий розмір 14, а не 13: інструментом користуються щодня і годинами.
+  // Base size 14 rather than 13: this tool is used daily and for hours at a time.
   fontSizes: { xs: '12px', sm: '13px', md: '14px', lg: '16px', xl: '18px' },
   lineHeights: { xs: '1.5', sm: '1.55', md: '1.55', lg: '1.5', xl: '1.45' },
   spacing: { xs: '8px', sm: '12px', md: '16px', lg: '24px', xl: '36px' },
@@ -55,8 +55,8 @@ export const theme = createTheme({
     },
   },
 
-  // Один розмір керування на весь застосунок. Різні розміри в сусідніх рядках
-  // читаються як різна важливість, хоча важливість однакова.
+  // One control size across the whole application. Different sizes in neighbouring rows
+  // read as different importance, when the importance is the same.
   components: {
     Button: { defaultProps: { size: 'sm' } },
     ActionIcon: { defaultProps: { size: 'lg', variant: 'subtle' } },
@@ -64,8 +64,8 @@ export const theme = createTheme({
     NumberInput: { defaultProps: { size: 'sm' } },
     Select: { defaultProps: { size: 'sm', checkIconPosition: 'right' } },
     Checkbox: { defaultProps: { size: 'sm' } },
-    // Бейджі в цьому інтерфейсі несуть назви технологій і статуси, а не крик,
-    // тому регістр лишається як у даних.
+    // Badges here carry technology names and statuses, not shouting, so the case stays
+    // as it is in the data.
     Badge: { defaultProps: { variant: 'light', radius: 'sm', tt: 'none' } },
     Table: { defaultProps: { verticalSpacing: 'sm', horizontalSpacing: 'md', highlightOnHover: true } },
     Paper: { defaultProps: { withBorder: true, radius: 'md' } },

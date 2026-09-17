@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { href, parse } from './route';
 
 /**
- * Поточна адреса і перехід по ній. Тонка обгортка над `hashchange`: уся логіка
- * розбору живе в `route.ts`, щоб її можна було перевірити тестом без браузера.
+ * The current address and moving along it. A thin wrapper over `hashchange`: all the
+ * parsing lives in `route.ts` so that a test can cover it without a browser.
  */
 export function useRoute(): {
   segments: string[];
-  /** Перехід. `replace` не додає запис в історію: для наведення ладу в адресі. */
+  /** Navigation. `replace` adds no history entry: for tidying up the address. */
   go: (segments: string[], replace?: boolean) => void;
 } {
   const [segments, setSegments] = useState(() => parse(window.location.hash));
@@ -28,7 +28,7 @@ export function useRoute(): {
       return;
     }
 
-    // Присвоєння хешу саме породжує hashchange, тому стан оновить слухач.
+    // Assigning the hash raises hashchange by itself, so the listener updates the state.
     window.location.hash = target;
   };
 
@@ -36,13 +36,13 @@ export function useRoute(): {
 }
 
 /**
- * Вибране в списку, що живе в адресі: `#/studios/acme.com`, `#/templates/pitch`.
+ * The list selection, kept in the address: `#/studios/acme.com`, `#/templates/pitch`.
  *
- * Перехід тут завжди `replace`, і це навмисно. Рух по списку це курсор, а не
- * навігація: стрілками і клавішами j/k через нього проходять десятками, і кожен
- * крок окремим записом в історії означав би, що кнопка "назад" тридцять разів
- * веде на попередню картку замість того, щоб вивести з розділу. Назад має
- * повертати туди, звідки прийшов, а не відмотувати перегляд.
+ * Navigation here is always `replace`, deliberately. Moving through a list is a cursor,
+ * not navigation: with the arrows and j/k keys people go through dozens of items, and a
+ * separate history entry per step would mean the back button leads to the previous card
+ * thirty times over instead of leaving the section. Back should return where you came
+ * from, not rewind the browsing.
  */
 export function useSelection(section: string): [string | null, (key: string | null) => void] {
   const { segments, go } = useRoute();

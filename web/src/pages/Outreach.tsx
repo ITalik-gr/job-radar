@@ -25,15 +25,15 @@ import { companyHref } from '../lib/route';
 import { useSelection } from '../lib/useRoute';
 
 const REPLY_LABELS: Record<string, string> = {
-  positive: 'позитивна',
-  rejection: 'відмова',
-  auto: 'автовідповідь',
+  positive: 'positive',
+  rejection: 'rejection',
+  auto: 'auto-reply',
 };
 
 const REPLY_ACTIONS = [
-  { type: 'positive', label: 'Позитивна відповідь', icon: Check, color: 'green' },
-  { type: 'rejection', label: 'Відмова', icon: CircleSlash, color: 'red' },
-  { type: 'auto', label: 'Автовідповідь, читати нічого', icon: Mailbox, color: 'gray' },
+  { type: 'positive', label: 'Positive reply', icon: Check, color: 'green' },
+  { type: 'rejection', label: 'Rejection', icon: CircleSlash, color: 'red' },
+  { type: 'auto', label: 'Auto-reply, nothing to read', icon: Mailbox, color: 'gray' },
 ] as const;
 
 function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
@@ -52,13 +52,13 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
 export function OutreachPage() {
   const client = useQueryClient();
   /*
-   * Вкладка теж в адресі: `#/outreach/attention` це посилання на те, що
-   * потребує уваги, і його можна лишити собі на завтра або кинути в нагадування.
+   * The tab lives in the address too: `#/outreach/attention` links to what needs
+   * attention, and it can be kept for tomorrow or dropped into a reminder.
    */
   const [chosen, setChosen] = useSelection('outreach');
   const tab = chosen ?? 'waiting';
   const setTab = (value: string | null) => setChosen(value === 'waiting' ? null : value);
-  // Клік по рядку показує текст листа: без нього історія це набір дат без змісту.
+  // Clicking a row shows the letter text: without it the history is dates with no content.
   const [expanded, setExpanded] = useState<number | null>(null);
   const { data, error, isLoading } = useQuery({ queryKey: ['outreach'], queryFn: () => api.outreach() });
 
@@ -68,20 +68,20 @@ export function OutreachPage() {
       notifications.show({
         color: 'green',
         title: company,
-        message: `відповідь: ${REPLY_LABELS[type] ?? type}`,
+        message: `reply: ${REPLY_LABELS[type] ?? type}`,
       });
       for (const key of ['outreach', 'followups', 'stats', 'companies']) {
         void client.invalidateQueries({ queryKey: [key] });
       }
     },
     onError: (mutationError) =>
-      notifications.show({ color: 'red', title: 'не збереглось', message: String(mutationError) }),
+      notifications.show({ color: 'red', title: 'not saved', message: String(mutationError) }),
   });
 
   if (error) {
     return (
       <Box p="lg">
-        <Alert color="red" title="Не вдалось прочитати листування">
+        <Alert color="red" title="Could not read the correspondence">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
       </Box>
@@ -103,8 +103,8 @@ export function OutreachPage() {
           <EmptyState
             icon={<Send size={28} />}
             withIndicatorBackground
-            title="Ще нікому не писали"
-            description="Розберись із чергою і познач надіслані листи кнопкою Написав."
+            title="No letters yet"
+            description="Work through the queue and mark sent letters with the Contacted button."
           />
         </Card>
       </Box>
@@ -115,19 +115,19 @@ export function OutreachPage() {
   const answered = data.filter((row) => row.replyType);
   const overdue = waiting.filter((row) => (row.waitingDays ?? 0) >= 7);
 
-  // Три вкладки замість однієї довгої таблиці: у роботі потрібні тільки ті, хто молчить.
+  // Three tabs instead of one long table: day to day only the silent ones matter.
   const rows = tab === 'answered' ? answered : tab === 'all' ? data : waiting;
 
   return (
     <Stack gap="md" p="lg">
       <Paper p="lg">
         <Group gap="xl">
-          <Stat label="усього листів" value={data.length} />
-          <Stat label="чекають відповіді" value={waiting.length} />
-          <Stat label="понад 7 днів тишi" value={overdue.length} color={overdue.length ? 'yellow.8' : undefined} />
-          <Stat label="відповіли" value={answered.length} />
+          <Stat label="letters total" value={data.length} />
+          <Stat label="awaiting reply" value={waiting.length} />
+          <Stat label="silent over 7 days" value={overdue.length} color={overdue.length ? 'yellow.8' : undefined} />
+          <Stat label="replied" value={answered.length} />
           <Text size="sm" c="dimmed" maw={320} ml="auto">
-            Підсвічені рядки: сім днів без відповіді. Це момент для одного фолоу-апу, не для другого листа.
+            Highlighted rows: seven days without a reply. That is the moment for one follow-up, not a second letter.
           </Text>
         </Group>
       </Paper>
@@ -135,12 +135,12 @@ export function OutreachPage() {
       <Tabs value={tab} onChange={setTab}>
         <Tabs.List>
           <Tabs.Tab value="waiting" rightSection={<Badge size="sm" color="yellow">{waiting.length}</Badge>}>
-            Чекають
+            Waiting
           </Tabs.Tab>
           <Tabs.Tab value="answered" rightSection={<Badge size="sm" color="gray">{answered.length}</Badge>}>
-            Відповіли
+            Replied
           </Tabs.Tab>
-          <Tabs.Tab value="all">Усі</Tabs.Tab>
+          <Tabs.Tab value="all">All</Tabs.Tab>
         </Tabs.List>
       </Tabs>
 
@@ -149,14 +149,14 @@ export function OutreachPage() {
           <Table stickyHeader layout="fixed">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th w={90}>коли</Table.Th>
-                <Table.Th w={200}>компанія</Table.Th>
-                <Table.Th w={170}>кому</Table.Th>
-                <Table.Th>вакансія</Table.Th>
-                <Table.Th w={100}>канал</Table.Th>
-                <Table.Th w={150}>шаблон</Table.Th>
-                <Table.Th w={90}>абзац</Table.Th>
-                <Table.Th w={160}>відповідь</Table.Th>
+                <Table.Th w={90}>when</Table.Th>
+                <Table.Th w={200}>company</Table.Th>
+                <Table.Th w={170}>to</Table.Th>
+                <Table.Th>vacancy</Table.Th>
+                <Table.Th w={100}>channel</Table.Th>
+                <Table.Th w={150}>template</Table.Th>
+                <Table.Th w={90}>intro</Table.Th>
+                <Table.Th w={160}>reply</Table.Th>
                 <Table.Th w={130} />
               </Table.Tr>
             </Table.Thead>
@@ -178,11 +178,11 @@ export function OutreachPage() {
                     </Table.Td>
                     <Table.Td>
                       {/*
-                        Назва веде на картку компанії в застосунку.
-                        Відповідь приходить через тиждень після листа, і перше
-                        питання завжди те саме: що це взагалі була за контора.
-                        Клік по назві не має розгортати рядок, тому подія
-                        зупиняється: посилання і розгортання це різні наміри.
+                        The name leads to the company card in the app.
+                        A reply comes a week after the letter, and the first
+                        question is always the same: which company was that.
+                        A click on the name must not expand the row, so the event
+                        stops here: following a link and expanding are different intents.
                       */}
                       <Anchor
                         href={companyHref(row.domain)}
@@ -201,7 +201,7 @@ export function OutreachPage() {
                         </Text>
                       ) : (
                         <Text size="sm" c="dimmed">
-                          {row.contactEmail ?? 'не вказано'}
+                          {row.contactEmail ?? 'not set'}
                         </Text>
                       )}
                     </Table.Td>
@@ -212,7 +212,7 @@ export function OutreachPage() {
                         </Anchor>
                       ) : (
                         <Text size="sm" c="dimmed">
-                          без вакансії
+                          no vacancy
                         </Text>
                       )}
                     </Table.Td>
@@ -233,7 +233,7 @@ export function OutreachPage() {
                     <Table.Td>
                       <Group gap={4} wrap="nowrap">
                         <Badge size="sm" variant="light" color={row.aiUsed ? 'violet' : 'gray'}>
-                          {row.aiUsed ? 'AI' : 'шаблон'}
+                          {row.aiUsed ? 'AI' : 'template'}
                         </Badge>
                         {row.language && (
                           <Text size="xs" c="dimmed">
@@ -245,7 +245,7 @@ export function OutreachPage() {
                     <Table.Td>
                       {row.bounceType ? (
                         <Badge color={row.bounceType === 'hard' ? 'red' : 'orange'}>
-                          баунс, {row.bounceType}
+                          bounce, {row.bounceType}
                         </Badge>
                       ) : row.replyType ? (
                         <Badge
@@ -257,7 +257,7 @@ export function OutreachPage() {
                         </Badge>
                       ) : (
                         <Badge color={late ? 'yellow' : 'gray'} variant={late ? 'filled' : 'light'}>
-                          чекаємо {row.waitingDays} дн
+                          waiting {row.waitingDays}d
                         </Badge>
                       )}
                     </Table.Td>
@@ -284,13 +284,13 @@ export function OutreachPage() {
                   {open && (
                     <Table.Tr>
                       <Table.Td colSpan={9}>
-                        {/* Те, що реально пішло. Знімок, а не перезбирання з шаблона. */}
+                        {/* What actually went out. A snapshot, not a rebuild from the template. */}
                         <Text size="xs" c="dimmed" mb={4}>
-                          {row.isFollowup ? 'фолоу-ап, тим самим тредом' : 'перший лист'}
+                          {row.isFollowup ? 'follow-up, same thread' : 'first letter'}
                           {row.subject ? `: ${row.subject}` : ''}
                         </Text>
                         <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                          {row.body ?? 'текст не зберігся, лист позначили вручну'}
+                          {row.body ?? 'no text saved, the letter was marked by hand'}
                         </Text>
                       </Table.Td>
                     </Table.Tr>
@@ -304,7 +304,7 @@ export function OutreachPage() {
 
         {rows.length === 0 && (
           <Text c="dimmed" size="sm" p="lg" ta="center">
-            у цій вкладці порожньо
+            nothing in this tab
           </Text>
         )}
       </Paper>

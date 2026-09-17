@@ -48,8 +48,8 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Деталі відкриваються шухлядою збоку, а не модалкою по центру: таблиця лишається
- * на місці, і видно, який саме рядок відкритий. Так легше проходити список підряд.
+ * Details open in a side drawer rather than a centred modal: the table stays in place,
+ * and you can see which row is open. That makes it easier to go down the list.
  */
 function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
   const id = row.id;
@@ -59,7 +59,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
   const setState = useMutation({
     mutationFn: (status: string) => api.setCompanyState(id, { status }),
     onSuccess: (_result, status) => {
-      notifications.show({ color: 'green', title: 'Статус змінено', message: statusLabel(status) });
+      notifications.show({ color: 'green', title: 'Status changed', message: statusLabel(status) });
       void client.invalidateQueries({ queryKey: ['company', id] });
       void client.invalidateQueries({ queryKey: ['companies'] });
     },
@@ -87,7 +87,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
       }
     >
       {error && (
-        <Alert color="red" title="Не вдалось прочитати компанію">
+        <Alert color="red" title="Could not read the company">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
       )}
@@ -96,7 +96,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
       {data && (
         <Stack gap="lg">
           <Select
-            label="Статус"
+            label="Status"
             data={STATUS_OPTIONS}
             value={data.state?.status ?? 'new'}
             onChange={(status) => status && setState.mutate(status)}
@@ -109,9 +109,9 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
 
           <DataList labelWidth={128} gap="sm">
             <DataList.Item>
-              <DataList.ItemLabel>рахунок</DataList.ItemLabel>
+              <DataList.ItemLabel>score</DataList.ItemLabel>
               <DataList.ItemValue>
-                {/* Рахунок приходить лише зі списку: деталі його не рахують. */}
+                {/* The score comes only from the list: the details endpoint does not compute it. */}
                 <Score value={row.score} />
               </DataList.ItemValue>
             </DataList.Item>
@@ -122,25 +122,25 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
                   <Text>{data.company.careersKind}</Text>
                   {data.company.careersUrl && (
                     <Anchor href={data.company.careersUrl} target="_blank" rel="noreferrer" size="sm">
-                      career-сторінка
+                      careers page
                     </Anchor>
                   )}
                 </Group>
               </DataList.ItemValue>
             </DataList.Item>
             <DataList.Item>
-              <DataList.ItemLabel>де</DataList.ItemLabel>
+              <DataList.ItemLabel>location</DataList.ItemLabel>
               <DataList.ItemValue>
                 {[data.company.city, data.company.country].filter(Boolean).join(', ') || (
-                  <Text c="dimmed">не вказано</Text>
+                  <Text c="dimmed">not stated</Text>
                 )}
               </DataList.ItemValue>
             </DataList.Item>
             <DataList.Item>
-              <DataList.ItemLabel>джерела</DataList.ItemLabel>
+              <DataList.ItemLabel>sources</DataList.ItemLabel>
               <DataList.ItemValue>
                 {data.company.sources.length === 0 ? (
-                  <Text c="dimmed">невідомо</Text>
+                  <Text c="dimmed">unknown</Text>
                 ) : (
                   <Group gap={6}>
                     {data.company.sources.map((source) => (
@@ -153,10 +153,10 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
               </DataList.ItemValue>
             </DataList.Item>
             <DataList.Item>
-              <DataList.ItemLabel>стек із сайту</DataList.ItemLabel>
+              <DataList.ItemLabel>stack from the site</DataList.ItemLabel>
               <DataList.ItemValue>
                 {data.company.techHints.length === 0 ? (
-                  <Text c="dimmed">не визначено</Text>
+                  <Text c="dimmed">not detected</Text>
                 ) : (
                   <Group gap={6}>
                     {data.company.techHints.map((tech) => (
@@ -167,9 +167,9 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
               </DataList.ItemValue>
             </DataList.Item>
             <DataList.Item>
-              <DataList.ItemLabel>вперше побачили</DataList.ItemLabel>
+              <DataList.ItemLabel>first seen</DataList.ItemLabel>
               <DataList.ItemValue>
-                <Text className="tabular">{formatDate(data.company.firstSeen) || 'невідомо'}</Text>
+                <Text className="tabular">{formatDate(data.company.firstSeen) || 'unknown'}</Text>
               </DataList.ItemValue>
             </DataList.Item>
           </DataList>
@@ -178,11 +178,11 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
 
           <Box>
             <SectionTitle>
-              вакансії: {open.length} відкритих, {closed.length} закритих
+              vacancies: {open.length} open, {closed.length} closed
             </SectionTitle>
             {data.vacancies.length === 0 ? (
               <Text c="dimmed" size="sm" mt="xs">
-                жодної не бачили
+                none seen
               </Text>
             ) : (
               <Stack gap={2} mt="xs">
@@ -203,7 +203,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
                     </Tooltip>
                     <Text size="xs" c="dimmed" className="tabular" style={{ whiteSpace: 'nowrap' }}>
                       {formatDate(vacancy.firstSeen)}
-                      {vacancy.closedAt ? ` - ${formatDate(vacancy.closedAt)}` : ' і досі'}
+                      {vacancy.closedAt ? ` - ${formatDate(vacancy.closedAt)}` : ' to date'}
                     </Text>
                   </Group>
                 ))}
@@ -212,10 +212,10 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
           </Box>
 
           <Box>
-            <SectionTitle>контакти</SectionTitle>
+            <SectionTitle>contacts</SectionTitle>
             {data.contacts.length === 0 ? (
               <Text c="dimmed" size="sm" mt="xs">
-                немає, спробуй enrichment
+                none, try enrichment
               </Text>
             ) : (
               <Stack gap={6} mt="xs">
@@ -227,10 +227,10 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
           </Box>
 
           <Box>
-            <SectionTitle>листування</SectionTitle>
+            <SectionTitle>correspondence</SectionTitle>
             {data.outreach.length === 0 ? (
               <Text c="dimmed" size="sm" mt="xs">
-                не писали
+                no letters
               </Text>
             ) : (
               <Stack gap={6} mt="xs">
@@ -248,7 +248,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
                       </Badge>
                     )}
                     <Badge size="sm" color={row.replyType === 'positive' ? 'green' : row.replyType ? 'gray' : 'yellow'}>
-                      {row.replyType ?? 'без відповіді'}
+                      {row.replyType ?? 'no reply'}
                     </Badge>
                   </Group>
                 ))}
@@ -257,10 +257,10 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
           </Box>
 
           <Box>
-            <SectionTitle>знімки сторінок</SectionTitle>
+            <SectionTitle>page snapshots</SectionTitle>
             {data.snapshots.length === 0 ? (
               <Text c="dimmed" size="sm" mt="xs">
-                немає
+                none
               </Text>
             ) : (
               <Stack gap={4} mt="xs">
@@ -273,7 +273,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
                       {snapshot.contentHash.slice(0, 12)}
                     </Text>
                     <Text size="xs" c="dimmed">
-                      блоків {snapshot.blocks}
+                      {snapshot.blocks} blocks
                     </Text>
                   </Group>
                 ))}
@@ -292,13 +292,13 @@ export function CompaniesPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /*
-   * Відкрита компанія це другий сегмент адреси: `#/companies/acme.com`. Домен,
-   * а не номер, навмисно: посилання лишається читабельним, і його видно, куди
-   * воно веде, ще до кліку.
+   * The open company is the second address segment: `#/companies/acme.com`. The domain
+   * rather than an id, deliberately: the link stays readable, and you can see where it
+   * leads before clicking.
    */
   const [domain, select] = useSelection('companies');
 
-  // Пошук чекає, поки людина допише: інакше кожна літера це окремий запит по всій базі.
+  // Search waits until typing stops: otherwise every letter is a query over the whole database.
   const [search] = useDebouncedValue(filters.q, 300);
   const query = useMemo(() => ({ ...filters, q: search }), [filters, search]);
 
@@ -308,13 +308,13 @@ export function CompaniesPage() {
   });
 
   /*
-   * Компанія з адреси знаходиться через список, а не відкривається напряму.
+   * A company from the address is found through the list, not opened directly.
    *
-   * Причина технічна: деталі беруть рахунок з рядка списку, бо в відповіді
-   * `GET /companies/:id` його немає, він рахується на льоту лише для списку.
-   * Тому якщо компанії в поточному списку немає, спершу вмикається пошук по
-   * її домену. Побічний ефект корисний: фільтр лишається видимим, і зрозуміло,
-   * чому в таблиці один рядок.
+   * The reason is technical: the details take the score from the list row, because the
+   * `GET /companies/:id` response has none, it is computed on the fly only for the list.
+   * So if the company is not in the current list, a search by its domain is switched on
+   * first. A useful side effect: the filter stays visible, and it is clear why the table
+   * has one row.
    */
   useEffect(() => {
     if (!domain) {
@@ -329,14 +329,14 @@ export function CompaniesPage() {
       return;
     }
 
-    // Пошук вмикається лише тоді, коли компанії в поточному списку справді немає.
+    // The search is switched on only when the company really is missing from the current list.
     if (data && filters.q !== domain) setFilters({ q: domain, status: '', ats: '', country: '' });
   }, [domain, data, selected, filters.q]);
 
   /*
-   * Рядок фіксованої висоти, тому вимірювати нічого не треба: віртуалізатор
-   * рахує позиції арифметикою. Overscan у 12 рядків прибирає білі смуги при
-   * швидкому скролі, і це дешевше, ніж малювати весь список.
+   * Rows have a fixed height, so nothing needs measuring: the virtualizer computes
+   * positions arithmetically. An overscan of 12 rows removes white gaps on fast scrolling,
+   * and that is cheaper than drawing the whole list.
    */
   const virtualizer = useVirtualizer({
     count: data?.length ?? 0,
@@ -354,7 +354,7 @@ export function CompaniesPage() {
   if (error) {
     return (
       <Box p="lg">
-        <Alert color="red" title="Не вдалось прочитати список компаній">
+        <Alert color="red" title="Could not read the company list">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
       </Box>
@@ -366,14 +366,14 @@ export function CompaniesPage() {
       <Paper p="md">
         <Group gap="md">
           <TextInput
-            placeholder="назва або домен"
+            placeholder="name or domain"
             leftSection={<Search size={14} />}
             value={filters.q}
             onChange={(event) => setFilters({ ...filters, q: event.currentTarget.value })}
             w={280}
           />
           <Select
-            placeholder="будь-який статус"
+            placeholder="any status"
             data={STATUS_OPTIONS}
             value={filters.status || null}
             onChange={(status) => setFilters({ ...filters, status: status ?? '' })}
@@ -385,7 +385,7 @@ export function CompaniesPage() {
             w={200}
           />
           <Select
-            placeholder="будь-який ats"
+            placeholder="any ats"
             data={ATS_KINDS}
             value={filters.ats || null}
             onChange={(ats) => setFilters({ ...filters, ats: ats ?? '' })}
@@ -393,12 +393,12 @@ export function CompaniesPage() {
             w={180}
           />
           {/*
-            Найчастіше питання про цю сторінку: чи звідси писати листи. Ні.
-            Це довідник на всю базу, а робочі списки це Черга і Студії.
+            The most common question about this page: is this where letters are written. No.
+            It is a directory of the whole database, the working lists are Queue and Studios.
           */}
           <Text size="sm" c="dimmed" maw={420} ml="auto">
-            Довідник на всю базу: {data?.length ?? 0} компаній. Листи пишуться з Черги і Студій,
-            тут тільки пошук, статуси і історія по кожній.
+            Directory of the whole database: {data?.length ?? 0} companies. Letters are written from
+            Queue and Studios, this page is for search, statuses and each company's history.
           </Text>
         </Group>
       </Paper>
@@ -412,8 +412,8 @@ export function CompaniesPage() {
           <EmptyState
             icon={<Building2 size={28} />}
             withIndicatorBackground
-            title="Жодної компанії під ці фільтри"
-            description="Скинь пошук або збери каталог розширенням у браузері."
+            title="No companies match these filters"
+            description="Clear the search, or collect a catalog with the browser extension."
           />
         </Card>
       )}
@@ -421,29 +421,29 @@ export function CompaniesPage() {
       {data && data.length > 0 && (
         <Paper style={{ overflow: 'hidden' }}>
           {/*
-            Скрол тут власний, а не ScrollArea: віртуалізатору потрібен елемент,
-            у якого можна спитати позицію прокрутки. У базі тисячі компаній, і
-            без віртуалізації браузер малює тисячі рядків одразу, після чого
-            сторінка думає секунду на кожен клік.
+            The scroll is native here, not ScrollArea: the virtualizer needs an element
+            it can ask for the scroll position. The database has thousands of companies,
+            and without virtualization the browser draws thousands of rows at once, after
+            which the page thinks for a second on every click.
           */}
           <div ref={scrollRef} style={{ maxHeight: 'calc(100dvh - 224px)', overflowY: 'auto' }}>
-            {/* Фіксована розкладка: інакше колонка з назвою розтягується і виштовхує
-                статус та лічильники за правий край. */}
+            {/* Fixed layout: otherwise the name column stretches and pushes the status
+                and counters past the right edge. */}
             <Table stickyHeader layout="fixed">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th w={90}>рахунок</Table.Th>
-                  <Table.Th>компанія</Table.Th>
-                  <Table.Th w={110}>розмір</Table.Th>
-                  <Table.Th w={110}>оцінка</Table.Th>
-                  <Table.Th w={190}>де</Table.Th>
+                  <Table.Th w={90}>score</Table.Th>
+                  <Table.Th>company</Table.Th>
+                  <Table.Th w={110}>size</Table.Th>
+                  <Table.Th w={110}>rating</Table.Th>
+                  <Table.Th w={190}>location</Table.Th>
                   <Table.Th w={130}>ats</Table.Th>
-                  <Table.Th w={150}>статус</Table.Th>
+                  <Table.Th w={150}>status</Table.Th>
                   <Table.Th w={110} ta="right">
-                    відкритих
+                    open
                   </Table.Th>
                   <Table.Th w={130} ta="right">
-                    перевірено
+                    checked
                   </Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -488,7 +488,7 @@ export function CompaniesPage() {
                         {row.sizeHint ?? ''}
                       </Text>
                     </Table.Td>
-                    {/* Оцінка і відгуки з каталогу: найшвидша ознака живої студії. */}
+                    {/* Catalog rating and reviews: the quickest sign of a living studio. */}
                     <Table.Td>
                       <Text size="sm" c="dimmed" className="tabular">
                         {row.rating === null
@@ -520,7 +520,7 @@ export function CompaniesPage() {
                     </Table.Td>
                     <Table.Td ta="right">
                       <Text size="sm" c="dimmed" className="tabular">
-                        {formatDate(row.lastChecked) || 'ніколи'}
+                        {formatDate(row.lastChecked) || 'never'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>

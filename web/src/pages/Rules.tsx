@@ -25,9 +25,9 @@ import { Ban, Plus, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
 import { api, type Rules } from '../lib/api';
 
 const SOURCE_LABELS: Record<string, string> = {
-  db: 'правки з інтерфейсу',
-  file: 'config/scoring.json з диска',
-  bundled: 'значення за замовчуванням',
+  db: 'edits from the interface',
+  file: 'config/scoring.json on disk',
+  bundled: 'default values',
 };
 
 function SectionTitle({ title, hint }: { title: string; hint: string }) {
@@ -42,8 +42,8 @@ function SectionTitle({ title, hint }: { title: string; hint: string }) {
 }
 
 /**
- * Список слів, який правиться на місці. Спільний для стоп-слів і для дозволених
- * назв ролей: поведінка однакова, різниться лише зміст.
+ * A word list edited in place. Shared by stop words and allowed role names: the
+ * behaviour is the same, only the content differs.
  */
 function WordList({
   words,
@@ -79,13 +79,13 @@ function WordList({
           style={{ flex: 1 }}
         />
         <Button variant="default" leftSection={<Plus size={15} />} onClick={add}>
-          Додати
+          Add
         </Button>
       </Group>
 
       {words.length > 12 && (
         <TextInput
-          placeholder="фільтр по списку"
+          placeholder="filter the list"
           leftSection={<Search size={14} />}
           value={filter}
           onChange={(event) => setFilter(event.currentTarget.value)}
@@ -96,7 +96,7 @@ function WordList({
         <Group gap={6}>
           {shown.length === 0 && (
             <Text size="sm" c="dimmed">
-              {words.length === 0 ? 'список порожній' : 'під фільтр нічого не підпало'}
+              {words.length === 0 ? 'the list is empty' : 'nothing matches the filter'}
             </Text>
           )}
           {shown.map((word) => (
@@ -108,7 +108,7 @@ function WordList({
                   size={14}
                   variant="transparent"
                   color={tone}
-                  aria-label={`прибрати ${word}`}
+                  aria-label={`remove ${word}`}
                   onClick={() => onChange(words.filter((item) => item !== word))}
                 >
                   <Trash2 size={11} />
@@ -122,13 +122,13 @@ function WordList({
       </ScrollArea.Autosize>
 
       <Text size="xs" c="dimmed">
-        усього {words.length}
+        {words.length} total
       </Text>
     </Stack>
   );
 }
 
-/** Ваги термінів: таблиця термін плюс число, з можливістю додати і прибрати рядок. */
+/** Term weights: a table of term plus number, with rows that can be added and removed. */
 function TermWeights({
   terms,
   onChange,
@@ -159,21 +159,21 @@ function TermWeights({
     <Stack gap="sm">
       <Group gap="sm" align="flex-end">
         <TextInput
-          label="Термін"
-          placeholder="напр. hono"
+          label="Term"
+          placeholder="e.g. hono"
           value={term}
           onChange={(event) => setTerm(event.currentTarget.value)}
           onKeyDown={(event) => event.key === 'Enter' && add()}
           style={{ flex: 1 }}
         />
-        <NumberInput label="Вага" value={weight} onChange={setWeight} w={100} allowDecimal step={1} />
+        <NumberInput label="Weight" value={weight} onChange={setWeight} w={100} allowDecimal step={1} />
         <Button variant="default" leftSection={<Plus size={15} />} onClick={add}>
-          Додати
+          Add
         </Button>
       </Group>
 
       <TextInput
-        placeholder="фільтр по термінах"
+        placeholder="filter terms"
         leftSection={<Search size={14} />}
         value={filter}
         onChange={(event) => setFilter(event.currentTarget.value)}
@@ -184,9 +184,9 @@ function TermWeights({
           <Table stickyHeader layout="fixed">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>термін</Table.Th>
+                <Table.Th>term</Table.Th>
                 <Table.Th w={110} ta="right">
-                  вага
+                  weight
                 </Table.Th>
                 <Table.Th w={60} />
               </Table.Tr>
@@ -212,7 +212,7 @@ function TermWeights({
                     <Group justify="flex-end">
                       <ActionIcon
                         color="red"
-                        aria-label={`прибрати ${key}`}
+                        aria-label={`remove ${key}`}
                         onClick={() => {
                           const next = { ...terms };
                           delete next[key];
@@ -231,7 +231,7 @@ function TermWeights({
       </Paper>
 
       <Text size="xs" c="dimmed">
-        усього термінів {Object.keys(terms).length}
+        {Object.keys(terms).length} terms total
       </Text>
     </Stack>
   );
@@ -241,8 +241,8 @@ export function RulesPage() {
   const client = useQueryClient();
   const { data, error, isLoading } = useQuery({ queryKey: ['rules'], queryFn: () => api.rules() });
 
-  // Локальна копія: правки не летять на сервер по кожному натисканню клавіші,
-  // інакше кожен символ у полі порогу перераховував би скоринг.
+  // A local copy: edits are not sent to the server on every keystroke, otherwise every
+  // character in the threshold field would trigger a rescore.
   const [draft, setDraft] = useState<Rules | null>(null);
   useEffect(() => {
     if (data) setDraft(data.rules);
@@ -253,15 +253,15 @@ export function RulesPage() {
     onSuccess: () => {
       notifications.show({
         color: 'green',
-        title: 'Правила збережено',
-        message: 'Щоб перерахувати наявні вакансії, натисни Запустити, Перерахувати рахунки',
+        title: 'Rules saved',
+        message: 'To rescore existing vacancies, use Run, Rescore',
       });
       void client.invalidateQueries({ queryKey: ['rules'] });
     },
     onError: (mutationError) =>
       notifications.show({
         color: 'red',
-        title: 'Не збереглось',
+        title: 'Not saved',
         message: mutationError instanceof Error ? mutationError.message : String(mutationError),
       }),
   });
@@ -269,7 +269,7 @@ export function RulesPage() {
   const reset = useMutation({
     mutationFn: () => api.resetRules(),
     onSuccess: () => {
-      notifications.show({ color: 'green', title: 'Скинуто', message: 'Вернулись значення за замовчуванням' });
+      notifications.show({ color: 'green', title: 'Reset', message: 'Default values are back' });
       void client.invalidateQueries({ queryKey: ['rules'] });
     },
   });
@@ -277,7 +277,7 @@ export function RulesPage() {
   if (error) {
     return (
       <Box p="lg">
-        <Alert color="red" title="Не вдалось прочитати правила">
+        <Alert color="red" title="Could not read the rules">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
       </Box>
@@ -295,8 +295,8 @@ export function RulesPage() {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(data.rules);
   /*
-   * Секція репутації зʼявилась пізніше за конфіг, тому в уже збереженому з інтерфейсу
-   * її може не бути. Дефолти тут ті самі, що в Zod-схемі на сервері.
+   * The reputation section appeared after the config, so a config already saved from the
+   * interface may lack it. The defaults here match the Zod schema on the server.
    */
   const reputation = draft.companies.reputation ?? {
     goodRating: 4.5,
@@ -315,26 +315,26 @@ export function RulesPage() {
         <Group gap="md">
           <Box>
             <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>
-              джерело правил
+              rules source
             </Text>
             <Text fw={600}>{SOURCE_LABELS[data.source] ?? data.source}</Text>
           </Box>
 
           <Text size="sm" c="dimmed" maw={420}>
-            Збережене тут перекриває і файл, і вшиті значення. На проді це єдиний спосіб змінити
-            правила без деплою: файлової системи у воркера немає.
+            What is saved here overrides both the file and the bundled values. In production this is
+            the only way to change the rules without a deploy: the worker has no filesystem.
           </Text>
 
           <Group gap="sm" ml="auto">
             {data.source === 'db' && (
-              <Tooltip label="прибрати правки з інтерфейсу і вернутись до config/scoring.json">
+              <Tooltip label="drop the interface edits and go back to config/scoring.json">
                 <Button
                   variant="default"
                   leftSection={<RotateCcw size={15} />}
                   loading={reset.isPending}
                   onClick={() => reset.mutate()}
                 >
-                  Скинути
+                  Reset
                 </Button>
               </Tooltip>
             )}
@@ -344,26 +344,26 @@ export function RulesPage() {
               loading={save.isPending}
               onClick={() => save.mutate(draft)}
             >
-              {dirty ? 'Зберегти зміни' : 'Змін немає'}
+              {dirty ? 'Save changes' : 'No changes'}
             </Button>
           </Group>
         </Group>
       </Paper>
 
       <Card>
-        <SectionTitle title="Пороги" hint="нижче порога запис зберігається в базі, але в черзі не показується" />
+        <SectionTitle title="Thresholds" hint="below the threshold a record is kept in the database but not shown in the queue" />
         <Group gap="xl" align="flex-end">
           <NumberInput
-            label="Поріг вакансії"
-            description="сума ваг плюс думка моделі, поділена на 20"
+            label="Vacancy threshold"
+            description="sum of the weights plus the model opinion divided by 20"
             value={draft.threshold}
             onChange={(value) => patch({ threshold: Number(value) || 0 })}
             w={200}
             allowDecimal
           />
           <NumberInput
-            label="Поріг компанії"
-            description="для сторінки Студії"
+            label="Company threshold"
+            description="for the Studios page"
             value={draft.companies.threshold}
             onChange={(value) =>
               patch({ companies: { ...draft.companies, threshold: Number(value) || 0 } })
@@ -375,24 +375,24 @@ export function RulesPage() {
       </Card>
 
       {/*
-        Репутація студій. Раніше ці ваги правились тільки у config/scoring.json,
-        а на Workers файлової системи немає, тобто на проді їх не змінити взагалі.
+        Studio reputation. These weights used to be editable only in config/scoring.json,
+        and Workers has no filesystem, so in production they could not be changed at all.
       */}
       <Card>
         <SectionTitle
-          title="Репутація студій"
-          hint="оцінка і відгуки з каталогу. Порожня картка без жодного відгуку часто означає покинуту студію"
+          title="Studio reputation"
+          hint="catalog rating and reviews. An empty profile with no reviews often means an abandoned studio"
         />
         <Group gap="lg" align="flex-end" wrap="wrap">
           {(
             [
-              ['goodRating', 'Висока оцінка від', 'з якої починається плюс'],
-              ['goodRatingBonus', 'Плюс за оцінку', ''],
-              ['weakRating', 'Низька оцінка до', 'нижче цієї йде мінус'],
-              ['weakRatingPenalty', 'Мінус за оцінку', ''],
-              ['reviewsFrom', 'Відгуків від', 'скільки відгуків рахуються за багато'],
-              ['reviewsBonus', 'Плюс за відгуки', ''],
-              ['noReviewsPenalty', 'Мінус за нуль відгуків', ''],
+              ['goodRating', 'High rating from', 'where the bonus starts'],
+              ['goodRatingBonus', 'Rating bonus', ''],
+              ['weakRating', 'Low rating below', 'under this a penalty applies'],
+              ['weakRatingPenalty', 'Rating penalty', ''],
+              ['reviewsFrom', 'Reviews from', 'how many reviews count as many'],
+              ['reviewsBonus', 'Reviews bonus', ''],
+              ['noReviewsPenalty', 'No reviews penalty', ''],
             ] as const
           ).map(([key, label, description]) => (
             <NumberInput
@@ -418,25 +418,25 @@ export function RulesPage() {
 
       <Card>
         <SectionTitle
-          title="Стоп-слова"
-          hint="вакансія з таким словом не класифікується взагалі і зберігається з рахунком -100"
+          title="Stop words"
+          hint="a vacancy with such a word is not classified at all and is stored with score -100"
         />
         <WordList
           words={draft.stopWords}
           onChange={(stopWords) => patch({ stopWords })}
-          placeholder="напр. kotlin"
+          placeholder="e.g. kotlin"
           tone="red"
         />
       </Card>
 
       <Card>
         <SectionTitle
-          title="Ваги термінів"
-          hint="плюс піднімає вакансію, мінус опускає. У назві вага множиться на коефіцієнт нижче"
+          title="Term weights"
+          hint="a plus lifts a vacancy, a minus lowers it. In the title the weight is multiplied by the factor below"
         />
         <Group gap="xl" mb="md" align="flex-end">
           <NumberInput
-            label="Множник для назви"
+            label="Title multiplier"
             value={draft.weights.titleMultiplier}
             onChange={(value) =>
               patch({ weights: { ...draft.weights, titleMultiplier: Number(value) || 0 } })
@@ -445,7 +445,7 @@ export function RulesPage() {
             allowDecimal
           />
           <NumberInput
-            label="Стеля балів з тексту"
+            label="Body score cap"
             value={draft.weights.bodyCap}
             onChange={(value) => patch({ weights: { ...draft.weights, bodyCap: Number(value) || 0 } })}
             w={180}
@@ -460,8 +460,8 @@ export function RulesPage() {
 
       <Card>
         <SectionTitle
-          title="Перевірка назви ролі"
-          hint="без цього бухгалтер з описом компанії, де згадані React і Next.js, набирає балів і лізе в чергу"
+          title="Role title check"
+          hint="without it an accountant role at a company whose description mentions React and Next.js scores points and gets into the queue"
         />
         <Switch
           mb="md"
@@ -469,33 +469,33 @@ export function RulesPage() {
           onChange={(event) =>
             patch({ roleGate: { ...draft.roleGate, enabled: event.currentTarget.checked } })
           }
-          label="перевіряти назву вакансії"
+          label="check the vacancy title"
         />
 
         <Text size="sm" fw={500} mb="xs">
-          Назва мусить містити щось із цього
+          The title must contain one of these
         </Text>
         <WordList
           words={draft.roleGate.mustMatch}
           onChange={(mustMatch) => patch({ roleGate: { ...draft.roleGate, mustMatch } })}
-          placeholder="напр. platform engineer"
+          placeholder="e.g. platform engineer"
           tone="brand"
         />
 
         <Text size="sm" fw={500} mt="lg" mb="xs">
-          Назва не мусить містити нічого з цього
+          The title must contain none of these
         </Text>
         <WordList
           words={draft.roleGate.neverMatch}
           onChange={(neverMatch) => patch({ roleGate: { ...draft.roleGate, neverMatch } })}
-          placeholder="напр. sales manager"
+          placeholder="e.g. sales manager"
           tone="red"
         />
       </Card>
 
       <Alert color="gray" icon={<Ban size={16} />}>
-        Решта конфіга (гео, досвід, розмір компанії, ваги для студій) тут не редагується і
-        передається без змін. Правити її поки що в `config/scoring.json`.
+        The rest of the config (geo, experience, company size, studio weights) is not editable
+        here and is passed through unchanged. For now it is edited in `config/scoring.json`.
       </Alert>
     </Stack>
   );

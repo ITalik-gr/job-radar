@@ -13,10 +13,10 @@ import {
 } from 'recharts';
 
 /*
- * Один колір на всі графіки. Двох серій в одній системі координат тут ніде немає,
- * тому категорійна палета не потрібна, а синій #2a78d6 проходить контраст на білому.
- * Значення підписані прямо на марках, підказка при наведенні лишається для тих
- * випадків, коли підпис або назва обрізались.
+ * One colour for every chart. Nowhere here are two series on the same axes, so a
+ * categorical palette is not needed, and the blue #2a78d6 clears contrast on white.
+ * Values are labelled right on the marks; the hover tooltip stays for the cases where
+ * a label or a name got cut off.
  */
 const SERIES = '#2a78d6';
 const SERIES_DIM = '#b7d3f6';
@@ -57,7 +57,7 @@ function Hint({
   );
 }
 
-/** Рейтинг: горизонтальні смужки, бо назви технологій і країн не влазять під вертикальні. */
+/** A ranking: horizontal bars, because technology and country names do not fit under vertical ones. */
 export function RankBars({
   rows,
   unit,
@@ -69,7 +69,7 @@ export function RankBars({
   labelWidth?: number;
   highlight?: (row: { label: string; value: number }) => boolean;
 }) {
-  // Місце під підпис справа рахуємо з найдовшого значення, інакше шестизначні вилки обрізає.
+  // Room for the right-hand label comes from the longest value, otherwise six-digit salaries get cut.
   const longest = rows.reduce((max, row) => Math.max(max, String(row.value).length), 1);
   const right = 16 + longest * 7.5 + (unit ? unit.length * 7 : 0);
 
@@ -109,7 +109,7 @@ export function RankBars({
   );
 }
 
-/** Зміна в часі: заливка під лінією, підказка з вертикальним хрестиком. */
+/** Change over time: a filled area under the line, a tooltip with a vertical crosshair. */
 export function TimeSeries({ rows, unit }: { rows: { day: string; count: number }[]; unit?: string }) {
   return (
     <ResponsiveContainer width="100%" height={200}>

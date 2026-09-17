@@ -22,7 +22,7 @@ export interface QueueCard {
   careersUrl: string | null;
   companyStatus: string;
   contactedNote: string | null;
-  /** Коли картку показали вперше. Раніше за сьогодні означає, що її перенесли. */
+  /** When the card was first shown. Earlier than today means it was carried over. */
   firstShownAt: number;
 }
 
@@ -43,7 +43,7 @@ export interface CompanyRow {
   tags: string[];
   sourceUrl: string | null;
   score: number;
-  /** Репутація в каталозі. null означає, що каталог її не показував. */
+  /** Catalog reputation. null means the catalog did not show it. */
   rating: number | null;
   reviewsCount: number | null;
   careersKind: string;
@@ -57,9 +57,10 @@ export interface CompanyRow {
 }
 
 /**
- * Деталі компанії. Тип описує саме те, що повертає GET /companies/:id, і навмисно
- * не успадковує CompanyRow: рахунку в цій відповіді немає, він рахується на льоту
- * лише для списку. Раніше тип обіцяв поле score, і в інтерфейсі показувався нуль.
+ * Company details. The type describes exactly what GET /companies/:id returns and
+ * deliberately does not extend CompanyRow: this response has no score, it is computed
+ * on the fly only for the list. The type used to promise a score field, and the
+ * interface showed a zero.
  */
 export interface CompanyDetail {
   company: {
@@ -136,13 +137,13 @@ export interface StudioCard {
   lastPostAt: number | null;
   tags: string[];
   techHints: string[];
-  /** Репутація в каталозі. null означає, що каталог її не показував. */
+  /** Catalog reputation. null means the catalog did not show it. */
   rating: number | null;
   reviewsCount: number | null;
   minProject: string | null;
   hourlyRate: string | null;
   foundedYear: number | null;
-  /** Блок "Інше": усе, що каталог показав понад перелічені поля. */
+  /** The "Other" block: everything the catalog showed beyond the listed fields. */
   extra: Record<string, string>;
   description: string | null;
   careersUrl: string | null;
@@ -156,13 +157,13 @@ export interface StudioCard {
   lastContactedAt: number | null;
 }
 
-/** Контакт компанії. `id` потрібен, щоб його можна було правити прямо з картки. */
+/** A company contact. `id` is there so it can be edited right from the card. */
 export interface CompanyContact {
   id: number;
   name: string | null;
   role: string | null;
   email: string | null;
-  /** false означає hard bounce: адреса лишається в базі, але писати на неї не можна. */
+  /** false means a hard bounce: the address stays in the database but must not be written to. */
   emailValid: boolean;
 }
 
@@ -197,7 +198,7 @@ export interface RulesPayload {
   source: 'db' | 'file' | 'bundled';
 }
 
-/** Тільки те, що править інтерфейс. Решта конфіга ходить туди-назад як є. */
+/** Only what the interface edits. The rest of the config goes back and forth as is. */
 export interface Rules {
   threshold: number;
   stopWords: string[];
@@ -206,7 +207,7 @@ export interface Rules {
   geo: { enabled: boolean; homeCity: string[]; blockedRegions: string[] } & Record<string, unknown>;
   companies: {
     threshold: number;
-    /** Репутація з каталогу. Може бути відсутня в конфізі, збереженому до її появи. */
+    /** Catalog reputation. May be missing from a config saved before it existed. */
     reputation?: {
       goodRating: number;
       goodRatingBonus: number;
@@ -225,19 +226,19 @@ export interface TemplateRow {
   slug: string;
   name: string;
   kind: string;
-  /** Тип компанії, під який заточений текст. Порожнє означає універсальний. */
+  /** The company kind the text is written for. Empty means universal. */
   forKind: string | null;
   subject: string | null;
-  /** Статичний перший абзац. Тіло підставляє його через {{intro}}. */
+  /** Static first paragraph. The body inserts it through {{intro}}. */
   intro: string | null;
   body: string;
   note: string | null;
   archived: boolean;
-  /** uk | en. За мовою шаблон підбирається під країну компанії. */
+  /** uk | en. The language is how a template is matched to the company's country. */
   language: string;
-  /** vacancy | studio_named | studio_generic | followup. Порожнє означає ручне копіювання. */
+  /** vacancy | studio_named | studio_generic | followup. Empty means manual copying. */
   targetType: string | null;
-  /** Скільки листів написано цим ключем. Показується перед видаленням. */
+  /** How many letters were sent under this key. Shown before deletion. */
   usageCount: number;
   createdAt: number;
   updatedAt: number;
@@ -247,15 +248,15 @@ export interface Stats {
   vacancies: { total: number; open: number; aboveThreshold: number; stopped: number; needsReview: number };
   funnel: Record<string, number>;
   llmBudgetLeft: number;
-  /** anthropic або workers-ai. Видно, за що саме платиться класифікація. */
+  /** anthropic or workers-ai. Shows what exactly classification is billed to. */
   llmProvider: string;
   llmModel: string;
   threshold: number;
 }
 
 /**
- * Токен потрібен, коли радар задеплоєний. Береться з `?token=...` при першому заході
- * і далі живе в localStorage. Локально його просто немає, і сервер не питає.
+ * A token is needed when the radar is deployed. It is taken from `?token=...` on the first
+ * visit and lives in localStorage after that. Locally there is none and the server does not ask.
  */
 const TOKEN_KEY = 'radar-token';
 
@@ -269,7 +270,7 @@ function token(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-/** Стан підключення Gmail. Порожній екран замість пояснення тут не годиться. */
+/** Gmail connection status. An empty screen instead of an explanation will not do here. */
 export interface GmailStatus {
   configured: boolean;
   connected: boolean;
@@ -280,9 +281,9 @@ export interface GmailStatus {
   connectedAt: number | null;
   expiresAt: number | null;
   hint: string | null;
-  /** Хто відправляє: gmail або resend. */
+  /** Who sends: gmail or resend. */
   provider: 'gmail' | 'resend';
-  /** Чи вміє цей провайдер читати скриньку. false означає, що відповіді не помічаються. */
+  /** Whether this provider can read the mailbox. false means replies go unnoticed. */
   readsReplies: boolean;
   providers: {
     id: 'gmail' | 'resend';
@@ -293,7 +294,7 @@ export interface GmailStatus {
   }[];
 }
 
-/** Звіт повного перегляду компанії. Показується як є: кнопкою перевіряють пошук. */
+/** Report of a full company review. Shown as is: the button is there to check the search. */
 export interface RefreshReport {
   companyId: number;
   domain: string;
@@ -312,8 +313,8 @@ export interface RefreshReport {
 }
 
 /**
- * Вердикт моделі по компанії. Порада, а не рішення: поруч завжди лежить
- * `fallbackSlug`, той самий детермінований вибір, який зробить розсилка.
+ * The model's verdict on a company. Advice, not a decision: next to it there is always
+ * `fallbackSlug`, the same deterministic choice the sender would make.
  */
 export interface Verdict {
   template_slug: string | null;
@@ -339,7 +340,7 @@ export interface VerdictReport {
   error: string | null;
 }
 
-/** Чернетка листа на сторінці "До відправки". */
+/** A letter draft on the Outbox page. */
 export interface DraftRow {
   id: number;
   companyId: number;
@@ -356,7 +357,7 @@ export interface DraftRow {
   aiFallbackReason: string | null;
   error: string | null;
   queuedAt: number | null;
-  /** Усі адреси цієї компанії. Мертві теж, але позначені. */
+  /** Every address of this company. Dead ones too, but marked. */
   companyContacts: { name: string | null; role: string | null; email: string; emailValid: boolean }[];
 }
 
@@ -396,8 +397,8 @@ export interface SendCounters {
 }
 
 /**
- * Посилання на підключення пошти. Токен радара мусить іти в query: OAuth
- * повертається редіректом браузера, і заголовок туди не покласти.
+ * The link that connects mail. The radar token has to go in the query: OAuth comes back
+ * as a browser redirect, and a header cannot be attached to that.
  */
 export function gmailConnectUrl(): string {
   const value = token();
@@ -420,19 +421,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    if (body.error) throw new Error(body.error);
+    if (body.error) throw Object.assign(new Error(body.error), { status: response.status });
 
     /*
-     * Відповідь без тіла це не наша помилка, а платформа: воркер не встиг виконати
-     * запит і його зняли. Голе "503 на /enrich" нічого не пояснює, тому причина
-     * називається прямо, інакше її щоразу треба згадувати заново.
+     * A response without a body is not our error but the platform's: the worker did not
+     * finish the request in time and was stopped. A bare "503 on /enrich" explains
+     * nothing, so the reason is named outright, otherwise it has to be recalled every time.
      */
     if (response.status === 503 || response.status === 524) {
       throw new Error(
-        `${response.status} на ${path}: воркер не встиг виконати запит. Довгу операцію треба гнати меншими партіями`,
+        `${response.status} on ${path}: the worker ran out of time. Run long operations in smaller batches`,
       );
     }
-    throw new Error(`${response.status} на ${path}`);
+    throw Object.assign(new Error(`${response.status} on ${path}`), { status: response.status });
   }
   return (await response.json()) as T;
 }
@@ -500,41 +501,41 @@ export const api = {
   gmailStatus: () => request<GmailStatus>('/gmail/status'),
   gmailConnectUrl,
   drafts: () => request<{ drafts: DraftRow[]; counters: SendCounters }>('/outreach/drafts'),
-  /** `templateSlug` це шаблон, вибраний руками на картці. Порожнє означає автопідбір. */
+  /** `templateSlug` is the template picked by hand on the card. Empty means automatic choice. */
   draftForCompany: (companyId: number, vacancyId?: number | null, templateSlug?: string | null) =>
     request<{ id: number | null; reason: string | null }>('/outreach/drafts', {
       method: 'POST',
       body: JSON.stringify({ companyId, vacancyId, templateSlug }),
     }),
-  /** Інший шаблон для чернетки: текст збирається заново, абзац переноситься. */
+  /** A different template for a draft: the text is rebuilt, the intro carries over. */
   retemplateDraft: (id: number, slug: string) =>
     request<DraftRow>(`/outreach/drafts/${id}/template`, {
       method: 'POST',
       body: JSON.stringify({ slug }),
     }),
-  /** Обійти сайт однієї компанії просто зараз: контакти, пошта, ознаки живості. */
+  /** Crawl one company site right now: contacts, email, signs of life. */
   enrichCompany: (domain: string) =>
     request<{
       checked: number;
       contactsAdded: number;
       withEmail: number;
-      /** Сайт малює вміст скриптом. Пояснює, чому в розмітці нічого не знайшлось. */
+      /** The site renders its content with script. Explains why the markup had nothing. */
       clientRendered: number;
-      /** Сайт не відкрився серверу зовсім: захист, таймаут або мертвий домен. */
+      /** The site did not open for the server at all: protection, timeout or a dead domain. */
       unreachable: number;
       errors: string[];
     }>('/enrich', {
       method: 'POST',
       body: JSON.stringify({ domain, limit: 1 }),
     }),
-  /** Підпис, спільний для всіх листів. */
+  /** The signature shared by all letters. */
   signature: () => request<{ signature: string }>('/outreach/signature'),
   saveSignature: (signature: string) =>
     request<{ signature: string }>('/outreach/signature', {
       method: 'PUT',
       body: JSON.stringify({ signature }),
     }),
-  /** Повний перегляд однієї компанії: сайт, стек, контакти, career-сторінка. */
+  /** Full review of one company: site, stack, contacts, careers page. */
   refreshCompany: (companyId: number) =>
     request<RefreshReport>(`/companies/${companyId}/refresh`, { method: 'POST', body: '{}' }),
   companyVerdict: (companyId: number) =>
@@ -550,7 +551,7 @@ export const api = {
     ),
   deleteContact: (companyId: number, contactId: number) =>
     request<{ deleted: boolean }>(`/companies/${companyId}/contacts/${contactId}`, { method: 'DELETE' }),
-  /** Контакт, доданий руками зі сторінки студії. */
+  /** A contact added by hand from the studio page. */
   addContact: (companyId: number, body: { email: string; name?: string; role?: string }) =>
     request<{ email: string; created: boolean }>(`/companies/${companyId}/contacts`, {
       method: 'POST',
@@ -562,10 +563,10 @@ export const api = {
   prepareFollowups: () =>
     request<{ due: number; created: number }>('/outreach/followups', { method: 'POST', body: '{}' }),
   /**
-   * Універсальний виклик операції. Усі роути операцій однакової форми, тому
-   * інтерфейсу не треба знати про кожну окремо: він малює їх списком з опису.
+   * Generic operation call. All operation routes share one shape, so the interface does
+   * not need to know each one: it draws them as a list from their description.
    */
-  /** Мережі Getro по порядку: сторінка Операції проходить їх по одній. */
+  /** Getro networks in order: the Operations page goes through them one at a time. */
   getroNetworks: () => request<{ networks: string[] }>('/sources/getro/networks'),
   run: (path: string, body: Record<string, unknown> = {}) =>
     request<Record<string, unknown>>(path, { method: 'POST', body: JSON.stringify(body) }),
@@ -618,13 +619,13 @@ export const api = {
     }),
 };
 
-/** Скільки повних доби картка чекає рішення. Нуль означає, що її показали сьогодні. */
+/** How many full days a card has waited for a decision. Zero means it was shown today. */
 export function waitingDays(firstShownAt: number): number {
   return Math.floor((Date.now() - firstShownAt) / 86_400_000);
 }
 
 export function formatDate(ms: number | null): string {
-  return ms ? new Date(ms).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) : '';
+  return ms ? new Date(ms).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : '';
 }
 
 export function formatSalary(card: {

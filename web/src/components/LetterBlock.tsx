@@ -16,13 +16,14 @@ import { mailtoLink, renderLetter } from '../../../src/lib/letter';
 import { api } from '../lib/api';
 
 /**
- * Готовий до відправки лист: шаблон власника з підставленими значеннями,
- * кнопка скопіювати і кнопка відкрити пошту.
+ * A letter ready to send: the owner's template with the values filled in, a copy button
+ * and an open-mail button.
  *
- * Навіщо: у базі сотні студій і нуль надісланих листів. Кнопка "Написав" є, але
- * сам лист треба десь скласти, підставити назву, не переплутати нішу. Це і є тертя.
+ * Why: the database had hundreds of studios and zero letters sent. The "Contacted"
+ * button exists, but the letter itself has to be put together somewhere, with the name
+ * filled in and the niche right. That is the friction.
  *
- * Тексту тут ніхто не вигадує: підстановка значень у шаблон, який написав власник.
+ * Nobody makes up text here: values are substituted into a template the owner wrote.
  */
 export function LetterBlock({
   company,
@@ -49,9 +50,9 @@ export function LetterBlock({
   country?: string | null;
   templateKind: 'vacancy' | 'studio';
   /**
-   * Вибір шаблона, спільний з карткою. Без нього блок мав власний вибір, і виходило
-   * дві різні відповіді на одне питання: у превʼю один текст, а в чергу листів і в
-   * запис "Написав" ішов інший. Порожнє означає, що блок вибирає сам.
+   * The template choice, shared with the card. Without it the block had its own choice,
+   * and one question got two answers: the preview showed one text while the send queue
+   * and the "Contacted" record got another. Empty means the block picks on its own.
    */
   slug?: string | null;
   onSlug?: (slug: string) => void;
@@ -64,25 +65,25 @@ export function LetterBlock({
   const options = (data?.templates ?? []).filter((row) => row.kind === templateKind && !row.archived);
 
   /*
-   * За замовчуванням береться шаблон, заточений під тип цієї компанії, і лише
-   * якщо такого немає, універсальний. Дизайн-студії і стартапу пишеться зовсім
-   * різне, і вибирати руками щоразу це те саме тертя, через яке листи не пишуться.
+   * By default the template made for this company's kind is taken, and only if there is
+   * none, a universal one. A design studio and a startup get very different letters, and
+   * picking by hand every time is the same friction that keeps letters unwritten.
    */
   const suggested = options.find((row) => row.forKind && row.forKind === kind) ?? options[0] ?? null;
   const selected = options.find((row) => row.slug === slug) ?? suggested;
 
   /*
-   * Підказка блока сильніша за "перший у списку": вона враховує тип компанії.
-   * Тому щойно блок вибрав шаблон сам, картка про це дізнається, і селект унизу
-   * показує те саме, що превʼю.
+   * The block's suggestion beats "first in the list": it accounts for the company kind.
+   * So as soon as the block picks a template itself, the card learns about it, and the
+   * select below shows the same thing as the preview.
    */
   useEffect(() => {
     if (onSlug && selected && selected.slug !== slug) onSlug(selected.slug);
   }, [onSlug, selected, slug]);
 
   /*
-   * Той самий контекст для теми і тіла, і з першим абзацом усередині. Прев'ю має
-   * показувати рівно те, що піде в пошту, інакше воно не прев'ю, а окремий текст.
+   * The same context for subject and body, with the first paragraph inside. The preview
+   * must show exactly what goes into the mail, otherwise it is not a preview but another text.
    */
   const context = useMemo(
     () => ({
@@ -112,8 +113,8 @@ export function LetterBlock({
   if (options.length === 0) {
     return (
       <Alert color="gray" mt="lg">
-        Шаблонів під цей тип ще немає. Створи на сторінці Шаблони: текст пишеш ти,
-        радар лише підставляє назву компанії, імʼя контакту і стек.
+        No templates for this kind yet. Create one on the Templates page: you write the
+        text, the radar only fills in the company name, the contact name and the stack.
       </Alert>
     );
   }
@@ -125,19 +126,19 @@ export function LetterBlock({
     <Box mt="lg">
       <Group gap="sm" mb="xs">
         <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>
-          лист
+          letter
         </Text>
         <Select
           size="xs"
           data={options.map((row) => ({
             value: row.slug,
-            label: row.forKind === kind ? `${row.name} (під цей тип)` : row.name,
+            label: row.forKind === kind ? `${row.name} (for this kind)` : row.name,
           }))}
           value={selected?.slug ?? null}
           onChange={(value) => value && setSlug(value)}
           allowDeselect={false}
           w={190}
-          aria-label="шаблон листа"
+          aria-label="letter template"
         />
 
         <CopyButton value={rendered?.text ?? ''}>
@@ -150,12 +151,12 @@ export function LetterBlock({
               onClick={copy}
               disabled={empty}
             >
-              {copied ? 'Скопійовано' : 'Скопіювати'}
+              {copied ? 'Copied' : 'Copy'}
             </Button>
           )}
         </CopyButton>
 
-        <Tooltip label={link ? `надіслати на ${contactEmail}` : 'пошти цієї компанії ще немає'}>
+        <Tooltip label={link ? `send to ${contactEmail}` : 'no email for this company yet'}>
           <Button
             size="xs"
             component="a"
@@ -163,32 +164,32 @@ export function LetterBlock({
             disabled={!link || empty}
             leftSection={<Mail size={14} />}
           >
-            Відкрити пошту
+            Open mail
           </Button>
         </Tooltip>
       </Group>
 
       {empty ? (
         <Alert color="yellow" icon={<TriangleAlert size={16} />}>
-          У шаблона «{selected?.name}» порожній текст. Напиши його на сторінці Шаблони.
+          The template "{selected?.name}" has no text. Write it on the Templates page.
         </Alert>
       ) : (
         <>
           {rendered && rendered.missing.length > 0 && (
             <Alert color="yellow" mb="xs" icon={<TriangleAlert size={16} />}>
-              Немає значень для: {rendered.missing.join(', ')}. У листі на їх місці порожньо,
-              тому перечитай перед відправкою.
+              No values for: {rendered.missing.join(', ')}. The letter is blank in their
+              place, so read it through before sending.
             </Alert>
           )}
           {rendered && rendered.unknown.length > 0 && (
             <Alert color="red" mb="xs" icon={<TriangleAlert size={16} />}>
-              Невідомі плейсхолдери: {rendered.unknown.join(', ')}. Скоріш за все друкарська
-              помилка в шаблоні.
+              Unknown placeholders: {rendered.unknown.join(', ')}. Most likely a typo in
+              the template.
             </Alert>
           )}
           {subject && (
             <Text size="sm" c="dimmed" mb={6}>
-              Тема: {subject}
+              Subject: {subject}
             </Text>
           )}
           <Code block className="raw-text" style={{ maxHeight: 320, overflowY: 'auto' }}>
