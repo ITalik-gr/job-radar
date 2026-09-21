@@ -7,12 +7,11 @@ import { notify } from '../notify/telegram.js';
 import { callModelWith, extractJson, noteLlmCall, remainingBudget } from './classify.js';
 
 /**
- * Детекція відповідей і баунсів, розділ 5 OUTREACH.md.
+ * Detecting replies and bounces, section 5 of OUTREACH.md.
  *
- * Дешеві перевірки стоять першими: відправник mailer-daemon, заголовок
- * автовідповідача, слова "out of office" в темі. Модель питається лише тоді,
- * коли лист справді схожий на живу відповідь людини, бо саме таких одиниці,
- * а автовідповідей і баунсів більшість.
+ * Cheap checks go first: a mailer-daemon sender, the auto-responder header, "out of office" in the
+ * subject. The model is asked only when a letter really looks like a live human reply, because
+ * those are few, while auto-replies and bounces are the majority.
  */
 
 export const REPLY_TYPES = ['positive', 'rejection', 'autoreply', 'ooo', 'unclear'] as const;
@@ -31,7 +30,7 @@ const BOUNCE_SUBJECTS = [
   'undeliverable',
 ];
 
-/** Формулювання, за якими hard і soft відрізняються без розбору SMTP-кодів. */
+/** Phrasings that tell hard from soft without parsing SMTP codes. */
 const HARD_BOUNCE_HINTS = [
   'address not found',
   'user unknown',
@@ -59,7 +58,7 @@ export function detectBounce(message: ThreadMessage): BounceCheck {
 
   const text = `${subject} ${message.snippet}`.toLowerCase();
   const hard = HARD_BOUNCE_HINTS.some((hint) => text.includes(hint));
-  // Soft за замовчуванням: тимчасова помилка не привід ховати адресу назавжди.
+  // Soft by default: a temporary error is no reason to hide an address forever.
   return { isBounce: true, type: hard ? 'hard' : 'soft' };
 }
 
@@ -72,7 +71,7 @@ const OOO_HINTS = [
   'відпустка',
 ];
 
-/** Автовідповідь видно з заголовків і теми, і за неї не треба платити моделі. */
+/** An auto-reply shows in the headers and subject, no need to pay a model for it. Ukrainian phrases included. */
 export function detectAuto(message: ThreadMessage): ReplyKind | null {
   if (message.autoSubmitted && message.autoSubmitted.toLowerCase() !== 'no') return 'autoreply';
   const subject = message.subject.toLowerCase();
@@ -82,12 +81,12 @@ export function detectAuto(message: ThreadMessage): ReplyKind | null {
 }
 
 const CLASSIFY_PROMPT = [
-  'Класифікуй відповідь на холодний лист розробника.',
-  'Поверни СТРОГО JSON без markdown: {"type": "positive|rejection|autoreply|ooo|unclear"}',
-  'positive це інтерес, запит деталей, пропозиція поговорити.',
-  'rejection це відмова, "зараз не шукаємо", "не підходить".',
-  'autoreply це автоматична відповідь, ooo це відсутність в офісі.',
-  'unclear це все інше.',
+  'Classify a reply to a cold letter from a developer.',
+  'Return STRICTLY JSON with no markdown: {"type": "positive|rejection|autoreply|ooo|unclear"}',
+  'positive is interest, a request for details, an offer to talk.',
+  'rejection is a refusal, "not hiring right now", "not a fit".',
+  'autoreply is an automatic reply, ooo is out of office.',
+  'unclear is everything else.',
 ].join('\n');
 
 export type ReplyClassifier = (text: string) => Promise<ReplyKind>;
@@ -102,8 +101,8 @@ async function classifyWithModel(text: string): Promise<ReplyKind> {
 }
 
 /**
- * Тип відповіді. Спершу детерміновані ознаки, і тільки потім модель: короткий
- * промпт дешевий, але виклик на кожну автовідповідь це рахунок ні за що.
+ * The reply type. Deterministic signs first, and only then the model: a short prompt is cheap, but
+ * a call for every auto-reply is a bill for nothing.
  */
 export async function classifyReply(
   message: ThreadMessage,
@@ -115,12 +114,12 @@ export async function classifyReply(
   try {
     return await classifier(`${message.subject}\n\n${message.snippet}`);
   } catch (error) {
-    log.warn({ err: String(error) }, 'класифікація відповіді впала');
+    log.warn({ err: String(error) }, 'reply classification failed');
     return 'unclear';
   }
 }
 
-/** Стан компанії після відповіді. Автовідповідь нічого не означає, тому null. */
+/** Company state after a reply. An auto-reply means nothing, hence null. */
 const STATUS_BY_REPLY: Record<ReplyKind, string | null> = {
   positive: 'replied',
   rejection: 'rejected_by_them',
@@ -137,10 +136,10 @@ export interface CheckRepliesReport {
 }
 
 /**
- * Обхід усіх надісланих листів без відповіді. Крон раз на годину.
+ * Walks every sent letter without a reply. Cron runs it hourly.
  *
- * Власні листи в треді пропускаються за адресою відправника: у треді фолоу-апу
- * їх двоє, і без цієї перевірки система порахувала б власний лист відповіддю.
+ * The owner's own letters in a thread are skipped by sender address: a follow-up thread has two of
+ * them, and without this check the system would count its own letter as a reply.
  */
 export async function checkReplies(
   options: {
@@ -199,16 +198,15 @@ export async function checkReplies(
         .where(eq(outreach.id, row.id));
 
       /*
-       * Hard bounce вбиває адресу, але не компанію: у неї може бути інший
-       * контакт, і блокувати всю компанію через одну мертву скриньку означало б
-       * втратити її назавжди через чужу плинність кадрів.
+       * A hard bounce kills the address, not the company: it may have another contact, and blocking
+       * the whole company over one dead mailbox would lose it forever because of someone else's turnover.
        */
       if (bounce.type === 'hard' && row.contactEmail) {
         await db
           .update(contacts)
           .set({ emailValid: false })
           .where(eq(contacts.email, row.contactEmail));
-        log.warn({ email: row.contactEmail }, 'адреса позначена мертвою після hard bounce');
+        log.warn({ email: row.contactEmail }, 'address marked dead after a hard bounce');
       }
       continue;
     }
@@ -229,17 +227,17 @@ export async function checkReplies(
         .where(eq(companyState.companyId, row.companyId));
     }
 
-    // Позитивна відповідь це єдине, заради чого варто відволікати людину одразу.
+    // A positive reply is the only thing worth interrupting a person for right away.
     if (type === 'positive') {
-      await notify.raw(`Позитивна відповідь: ${row.contactEmail ?? 'без адреси'}`);
+      await notify.raw(`Positive reply: ${row.contactEmail ?? 'no address'}`);
     }
   }
 
-  log.info(report, 'перевірка відповідей завершена');
+  log.info(report, 'reply check finished');
   return report;
 }
 
-/** Частка баунсів за останні N листів. Основа стоп-крана і плашки в інтерфейсі. */
+/** Bounce share over the last N letters. The basis of the emergency stop and the interface banner. */
 export async function recentBounceRate(window = 50): Promise<number> {
   const db = getDb();
   const rows = await db

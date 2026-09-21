@@ -20,8 +20,11 @@ export const SCHEDULE = {
   careersInteresting: '30 3 * * *',
   catalogs: '0 4 * * 1',
   discovery: '0 5 * * 2',
-  digest: '0 10 * * *',
-  followUps: '0 18 * * *',
+  /**
+   * The only Telegram message: one summary on Monday and Thursday. Daily digests and alerts
+   * every 6 hours came several at a time and turned the bot into noise.
+   */
+  summary: '0 10 * * 1,4',
   /** Відповіді і баунси. Щогодини: раніше нема сенсу, пізніше втрачається темп. */
   replies: '5 * * * *',
   /** Чернетки фолоу-апів готуються зранку, щоб о 10:00 вони вже були в списку. */
@@ -33,8 +36,8 @@ async function safely(name: string, task: () => Promise<unknown>): Promise<void>
     await task();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // Log only, no Telegram push: an hourly task failing would otherwise message every hour.
     log.error({ task: name, err: message }, 'завдання за розкладом впало');
-    await notify.raw(`Завдання <b>${name}</b> впало: ${message}`).catch(() => undefined);
   }
 }
 
@@ -43,8 +46,6 @@ async function runBoards(): Promise<void> {
     await safely(`sync:${source.id}`, () => syncSource(source.id));
   }
   await safely('classify:pending', () => classifyPending(50));
-  await safely('notify:highScore', () => notify.highScore());
-  await safely('notify:broken', () => notify.broken());
 }
 
 /**
@@ -108,9 +109,7 @@ export function startScheduler(): void {
   cron.schedule(SCHEDULE.ats, () => void runBoards(), { timezone });
   cron.schedule(SCHEDULE.catalogs, () => void safely('catalog:dou', () => syncDou({ limit: 60 })), { timezone });
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });
-  cron.schedule(SCHEDULE.digest, () => void safely('notify:digest', () => notify.digest()), { timezone });
-  cron.schedule(SCHEDULE.digest, () => void safely('notify:outreach', () => notify.outreach()), { timezone });
-  cron.schedule(SCHEDULE.followUps, () => void safely('notify:followUps', () => notify.followUps()), { timezone });
+  cron.schedule(SCHEDULE.summary, () => void safely('notify:summary', () => notify.summary()), { timezone });
 
   /*
    * Розсилка живе тільки локально: токен Gmail лежить файлом на ноутбуці, і на

@@ -8,19 +8,19 @@ import { callModelWith, extractJson, noteLlmCall, remainingBudget } from './clas
 import type { DraftCandidate, Language } from './outreach.js';
 
 /**
- * Персоналізація першого абзацу листа, розділ 4 OUTREACH.md.
+ * Personalising the first paragraph of a letter, section 4 of OUTREACH.md.
  *
- * Модель пропонує, код вирішує. Усе, що вона повертає, проходить детерміновану
- * перевірку, і будь-яка підозра означає відкат на статичний абзац із шаблона.
- * Система ніколи не відправляє лист без першого абзацу і ніколи не блокується
- * через модель: вигаданий факт у холодному листі коштує дорожче, ніж шаблонний
- * текст замість персоналізованого.
+ * The model proposes, the code decides. Everything it returns goes through a deterministic
+ * check, and any suspicion means falling back to the static paragraph from the template. The
+ * system never sends a letter without a first paragraph and is never blocked by the model: a
+ * made-up fact in a cold letter costs more than template text instead of a personalised one.
  *
- * Персоналізується ТІЛЬКИ перший абзац. Другий містить факти про власника, і
- * генерувати його означало б ризикувати вигаданим досвідом у листі незнайомцю.
+ * ONLY the first paragraph is personalised. The second holds facts about the owner, and
+ * generating it would risk made-up experience in a letter to a stranger.
  */
 
-export const AI_PROMPT_VERSION = 'outreach-intro-v2';
+/** v3 moved the prompt itself to English; the output language is still set per letter. */
+export const AI_PROMPT_VERSION = 'outreach-intro-v3';
 
 export const paragraphSchema = z.object({
   paragraph: z.string(),
@@ -34,7 +34,7 @@ export const MIN_WORDS = 20;
 export const MAX_WORDS = 60;
 export const MIN_CONFIDENCE = 60;
 
-/** Слова, після яких лист читається як розсилка. Список з OUTREACH.md. */
+/** Words that make a letter read like a mass mailing. The list comes from OUTREACH.md. */
 export const STOP_PHRASES = [
   'excited',
   'passionate',
@@ -60,10 +60,10 @@ export interface CompanyFacts {
 }
 
 /**
- * Вхідні дані для моделі: тільки те, що вже є в базі по цій компанії.
+ * Model input: only what the database already has on this company.
  *
- * Опис обрізається до 400 символів навмисно. Довший текст не додає моделі
- * розуміння, зате дає більше матеріалу, з якого вона починає фантазувати.
+ * The description is cut to 400 characters on purpose. Longer text adds no understanding for
+ * the model, but gives it more material to start inventing from.
  */
 export function companyFacts(candidate: DraftCandidate): CompanyFacts {
   return {
@@ -82,43 +82,43 @@ export function companyFacts(candidate: DraftCandidate): CompanyFacts {
 
 export function buildPrompt(language: Language, ownerFacts: string[]): string {
   return [
-    'Ти пишеш перший абзац холодного листа розробника до компанії.',
+    'You write the first paragraph of a cold letter from a developer to a company.',
     '',
-    'У блоці LETTER лежить увесь лист, у якому мітка {{intro}} це місце твого абзацу.',
-    'Прочитай його: далі в листі відправник каже, хто він і що пропонує. Твій абзац',
-    'мусить підводити саме до цього тексту і не повторювати того, що в ньому вже є.',
+    'The LETTER block holds the whole letter, where the {{intro}} marker is the place for your paragraph.',
+    'Read it: further on the sender says who they are and what they offer. Your paragraph',
+    'must lead into exactly that text and must not repeat what it already says.',
     '',
-    'Що це за абзац:',
-    '1. Це причина, чому лист пишеться саме цій компанії. Одне-два речення.',
-    '2. Звертайся до читача на "ти або ви" ("you", "ваш"), це лист людині, а не довідка.',
-    '3. НЕ переказуй опис компанії з їхнього сайту. Речення "X is a web development',
-    '   company based in London that specializes in..." це не лист, це витяг з каталогу,',
-    '   і читач знає про себе більше за тебе. Замість опису назви те, що робить',
-    '   звернення доречним: їхній стек, тип роботи, ринок, розмір команди.',
-    '4. Без компліментів і без оцінок їхньої роботи ("great work", "love your site"):',
-    '   ти їхніх проєктів не бачив, і це чути.',
+    'What this paragraph is:',
+    '1. The reason the letter is written to this particular company. One or two sentences.',
+    '2. Address the reader directly ("you", "your"; in Ukrainian "ви" or "ти"), this is a letter to a person, not a reference entry.',
+    '3. Do NOT retell the company description from their site. A sentence like "X is a web development',
+    '   company based in London that specializes in..." is not a letter, it is a catalog excerpt,',
+    '   and the reader knows more about themselves than you do. Instead of a description, name what makes',
+    '   the approach relevant: their stack, type of work, market, team size.',
+    '4. No compliments and no judgement of their work ("great work", "love your site"):',
+    '   you have not seen their projects, and it shows.',
     '',
-    'Обмеження:',
-    '5. Використовуй ТІЛЬКИ факти з блоку COMPANY. Якщо фактів мало, напиши загальніше,',
-    '   але НЕ вигадуй проєктів, клієнтів, нагород, цифр і новин.',
-    '6. Заборонено: em dash, знак оклику, слова excited, passionate, thrilled,',
-    '   reach out, I hope this finds you well, конструкції "not X but Y".',
-    '7. Без привітання і без підпису, вони вже є в листі.',
-    `8. Мова: ${language}.`,
+    'Constraints:',
+    '5. Use ONLY facts from the COMPANY block. If there are few facts, write more generally,',
+    '   but do NOT invent projects, clients, awards, numbers or news.',
+    '6. Forbidden: em dash, exclamation mark, the words excited, passionate, thrilled,',
+    '   reach out, I hope this finds you well, and "not X but Y" constructions.',
+    '7. No greeting and no signature, the letter already has them.',
+    `8. Language: ${language}.`,
     ...(ownerFacts.length > 0
-      ? ['', 'Про відправника дозволено згадати тільки це:', ...ownerFacts.map((item) => `- ${item}`)]
+      ? ['', 'About the sender you may mention only this:', ...ownerFacts.map((item) => `- ${item}`)]
       : []),
     '',
-    'Поверни СТРОГО JSON без markdown і без преамбули:',
+    'Return STRICTLY JSON with no markdown and no preamble:',
     '{"paragraph": "...", "facts_used": ["..."], "confidence": 0-100}',
   ].join('\n');
 }
 
 export interface Validation {
   ok: boolean;
-  /** Причина відкату. Логується і потрапляє в статистику по причинах. */
+  /** Fallback reason. Logged and counted in the per-reason statistics. */
   reason?: string;
-  /** Текст після дозволених автоправок. Порожній, якщо відкат. */
+  /** The text after the allowed automatic fixes. Empty on fallback. */
   paragraph?: string;
 }
 
@@ -131,11 +131,11 @@ function sentences(text: string): number {
 }
 
 /**
- * Власні назви і числа з абзацу. Кожне мусить зустрічатись у вхідних даних,
- * інакше модель його вигадала.
+ * Proper names and numbers from the paragraph. Each must appear in the input, otherwise the
+ * model made it up.
  *
- * Перше слово речення пропускається: велика літера там означає початок речення,
- * а не назву, і без цієї поправки відкочувався б кожен другий валідний абзац.
+ * The first word of a sentence is skipped: a capital letter there marks the start of a
+ * sentence, not a name, and without this every other valid paragraph would fall back.
  */
 export function coinedTokens(paragraph: string, source: string): string[] {
   const haystack = source.toLowerCase();
@@ -158,13 +158,13 @@ export function coinedTokens(paragraph: string, source: string): string[] {
 }
 
 /**
- * Детермінована перевірка відповіді моделі. Порядок від найдешевшої до найдорожчої.
+ * Deterministic check of the model response. Ordered from cheapest to most expensive.
  *
- * Em dash не відкочує абзац, а замінюється комою: це єдина правка, після якої
- * текст лишається тим самим текстом. Решта порушень означає відкат, бо чинити
- * чужу вигадку кодом неможливо.
+ * An em dash does not cause a fallback, it is replaced with a comma: that is the only fix after
+ * which the text stays the same text. Every other violation means a fallback, because code
+ * cannot repair someone else's invention.
  */
-/** Чи звертається абзац до читача. Лист без звертання це довідка про компанію. */
+/** Whether the paragraph addresses the reader. A letter without that is a reference entry about the company. */
 export function addressesReader(paragraph: string, language: Language): boolean {
   const lower = paragraph.toLowerCase();
   const markers =
@@ -174,7 +174,7 @@ export function addressesReader(paragraph: string, language: Language): boolean 
   return markers.some((marker) => marker.test(lower));
 }
 
-/** Найдовший спільний відрізок слів між абзацом і описом компанії. */
+/** The longest shared run of words between the paragraph and the company description. */
 export function longestSharedRun(paragraph: string, description: string | null): number {
   if (!description) return 0;
   const clean = (text: string) =>
@@ -199,7 +199,7 @@ export function longestSharedRun(paragraph: string, description: string | null):
   return best;
 }
 
-/** Довший збіг означає, що абзац переписано з опису компанії, а не написано. */
+/** A longer match means the paragraph was copied from the company description rather than written. */
 export const MAX_SHARED_RUN = 7;
 
 export function validateParagraph(
@@ -209,54 +209,54 @@ export function validateParagraph(
 ): Validation {
   const paragraph = response.paragraph.replace(/\s*—\s*/g, ', ').trim();
 
-  if (!paragraph) return { ok: false, reason: 'порожній абзац' };
+  if (!paragraph) return { ok: false, reason: 'empty paragraph' };
   if (response.confidence < MIN_CONFIDENCE) {
-    return { ok: false, reason: `низька впевненість: ${response.confidence}` };
+    return { ok: false, reason: `low confidence: ${response.confidence}` };
   }
 
   const count = sentences(paragraph);
-  if (count < 1 || count > 3) return { ok: false, reason: `речень ${count}, треба 1-3` };
+  if (count < 1 || count > 3) return { ok: false, reason: `${count} sentences, need 1-3` };
 
   const length = words(paragraph);
   if (length < MIN_WORDS || length > MAX_WORDS) {
-    return { ok: false, reason: `слів ${length}, треба ${MIN_WORDS}-${MAX_WORDS}` };
+    return { ok: false, reason: `${length} words, need ${MIN_WORDS}-${MAX_WORDS}` };
   }
 
-  if (paragraph.includes('!')) return { ok: false, reason: 'знак оклику' };
+  if (paragraph.includes('!')) return { ok: false, reason: 'exclamation mark' };
 
   const lower = paragraph.toLowerCase();
   const stop = STOP_PHRASES.find((phrase) => lower.includes(phrase));
-  if (stop) return { ok: false, reason: `стоп-слово: ${stop}` };
+  if (stop) return { ok: false, reason: `stop word: ${stop}` };
 
   if (/\bnot\s+[\w\s]{1,20}\bbut\b/i.test(paragraph)) {
-    return { ok: false, reason: 'конструкція not X but Y' };
+    return { ok: false, reason: 'not X but Y construction' };
   }
 
   const coined = coinedTokens(paragraph, sourceJson);
   if (coined.length > 0) {
-    return { ok: false, reason: `вигадані сутності: ${coined.join(', ')}` };
+    return { ok: false, reason: `invented entities: ${coined.join(', ')}` };
   }
 
   /*
-   * Дві перевірки проти найчастішого браку: абзац, який переказує опис компанії
-   * з каталогу. Формально він бездоганний, фактів не вигадує і всі попередні
-   * перевірки проходить, але як лист не працює: читач знає про себе більше, ніж
-   * там написано, і бачить, що перед ним автозаповнення.
+   * Two checks against the most common defect: a paragraph that retells the catalog
+   * description of the company. Formally it is flawless, invents nothing and passes every
+   * earlier check, but it does not work as a letter: the reader knows more about themselves
+   * than is written there, and sees autofill.
    */
   if (context.language && !addressesReader(paragraph, context.language)) {
-    return { ok: false, reason: 'абзац не звертається до читача, це опис компанії' };
+    return { ok: false, reason: 'the paragraph does not address the reader, it describes the company' };
   }
 
   const shared = longestSharedRun(paragraph, context.description ?? null);
   if (shared > MAX_SHARED_RUN) {
-    return { ok: false, reason: `переказ опису компанії, ${shared} слів поспіль` };
+    return { ok: false, reason: `retells the company description, ${shared} words in a row` };
   }
 
   return { ok: true, paragraph };
 }
 
 export interface ParagraphResult {
-  /** Готовий текст або null, якщо відкат на шаблон. */
+  /** Ready text, or null on fallback to the template. */
   paragraph: string | null;
   used: boolean;
   reason: string | null;
@@ -267,28 +267,28 @@ export type ModelCaller = (system: string, user: string) => Promise<string>;
 
 async function defaultCaller(system: string, user: string): Promise<string> {
   /*
-   * Температура 0.7: абзац має звучати як текст людини, а не як витяг з бази.
-   * Модель окрема і сильніша за класифікаційну: тут один виклик на компанію,
-   * якій справді пишеться лист, і його читатиме людина.
+   * Temperature 0.7: the paragraph should sound like a person wrote it, not like a database
+   * excerpt. The model is separate and stronger than the classifier: one call per company that
+   * really gets a letter, and a person will read it.
    */
   const raw = await callModelWith(system, user, 0.7, config.llm.outreachModel);
   await noteLlmCall(raw.inputTokens, raw.outputTokens);
   return raw.text;
 }
 
-/** Активні факти про власника, які модель має право згадати. */
+/** Active facts about the owner that the model may mention. */
 export async function activeFacts(language: Language): Promise<string[]> {
   const rows = await getDb().select().from(facts).where(eq(facts.isActive, true));
   return rows.map((row) => (language === 'uk' ? row.textUk : row.textEn)).filter(Boolean);
 }
 
 /**
- * Один виклик на компанію. Результат кешується в `outreach.ai_paragraph`, і
- * повторна генерація буває тільки по явній кнопці: фонові перегенерації це
- * рахунок, який росте сам собою і нічого не покращує.
+ * One call per company. The result is cached in `outreach.ai_paragraph`, and regeneration
+ * happens only on an explicit button: background regenerations are a bill that grows by itself
+ * and improves nothing.
  */
 export interface ParagraphContext {
-  /** Тіло шаблона з міткою {{intro}}. Модель має бачити, у що вписується абзац. */
+  /** Template body with the {{intro}} marker. The model has to see what the paragraph fits into. */
   letter?: string | null;
   subject?: string | null;
 }
@@ -300,17 +300,17 @@ export async function generateParagraph(
   caller: ModelCaller = defaultCaller,
 ): Promise<ParagraphResult> {
   if ((await remainingBudget()) <= 0) {
-    return { paragraph: null, used: false, reason: 'денний ліміт викликів моделі', confidence: null };
+    return { paragraph: null, used: false, reason: 'daily model call limit', confidence: null };
   }
 
   const sourceJson = JSON.stringify(companyFacts(candidate), null, 2);
   const system = buildPrompt(language, await activeFacts(language));
 
   /*
-   * Лист передається цілком. Без нього модель бачила лише картку компанії і
-   * писала довідку про неї: формально за правилами, а як перший абзац листа
-   * ні до чого. Абзац мусить підводити до тексту, який іде далі, а побачити
-   * той текст можна тільки одним способом, показати його.
+   * The whole letter is passed in. Without it the model saw only the company card and wrote a
+   * reference entry about it: formally by the rules, and useless as the first paragraph of a
+   * letter. The paragraph has to lead into the text that follows, and the only way to see that
+   * text is to show it.
    */
   const user = [
     context.subject ? `SUBJECT:\n${context.subject}` : null,
@@ -320,13 +320,13 @@ export async function generateParagraph(
     .filter(Boolean)
     .join('\n\n');
 
-  // Один ретрай на невалідний JSON, далі відкат. Ганяти модель по колу дорого.
-  let lastReason = 'модель не відповіла';
+  // One retry on invalid JSON, then fallback. Running the model in circles is expensive.
+  let lastReason = 'the model did not answer';
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const parsed = paragraphSchema.safeParse(extractJson(await caller(system, user)));
       if (!parsed.success) {
-        lastReason = 'невалідний JSON';
+        lastReason = 'invalid JSON';
         continue;
       }
 
@@ -343,12 +343,12 @@ export async function generateParagraph(
         };
       }
 
-      // Валідація це не збій звʼязку: другий виклик дасть той самий клас проблеми.
-      log.info({ company: candidate.company, reason: validation.reason }, 'відкат AI-абзацу');
+      // Validation is not a connection failure: a second call gives the same class of problem.
+      log.info({ company: candidate.company, reason: validation.reason }, 'AI paragraph fallback');
       return {
         paragraph: null,
         used: false,
-        reason: validation.reason ?? 'невідома причина',
+        reason: validation.reason ?? 'unknown reason',
         confidence: parsed.data.confidence,
       };
     } catch (error) {
@@ -356,6 +356,6 @@ export async function generateParagraph(
     }
   }
 
-  log.warn({ company: candidate.company, reason: lastReason }, 'відкат AI-абзацу');
+  log.warn({ company: candidate.company, reason: lastReason }, 'AI paragraph fallback');
   return { paragraph: null, used: false, reason: lastReason, confidence: null };
 }

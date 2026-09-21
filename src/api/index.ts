@@ -77,19 +77,19 @@ import {
 
 export const app = new Hono();
 
-// Інструмент локальний і однокористувацький, тому авторизації немає навмисно.
+// The tool is local and single-user, so there is no authentication on purpose.
 const WEB_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 /**
- * Поки радар живе на localhost, авторизація не потрібна. Щойно він публічний,
- * без токена його база компаній і листування відкриті світу, тому перевірка
- * вмикається автоматично, коли RADAR_TOKEN заданий.
+ * While the radar lives on localhost, no authentication is needed. Once it is public, its
+ * company database and correspondence are open to the world without a token, so the check
+ * switches on automatically when RADAR_TOKEN is set.
  */
 export function requireToken(token: string | undefined) {
   return async (c: { req: { header: (name: string) => string | undefined; query: (name: string) => string | undefined; path: string; method: string } }, next: () => Promise<void>) => {
     /*
-     * Колбек Google приходить із браузера редіректом, заголовок туди не покласти.
-     * Замість токена він перевіряє `state`, який ми самі поклали в посилання.
+     * The Google callback arrives from the browser as a redirect, a header cannot ride along.
+     * Instead of the token it checks `state`, which we put into the link ourselves.
      */
     const open = ['/api/health', '/api/gmail/callback'];
     if (!token || c.req.method === 'OPTIONS' || open.includes(c.req.path)) return next();
@@ -100,16 +100,16 @@ export function requireToken(token: string | undefined) {
       c.req.query('token');
 
     if (provided !== token) {
-      throw Object.assign(new Error('немає або невірний токен'), { status: 401 });
+      throw Object.assign(new Error('missing or invalid token'), { status: 401 });
     }
     return next();
   };
 }
 
 /**
- * Один обробник CORS на все: інтерфейс ходить із 5173, а збирач каталогів працює
- * у вкладці стороннього сайту, тому для /api/import дозволений будь-який origin.
- * Сервер слухає тільки localhost, назовні ці роути недоступні.
+ * One CORS handler for everything: the interface calls from 5173, and the catalog collector
+ * runs in a third-party site's tab, so /api/import allows any origin.
+ * The server listens on localhost only, these routes are not reachable from outside.
  */
 app.use(
   '/api/*',
@@ -117,12 +117,11 @@ app.use(
     origin: (origin, c) =>
       c.req.path.startsWith('/api/import/') ? origin ?? '*' : WEB_ORIGINS.includes(origin) ? origin : null,
     /*
-     * Перелік мусить збігатися з тим, що застосунок реально шле. Правки шаблонів,
-     * чернеток, фактів, правил і контактів ідуть через PATCH, PUT і DELETE, і
-     * поки їх тут не було, будь-яке звернення не з того самого походження
-     * відбивалось ще на preflight. Локально це не виявлялось, бо vite проксює
-     * `/api` і робить запити своїми, тобто пастка чекала на першого, хто
-     * відкриє інтерфейс не через проксі.
+     * The list must match what the application really sends. Edits to templates, drafts,
+     * facts, rules and contacts go through PATCH, PUT and DELETE, and while they were
+     * missing here any call from another origin bounced at preflight. Locally this never
+     * showed, because vite proxies `/api` and makes the requests same-origin, so the trap
+     * waited for the first person to open the interface without the proxy.
      */
     allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['content-type', 'x-radar-token', 'authorization'],
@@ -132,13 +131,13 @@ app.use(
 app.use('/api/*', async (c, next) => requireToken(config.token)(c, next));
 
 /**
- * Здоровʼя. З `?deep=1` ще й перевіряє базу: на проді найчастіша причина падінь це
- * незастосовані міграції, і тоді будь-який запит валиться з "no such table".
+ * Health. With `?deep=1` it also checks the database: in production the most common cause
+ * of failures is unapplied migrations, and then every query dies with "no such table".
  */
 /**
- * Скільки міграцій уже лягло в базу. Таблиця обліку різна: локально це drizzle,
- * на Cloudflare wrangler веде свою. Обидві дають те саме число, тому питаємо ту,
- * яка є, а не ту, яку очікували побачити.
+ * How many migrations the database already has. The bookkeeping table differs: locally it is
+ * drizzle's, on Cloudflare wrangler keeps its own. Both give the same number, so we ask the one
+ * that exists rather than the one we expected to see.
  */
 async function migrationsApplied(): Promise<number | null> {
   for (const table of ['__drizzle_migrations', 'd1_migrations']) {
@@ -149,7 +148,7 @@ async function migrationsApplied(): Promise<number | null> {
       const count = rows[0]?.count;
       if (typeof count === 'number') return count;
     } catch {
-      // Немає такої таблиці означає, що облік веде інша. Перевіряємо наступну.
+      // No such table means the other one keeps the books. Try the next.
     }
   }
   return null;
@@ -181,10 +180,10 @@ app.get('/api/health', async (c) => {
     const missing = expected.filter((name) => !tables.includes(name));
 
     /*
-     * Наявності таблиці мало. Міграція, що лише додає колонки, лишає перелік таблиць
-     * незмінним, тому воркер з новим кодом і старою схемою виглядав тут здоровим,
-     * а на сторінці Компанії віддавав 500 "no such column: companies.rating".
-     * Тому ще й проба на найновіші колонки: дешевий запит, який ловить саме цей випадок.
+     * A table being present is not enough. A migration that only adds columns leaves the list
+     * of tables unchanged, so a worker with new code and an old schema looked healthy here
+     * while the Companies page returned 500 "no such column: companies.rating".
+     * Hence a probe on the newest columns too: a cheap query that catches exactly this case.
      */
     let columns: string | null = null;
     try {
@@ -194,14 +193,14 @@ app.get('/api/health', async (c) => {
     }
 
     /*
-     * Головна перевірка тут саме ця, а не проба колонок вище.
+     * This is the main check here, not the column probe above.
      *
-     * Проба знає лише ті колонки, які їй колись вписали, тому кожна наступна
-     * міграція проходить повз неї. Саме так і сталось: база відстала на дві
-     * міграції, сторінка Студії віддавала 500 "no such column: needs_browser",
-     * а `deep=1` бадьоро відповідав "ok". Порівняння кількостей не знає нічого
-     * про схему і тому не застаріває: у журналі стільки записів, скільки файлів
-     * міграцій, і в базі має бути рівно стільки ж.
+     * The probe knows only the columns someone once wrote into it, so every later migration
+     * slips past it. That is exactly what happened: the database fell two migrations behind,
+     * the Studios page returned 500 "no such column: needs_browser", and `deep=1` cheerfully
+     * answered "ok". Comparing counts knows nothing about the schema and therefore never goes
+     * stale: the journal has as many entries as there are migration files, and the database
+     * must have exactly as many.
      */
     const applied = await migrationsApplied();
     const total = journal.entries.length;
@@ -212,15 +211,15 @@ app.get('/api/health', async (c) => {
     return c.json({
       ...base,
       ok: base.ok && ok,
-      db: ok ? 'ok' : 'міграції не застосовані',
+      db: ok ? 'ok' : 'migrations not applied',
       tables,
       missing,
       columns,
       migrations: { applied, expected: total, behind },
-      hint: ok ? null : 'pnpm db:migrate локально або pnpm cf:migrate на воркері',
+      hint: ok ? null : 'pnpm db:migrate locally or pnpm cf:migrate on the worker',
     });
   } catch (error) {
-    return c.json({ ...base, ok: false, db: 'помилка', error: describe(error) }, 500);
+    return c.json({ ...base, ok: false, db: 'error', error: describe(error) }, 500);
   }
 });
 
@@ -238,15 +237,14 @@ app.get('/api/queue', async (c) => {
 });
 
 /**
- * Добрати картки в сьогоднішній зріз. Саме дія власника, а не автоматика:
- * зріз навмисно фіксований, інакше нова вакансія з вищим рахунком витісняла б ту,
- * яку ще не встигли подивитись.
+ * Top up today's slice. An owner action rather than automatic: the slice is fixed on
+ * purpose, otherwise a new vacancy with a higher score would push out one not yet looked at.
  */
 app.post('/api/queue/top-up', async (c) => c.json(await topUpQueue()));
 
 /**
- * Вивантаження у CSV прямо з інтерфейсу. Віддається як файл, тому браузер його
- * одразу зберігає, а не показує текстом.
+ * CSV export straight from the interface. Served as a file, so the browser saves it at
+ * once instead of showing it as text.
  */
 app.get('/api/export/:what', async (c) => {
   const what = c.req.param('what');
@@ -256,39 +254,39 @@ app.get('/api/export/:what', async (c) => {
 
   if (what === 'queue') {
     rows = (await getQueue(todayKey())).map((card) => ({
-      компанія: card.company,
-      домен: card.domain,
-      вакансія: card.title,
-      рахунок: card.score,
-      грейд: card.seniority,
-      локація: card.location,
-      вилка: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
-      стек: card.stack.join(' '),
-      посилання: card.url,
-      рішення: card.decision ?? '',
+      company: card.company,
+      domain: card.domain,
+      vacancy: card.title,
+      score: card.score,
+      seniority: card.seniority,
+      location: card.location,
+      salary: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
+      stack: card.stack.join(' '),
+      url: card.url,
+      decision: card.decision ?? '',
     }));
   } else if (what === 'studios') {
     const page = await studioPage({ limit: 1000, withNamedContact: named });
     rows = page.cards.map((card) => ({
-      компанія: card.name,
-      домен: card.domain,
-      тип: card.kind,
-      рахунок: card.score,
-      де: [card.city, card.country].filter(Boolean).join(', '),
-      контакт: card.contacts.find((contact) => contact.name)?.name ?? '',
-      посада: card.contacts.find((contact) => contact.name)?.role ?? '',
-      пошта:
+      company: card.name,
+      domain: card.domain,
+      kind: card.kind,
+      score: card.score,
+      location: [card.city, card.country].filter(Boolean).join(', '),
+      contact: card.contacts.find((contact) => contact.name)?.name ?? '',
+      role: card.contacts.find((contact) => contact.name)?.role ?? '',
+      email:
         card.contacts.find((contact) => contact.name && contact.email)?.email ??
         card.contacts.find((contact) => contact.email)?.email ??
         '',
-      вакансій: card.openVacancies,
-      оцінка: card.rating ?? '',
-      відгуків: card.reviewsCount ?? '',
-      ставка: card.hourlyRate ?? '',
-      мінімальний_проєкт: card.minProject ?? '',
+      vacancies: card.openVacancies,
+      rating: card.rating ?? '',
+      reviews: card.reviewsCount ?? '',
+      hourly_rate: card.hourlyRate ?? '',
+      min_project: card.minProject ?? '',
     }));
   } else {
-    return c.json({ error: `невідомий тип вивантаження: ${what}` }, 400);
+    return c.json({ error: `unknown export type: ${what}` }, 400);
   }
 
   return new Response(toCsv(rows), {
@@ -312,7 +310,7 @@ app.post('/api/vacancies/:id/action', async (c) => {
   }>();
 
   if (!ACTIONS.includes(body.action as Action)) {
-    return c.json({ error: `невідома дія: ${body.action}` }, 400);
+    return c.json({ error: `unknown action: ${body.action}` }, 400);
   }
 
   const result = await applyAction({
@@ -334,15 +332,15 @@ app.post('/api/import/catalog', async (c) => {
   const result = await importFromBrowser(body);
   log.info(
     { source: body.source, page: body.pageUrl, ...result },
-    'сторінку каталогу прийнято з браузера',
+    'catalog page received from the browser',
   );
   return c.json(result);
 });
 
 app.get('/api/studios', async (c) => {
-  // Ліміт свідомо високий: список студій це основний робочий інструмент власника,
-  // і 25 записів на 300 компаній у базі виглядали так, ніби збір не працює.
-  // Уся видача важить близько 300 КБ, для локального інструмента це нічого.
+  // The limit is deliberately high: the studio list is the owner's main working tool, and
+  // 25 records out of 300 companies in the database looked as if collection was broken.
+  // The whole response weighs about 300 KB, which is nothing for a local tool.
   const page = await studioPage({
     limit: c.req.query('limit') ? Number(c.req.query('limit')) : 1000,
     minScore: c.req.query('min') ? Number(c.req.query('min')) : undefined,
@@ -380,9 +378,9 @@ app.post('/api/companies/:id/action', async (c) => {
 app.post('/api/score/recalc', async (c) => c.json(await recalcScores()));
 
 /*
- * Правила відбору і шаблони листів правляться з інтерфейсу, а не тільки з файла.
- * На Workers файлової системи немає, тому без цих роутів на проді не змінити ні
- * поріг, ні стоп-слова, ні текст листа: тільки новим деплоєм.
+ * Selection rules and letter templates are edited from the interface, not only from a file.
+ * Workers has no filesystem, so without these routes production could change neither the
+ * threshold, nor the stop words, nor the letter text, except by a new deploy.
  */
 
 app.get('/api/rules', (c) => c.json({ rules: rules(), source: rulesSource() }));
@@ -399,13 +397,13 @@ app.post('/api/rules/reset', async (c) => {
 });
 
 /**
- * Дрібні правки одним кліком: побачив тег у вакансії і одразу відправив його
- * у стоп-слова або дав вагу. Повний обʼєкт правил при цьому не гоняється туди-сюди.
+ * Small one-click edits: spot a tag in a vacancy and send it straight to the stop words or
+ * give it a weight. The full rules object does not travel back and forth for this.
  */
 app.post('/api/rules/stop-words', async (c) => {
   const { word, remove } = (await c.req.json()) as { word?: string; remove?: boolean };
   const value = word?.trim().toLowerCase();
-  if (!value) return c.json({ error: 'потрібне слово' }, 400);
+  if (!value) return c.json({ error: 'a word is required' }, 400);
 
   const current = rules();
   const set = new Set(current.stopWords);
@@ -419,7 +417,7 @@ app.post('/api/rules/stop-words', async (c) => {
 app.post('/api/rules/weights', async (c) => {
   const { term, weight } = (await c.req.json()) as { term?: string; weight?: number | null };
   const value = term?.trim().toLowerCase();
-  if (!value) return c.json({ error: 'потрібен термін' }, 400);
+  if (!value) return c.json({ error: 'a term is required' }, 400);
 
   const current = rules();
   const terms = { ...current.weights.terms };
@@ -431,54 +429,53 @@ app.post('/api/rules/weights', async (c) => {
 });
 
 /**
- * Підключення пошти прямо з прода: OAuth починається тут і сюди ж повертається.
+ * Connecting mail straight from production: OAuth starts here and comes back here.
  *
- * Навіщо, якщо є `pnpm cli auth:gmail`: локальний шлях вимагає запустити проєкт
- * на ноутбуці, а радар живе на Workers. Один браузер, дві сторінки, і жодного
- * локального процесу.
+ * Why, when there is `pnpm cli auth:gmail`: the local path requires running the project on
+ * a laptop, while the radar lives on Workers. One browser, two pages, and no local process.
  */
 app.get('/api/gmail/connect', (c) => {
   if (!gmailConfigured()) {
-    return c.json({ error: 'спершу GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GMAIL_FROM_EMAIL' }, 400);
+    return c.json({ error: 'set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_FROM_EMAIL first' }, 400);
   }
-  // state несе токен радара: сам колбек приходить із браузера без заголовків.
+  // state carries the radar token: the callback itself arrives from the browser without headers.
   return c.redirect(authUrl(config.token));
 });
 
 /*
- * Колбек Google. Токен у заголовку тут неможливий, тому перевірка йде через
- * `state`, який ми самі поклали в посилання і який Google повертає незмінним.
+ * The Google callback. A token in a header is impossible here, so the check goes through
+ * `state`, which we put into the link ourselves and which Google returns unchanged.
  */
 app.get('/api/gmail/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state') ?? '';
-  if (config.token && state !== config.token) return c.text('невірний state', 401);
-  if (!code) return c.text(`Google повернув помилку: ${c.req.query('error') ?? 'без коду'}`, 400);
+  if (config.token && state !== config.token) return c.text('invalid state', 401);
+  if (!code) return c.text(`Google returned an error: ${c.req.query('error') ?? 'no code'}`, 400);
 
   const token = await exchangeCode(code);
 
   /*
-   * Рефреш-токен показується рівно один раз і нікуди не записується.
+   * The refresh token is shown exactly once and is not stored anywhere.
    *
-   * Секрет воркера ззовні не переписати, а класти його в базу заборонено:
-   * бекап бази з токеном усередині це доступ до пошти в кожному архіві.
-   * Тому власник копіює його в `wrangler secret put` руками, і це правильно.
+   * A worker secret cannot be rewritten from outside, and putting it into the database is
+   * forbidden: a database backup with the token inside is mailbox access in every archive.
+   * So the owner copies it into `wrangler secret put` by hand, and that is how it should be.
    */
   return c.html(
     `<meta charset="utf-8"><body style="font:15px system-ui;padding:32px;max-width:760px">
-      <h2>Gmail підключено: ${token.email ?? 'акаунт невідомий'}</h2>
-      <p>Скопіювати рефреш-токен і покласти його секретом воркера:</p>
+      <h2>Gmail connected: ${token.email ?? 'unknown account'}</h2>
+      <p>Copy the refresh token and store it as a worker secret:</p>
       <pre style="background:#f4f4f5;padding:12px;white-space:pre-wrap;word-break:break-all">npx wrangler secret put GMAIL_REFRESH_TOKEN
 ${token.refreshToken}</pre>
-      <p>Цей токен більше ніде не збережений і не показується вдруге.
-      Після додавання секрету воркер надсилатиме листи сам.</p>
+      <p>This token is not saved anywhere else and will not be shown again.
+      Once the secret is added, the worker will send letters on its own.</p>
     </body>`,
   );
 });
 
-/** Стан підключення пошти. Окремим роутом, а не полем у /api/stats: сторінка
- * розсилки має показувати його завжди, і мовчазне "листи не йдуть" тут гірше
- * за будь-яку помилку.
+/** Mail connection status. A separate route rather than a field in /api/stats: the sending
+ * page must always show it, and a silent "letters are not going out" is worse here than
+ * any error.
  */
 /*
  * Status of the mailbox connection, plus which provider is actually in use.
@@ -500,16 +497,16 @@ app.get('/api/gmail/status', (c) => {
 
 app.get('/api/templates', async (c) => {
   /*
-   * Стартовий набір більше не доливається сам при відкритті сторінки. Раніше
-   * доливався, і видалені шаблони поверталися: власник чистив список, оновлював
-   * вкладку і бачив їх знову. Тепер це окрема дія на сторінці Операції.
+   * The starter set is no longer topped up automatically when the page opens. It used to be,
+   * and deleted templates kept coming back: the owner cleaned the list, reloaded the tab and
+   * saw them again. Now it is a separate action on the Operations page.
    */
   return c.json({ kinds: TEMPLATE_KINDS, templates: await listTemplates(c.req.query('kind')) });
 });
 
 app.post('/api/templates', async (c) => {
   const body = (await c.req.json()) as { name?: string };
-  if (!body.name?.trim()) return c.json({ error: 'потрібна назва' }, 400);
+  if (!body.name?.trim()) return c.json({ error: 'a name is required' }, 400);
   return c.json(await createTemplate(body as { name: string }));
 });
 
@@ -531,16 +528,16 @@ app.post('/api/templates/:id/duplicate', async (c) =>
 );
 
 /*
- * DELETE стирає назовсім. Раніше він архівував, і це була пастка: кнопка називалась
- * "видалити", а запис лишався в базі. Архів тепер окремою дією, як воно й читається.
+ * DELETE erases for good. It used to archive, and that was a trap: the button said "delete"
+ * while the record stayed in the database. Archiving is now its own action, as it reads.
  */
 app.delete('/api/templates/:id', async (c) => c.json(await deleteTemplate(Number(c.req.param('id')))));
 
 app.route('/api/companies', companiesRoutes);
 
 /*
- * Розсилка. Чернетки лежать у тій же таблиці, що й історія, тому роути окремим
- * префіксом: /api/outreach віддає надіслане, /api/outreach/drafts готове до відправки.
+ * Sending. Drafts live in the same table as the history, so the routes use their own prefix:
+ * /api/outreach returns what was sent, /api/outreach/drafts what is ready to send.
  */
 app.get('/api/outreach/drafts', async (c) =>
   c.json({ drafts: await listDrafts(), counters: await sendCounters() }),
@@ -553,13 +550,13 @@ app.post('/api/outreach/prepare', async (c) => {
   return c.json(await prepareDrafts({ limit: body.limit, ai: body.ai }));
 });
 
-/** Чернетка для однієї компанії: кнопка з Черги і зі Студій. */
+/** A draft for one company: the button on Queue and Studios. */
 app.post('/api/outreach/drafts', async (c) => {
   const body = await c.req.json<{
     companyId: number;
     vacancyId?: number | null;
     ai?: boolean;
-    /** Шаблон, вибраний руками на картці. Порожнє означає підбір за роллю і мовою. */
+    /** Template picked by hand on the card. Empty means choosing by role and language. */
     templateSlug?: string | null;
   }>();
 
@@ -575,7 +572,7 @@ app.patch('/api/outreach/drafts/:id', async (c) => {
   const body = await c.req.json<{
     subject?: string;
     body?: string;
-    /** Адреса, вписана руками. Вона ж заводиться контактом компанії. */
+    /** An address typed by hand. It also becomes a company contact. */
     contactEmail?: string | null;
     contactName?: string | null;
   }>();
@@ -587,16 +584,16 @@ app.delete('/api/outreach/drafts/:id', async (c) =>
 );
 
 /**
- * Інший шаблон для чернетки. Текст збирається заново з тими самими даними компанії,
- * а вже написаний перший абзац переноситься: модель тут не викликається.
+ * A different template for a draft. The text is rebuilt from the same company data, and the
+ * already written first paragraph carries over: no model call here.
  */
 app.post('/api/outreach/drafts/:id/template', async (c) => {
   const body = await c.req.json<{ slug?: string }>().catch(() => ({}) as { slug?: string });
-  if (!body.slug) return c.json({ error: 'потрібен ключ шаблона' }, 400);
+  if (!body.slug) return c.json({ error: 'a template key is required' }, 400);
   return c.json(await retemplateDraft(Number(c.req.param('id')), body.slug));
 });
 
-/** Перегенерація першого абзацу. Тільки по кнопці, фонових перегенерацій немає. */
+/** Regenerate the first paragraph. Only on a button press, there are no background regenerations. */
 app.post('/api/outreach/drafts/:id/regenerate', async (c) =>
   c.json(await regenerateIntro(Number(c.req.param('id')))),
 );
@@ -606,9 +603,9 @@ app.post('/api/outreach/followups', async (c) => c.json(await prepareFollowups()
 app.get('/api/stats/outreach', async (c) => c.json(await outreachStats()));
 
 /*
- * Операції, які раніше жили тільки в CLI. Роути навмисно однакової форми:
- * POST, тіло з необовʼязковим limit, у відповіді те саме, що друкувала команда.
- * Інтерфейс через це не знає нічого про кожну окрему операцію і малює їх списком.
+ * Operations that used to live only in the CLI. The routes share one shape on purpose:
+ * POST, a body with an optional limit, and the same response the command used to print.
+ * That way the interface knows nothing about each operation and draws them as a list.
  */
 app.post('/api/catalogs/:id/run', async (c) => c.json(await syncCatalog(c.req.param('id'))));
 
@@ -632,41 +629,44 @@ app.post('/api/outreach/replies', async (c) =>
 
 app.post('/api/outreach/seed', async (c) => c.json({ added: await seedOutreachTemplates() }));
 
-/** Стартовий набір шаблонів. Тільки по кнопці: видалене більше не воскресає само. */
+/** The starter template set. Only on a button press: deleted ones do not come back by themselves. */
 app.post('/api/templates/seed', async (c) => c.json({ added: await seedTemplates() }));
 
-/** Живий виклик моделі: перевірка ключа, шлюзу і провайдера одним рухом. */
+/** A live model call: checks the key, the gateway and the provider in one go. */
 app.post('/api/llm/ping', async (c) => {
   try {
-    const raw = await callModelWith('Відповідай одним словом.', 'скажи ok');
+    const raw = await callModelWith('Reply with one word.', 'say ok');
     return c.json({
       ok: true,
       provider: config.llm.provider,
       model: config.llm.activeModel,
-      gateway: config.llm.baseUrl || 'прямий виклик',
+      gateway: config.llm.baseUrl || 'direct call',
       answer: raw.text.trim().slice(0, 40),
       inputTokens: raw.inputTokens,
       outputTokens: raw.outputTokens,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return c.json({ ok: false, gateway: config.llm.baseUrl || 'прямий виклик', error: message });
+    return c.json({ ok: false, gateway: config.llm.baseUrl || 'direct call', error: message });
   }
 });
 
-/** Тестовий лист собі. Кирилиця в темі навмисно, на ній ламається кодування. */
+/**
+ * A test letter to yourself. The subject carries non-ASCII text on purpose, including a
+ * Cyrillic word: that is where header encoding breaks.
+ */
 app.post('/api/gmail/test', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { to?: string };
   const to = body.to || config.gmail.fromEmail;
-  if (!to) return c.json({ error: 'немає адреси: заповнити GMAIL_FROM_EMAIL' }, 400);
+  if (!to) return c.json({ error: 'no address: set GMAIL_FROM_EMAIL' }, 400);
 
   const result = await deliver({
     to,
-    subject: 'Job Radar: перевірка кодування, тест',
+    subject: 'Job Radar: encoding check, тест, café',
     body: [
-      'Це технічний лист від Job Radar.',
+      'This is a technical letter from Job Radar.',
       '',
-      'Якщо тема і цей рядок читаються без кракозябр, кодування правильне.',
+      'If the subject and this line read without garbled characters, the encoding is right.',
       '',
       '',
     ].join('\n'),
@@ -679,12 +679,12 @@ const NOTIFY_KINDS = ['digest', 'outreach', 'highScore', 'followUps', 'broken'] 
 
 app.post('/api/notify/:kind', async (c) => {
   const kind = c.req.param('kind') as (typeof NOTIFY_KINDS)[number];
-  if (!NOTIFY_KINDS.includes(kind)) return c.json({ error: `невідоме сповіщення: ${kind}` }, 400);
-  // Порожнє повідомлення це не помилка: у черзі просто нема чого показувати.
+  if (!NOTIFY_KINDS.includes(kind)) return c.json({ error: `unknown notification: ${kind}` }, 400);
+  // An empty message is not an error: the queue simply has nothing to show.
   return c.json({ kind, sent: await notify[kind]() });
 });
 
-/** Підпис, спільний для всіх листів. Правиться на сторінці Шаблони. */
+/** The signature shared by all letters. Edited on the Templates page. */
 app.get('/api/outreach/signature', async (c) => c.json({ signature: await readSignature() }));
 
 app.put('/api/outreach/signature', async (c) => {
@@ -702,21 +702,21 @@ app.patch('/api/facts/:id', async (c) =>
 
 app.delete('/api/facts/:id', async (c) => c.json(await deleteFact(Number(c.req.param('id')))));
 
-/** Перевірка без відправки: інтерфейс показує причини ще до натискання. */
+/** A check without sending: the interface shows the reasons before the button is pressed. */
 app.get('/api/outreach/drafts/:id/check', async (c) =>
   c.json({ blockers: await checkSend(Number(c.req.param('id'))) }),
 );
 
 /*
- * Відправка рівно одного листа по явному натисканню. Масової дії тут немає
- * навмисно, розділ 0 OUTREACH.md: автопілот з особистого Gmail це блокування
- * акаунта, а кнопка "надіслати всі" це автопілот з іншою назвою.
+ * Sending exactly one letter on an explicit press. There is no bulk action on purpose,
+ * section 0 of OUTREACH.md: autopilot from a personal Gmail gets the account blocked, and a
+ * "send all" button is autopilot under another name.
  */
 app.post('/api/outreach/drafts/:id/send', async (c) => {
   /*
-   * Заблокований лист це не помилка запиту, а нормальний стан з переліком
-   * причин, тому 200 і `sent: false`. Код 4xx тут з'їдав би сам перелік:
-   * клієнт бачив би "409" і жодного пояснення, що саме заважає.
+   * A blocked letter is not a request error but a normal state with a list of reasons, hence
+   * 200 and `sent: false`. A 4xx code would swallow the list itself: the client would see
+   * "409" and no explanation of what is in the way.
    */
   return c.json(await sendDraft(Number(c.req.param('id'))));
 });
@@ -732,7 +732,7 @@ app.post('/api/outreach/:id/reply', async (c) => {
   const body = await c.req.json<{ replyType: string; note?: string }>();
 
   if (!REPLY_TYPES.includes(body.replyType as ReplyType)) {
-    return c.json({ error: `невідомий тип відповіді: ${body.replyType}` }, 400);
+    return c.json({ error: `unknown reply type: ${body.replyType}` }, 400);
   }
 
   await markReply(id, body.replyType as ReplyType, body.note ?? null);
@@ -767,7 +767,7 @@ app.get('/api/sources', async (c) => {
   );
 });
 
-/** Мережі Getro по порядку: сторінка Операції проходить їх по одній. */
+/** Getro networks in order: the Operations page goes through them one at a time. */
 app.get('/api/sources/getro/networks', (c) =>
   c.json({ networks: GETRO_NETWORKS.map((network) => network.id) }),
 );
@@ -781,12 +781,12 @@ app.post('/api/sources/:id/run', async (c) => {
   const result = await syncSource(id, { limit: body.limit, skipLlm: body.skipLlm, slug: body.slug });
 
   /*
-   * Getro ходить по мережах поодинці, бо всі дванадцять за один запит воркер не
-   * встигає. Курсор віддається у відповіді, і сторінка Операції за ним викликає
-   * наступну. Без цього поля прохід виглядав би завершеним після першої ж мережі.
+   * Getro goes through networks one at a time, because the worker cannot finish all twelve
+   * in one request. The cursor comes back in the response, and the Operations page calls the
+   * next one with it. Without this field the pass would look finished after the first network.
    */
   if (id === 'getro') {
-    // Без явної мережі це прохід по всіх, як у крона і CLI, і продовжувати нічого.
+    // Without an explicit network this is a pass over all of them, as in cron and the CLI, with nothing to continue.
     return c.json({ ...result, slug: body.slug ?? null, next: body.slug ? nextGetroNetwork(body.slug) : null });
   }
 
@@ -809,7 +809,7 @@ app.get('/api/stats', async (c) => {
     vacancies: scores,
     funnel: await funnel(),
     llmBudgetLeft: await remainingBudget(),
-    // Видно, хто саме класифікує: рахунок за токени Anthropic чи квота Workers AI.
+    // Shows who classifies: Anthropic billing per token or the Workers AI quota.
     llmProvider: config.llm.provider,
     llmModel: config.llm.activeModel,
     threshold: config.pipeline.scoreThreshold,
@@ -823,7 +823,7 @@ app.post('/api/discover', async (c) => {
   return c.json(await discover({ limit: body.limit ?? 25 }));
 });
 
-/** Схожі компанії за описом. Порожній список означає, що вектора ще немає. */
+/** Similar companies by description. An empty list means there is no vector yet. */
 app.get('/api/companies/:id/similar', async (c) =>
   c.json(await similarCompanies(Number(c.req.param('id')))),
 );
@@ -834,12 +834,12 @@ app.post('/api/embed', async (c) => {
 });
 
 /*
- * Черга для розширення і приймання того, що воно прочитало.
+ * The queue for the extension, and receiving what it read.
  *
- * Сайти, намальовані скриптом, серверний обхід читати не вміє: у HTML там порожній
- * каркас. Розширення відкриває їх у власному браузері власника фоновою вкладкою,
- * бере з готового DOM пошту і стек і присилає сюди. CORS для /api/import/* уже
- * відкритий, тому приймання живе саме під цим префіксом.
+ * Sites rendered by script cannot be read by the server-side crawl: the HTML is an empty
+ * shell. The extension opens them in the owner's own browser in a background tab, takes the
+ * email and stack from the finished DOM and sends them here. CORS for /api/import/* is
+ * already open, so receiving lives under exactly this prefix.
  */
 app.get('/api/import/browser/queue', async (c) =>
   c.json({ targets: await browserQueue(Number(c.req.query('limit') ?? 20)) }),
@@ -847,7 +847,7 @@ app.get('/api/import/browser/queue', async (c) =>
 
 app.post('/api/import/browser/site', async (c) => {
   const body = await c.req.json<BrowserFindings>();
-  if (!body?.domain) return c.json({ error: 'потрібен домен' }, 400);
+  if (!body?.domain) return c.json({ error: 'a domain is required' }, 400);
   return c.json(await saveBrowserFindings(body));
 });
 
@@ -862,25 +862,25 @@ app.post('/api/catalogs/dou/run', async (c) => {
 });
 
 /**
- * Вебхук телеграма для задеплоєної версії. Вмикається один раз:
- * https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<воркер>/api/telegram/webhook
+ * Telegram webhook for the deployed version. Enabled once:
+ * https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<worker>/api/telegram/webhook
  */
 app.post('/api/telegram/webhook', async (c) => {
   const { webhookCallback } = await import('grammy');
   const { buildBot, isConfigured: telegramReady } = await import('../notify/telegram.js');
-  if (!telegramReady()) return c.json({ error: 'телеграм не налаштований' }, 400);
+  if (!telegramReady()) return c.json({ error: 'telegram is not configured' }, 400);
   return webhookCallback(buildBot(), 'hono')(c);
 });
 
 app.get('/api/vacancies/:id', async (c) => {
   const db = getDb();
   const [row] = await db.select().from(vacancies).where(eq(vacancies.id, Number(c.req.param('id'))));
-  return row ? c.json(row) : c.json({ error: 'вакансії немає' }, 404);
+  return row ? c.json(row) : c.json({ error: 'no such vacancy' }, 404);
 });
 
 /**
- * Drizzle загортає помилку драйвера, і назовні летить "Failed query: select ..." без причини.
- * Справжній текст лежить у cause, саме він і потрібен, коли щось не так на проді.
+ * Drizzle wraps the driver error, and "Failed query: select ..." leaks out with no cause.
+ * The real text sits in cause, and that is what is needed when something breaks in production.
  */
 function describe(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
@@ -892,23 +892,23 @@ function describe(error: unknown): string {
 app.onError((error, c) => {
   const status = (error as { status?: number }).status ?? 500;
   const message = describe(error);
-  if (status !== 401) log.error({ err: message, path: c.req.path }, 'помилка API');
+  if (status !== 401) log.error({ err: message, path: c.req.path }, 'API error');
   return c.json({ error: message }, status as 401 | 500);
 });
 
 /*
- * Прямий запуск цього файла (`pnpm dev:api`). Драйвер бази підключається саме тут,
- * динамічним імпортом, а не зверху файла: цей самий модуль імпортує `worker.ts`
- * для Cloudflare, а туди `better-sqlite3` тягнути не можна, там база це D1.
+ * Running this file directly (`pnpm dev:api`). The database driver is attached here, through
+ * a dynamic import rather than at the top of the file: this same module is imported by
+ * `worker.ts` for Cloudflare, and `better-sqlite3` must not be pulled in there, the database is D1.
  *
- * Без цього рядка команда піднімала сервер, але кожен роут віддавав 500
- * "база не підключена". У CLAUDE.md `dev:api` вказана як команда запуску.
+ * Without this line the command started the server, but every route returned 500
+ * "database not connected". CLAUDE.md lists `dev:api` as the start command.
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
   await import('../db/client.node.js');
-  // Те саме і з токеном Gmail: файлове сховище є тільки в Node, у воркері його немає.
+  // Same with the Gmail token: file storage exists only in Node, not in the worker.
   await import('../lib/gmail-store.node.js');
   const port = Number(process.env.API_PORT ?? 3000);
   serve({ fetch: app.fetch, port });
-  log.info({ port }, 'API запущено');
+  log.info({ port }, 'API started');
 }

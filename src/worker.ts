@@ -59,8 +59,8 @@ async function safely(name: string, task: () => Promise<unknown>): Promise<void>
     await task();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // Log only, no Telegram push: an hourly task failing would otherwise message every hour.
     log.error({ task: name, err: message }, 'завдання за розкладом впало');
-    await notify.raw(`Завдання <b>${name}</b> впало: ${message}`).catch(() => undefined);
   }
 }
 
@@ -71,18 +71,13 @@ async function runSchedule(cron: string): Promise<void> {
       await safely(`sync:${source.id}`, () => syncSource(source.id));
     }
     await safely('classify:pending', () => classifyPending(50));
-    await safely('notify:highScore', () => notify.highScore());
-    await safely('notify:broken', () => notify.broken());
     return;
   }
 
   if (cron === '0 4 * * 1') return safely('catalog:dou', () => syncDou({ limit: 60 }));
   if (cron === '0 5 * * 2') return safely('discover', () => discover({ limit: 40 }));
-  if (cron === '0 10 * * *') {
-    await safely('notify:digest', () => notify.digest());
-    return safely('notify:outreach', () => notify.outreach());
-  }
-  if (cron === '0 18 * * *') return safely('notify:followUps', () => notify.followUps());
+  // The only Telegram message: Monday and Thursday, 07:00 UTC is 10:00 in Kyiv (summer time).
+  if (cron === '0 7 * * MON,THU') return safely('notify:summary', () => notify.summary());
 
   /*
    * Розсилка. Час у Cron Triggers завжди UTC, тому 06:30 UTC це 09:30 за Києвом:

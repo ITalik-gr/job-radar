@@ -35,8 +35,8 @@ const leadership = readFileSync('fixtures/enrich/team-leadership.html', 'utf8');
 const without = readFileSync('fixtures/enrich/page-without-people.html', 'utf8');
 const singleNames = readFileSync('fixtures/enrich/team-single-names.html', 'utf8');
 
-describe('розбір сторінки команди', () => {
-  it('бере імена і ролі, коли імʼя стоїть перед роллю', () => {
+describe('parsing a team page', () => {
+  it('takes names and roles when the name comes before the role', () => {
     const people = extractPeople(withPeople, 'https://triare.net/about-us/');
     const names = people.map((person) => person.name);
 
@@ -47,7 +47,7 @@ describe('розбір сторінки команди', () => {
     expect(cto?.name).toBe('Anton Malyy');
   });
 
-  it('бере імена, коли роль стоїть окремим коротким рядком', () => {
+  it('takes names when the role is a separate short line', () => {
     const people = extractPeople(leadership, 'https://utility.agency/about');
     const roles = people.map((person) => person.role);
 
@@ -55,53 +55,52 @@ describe('розбір сторінки команди', () => {
     expect(roles.some((role) => role === 'CEO' || role === 'CTO')).toBe(true);
   });
 
-  it('не вигадує людей там, де їх немає', () => {
+  it('does not invent people where there are none', () => {
     const people = extractPeople(without, 'https://swovo.com/about');
-    // Сторінка без блока команди. Кілька збігів можливі, але це не десятки.
+    // A page without a team block. A few matches are possible, but not dozens.
     expect(people.length).toBeLessThan(5);
   });
 
-  it('роль обрізається до самої посади, без "at Компанія"', () => {
+  it('the role is trimmed to the title itself, without "at Company"', () => {
     const people = extractPeople(withPeople, 'https://triare.net/about-us/');
     expect(people.every((person) => !/ at /i.test(person.role ?? ''))).toBe(true);
   });
 
-  it('cookie-банер не читається як посада COO', () => {
+  it('a cookie banner is not read as the COO title', () => {
     const html = '<div>We use cookies to improve cooperation</div><span>Cookie policy</span>';
     expect(extractPeople(html, 'https://example.com')).toHaveLength(0);
   });
 
-  it('назва компанії не приймається за імʼя людини', () => {
+  it('a company name is not taken for a person name', () => {
     const html = '<div><p>Acme Digital Studio</p><p>CTO</p></div>';
     expect(extractPeople(html, 'https://example.com')).toHaveLength(0);
   });
 });
 
-describe('картки команди без прізвищ', () => {
+describe('team cards without surnames', () => {
   const people = extractPeople(singleNames, 'https://rubyroidlabs.com/team');
 
   /*
-   * Половина сайтів студій підписує картку самим імʼям. Правило "імʼя це два слова"
-   * пропускало такі сторінки цілком, і прохід по 100 студіях давав нуль контактів
-   * при 267 завантажених сторінках. Це рівно та мовчазна поразка, проти якої
-   * написане правило 3 в CLAUDE.md.
+   * Half of studio sites sign a card with the first name only. The "a name is two words" rule
+   * skipped such pages entirely, and a pass over 100 studios gave zero contacts from 267
+   * downloaded pages. That is exactly the silent failure rule 3 of CLAUDE.md is written against.
    */
-  it('імʼя без прізвища поруч із посадою рахується за контакт', () => {
+  it('a first name next to a title counts as a contact', () => {
     expect(people.length).toBeGreaterThan(0);
     expect(people.map((person) => person.name)).toContain('Pavel');
   });
 
   /*
-   * "VP of Operations" читалось як згадка чужої компанії "Operations" і викидалось.
-   * Тобто enrichment відкидав саме ті посади, заради яких написаний: розділ 9
-   * у CLAUDE.md просить Head of Engineering і подібні.
+   * "VP of Operations" was read as a mention of a foreign company "Operations" and dropped.
+   * So enrichment threw away exactly the titles it exists for: section 9 of CLAUDE.md asks for
+   * Head of Engineering and the like.
    */
-  it('посада з відділом після of не вважається чужою компанією', () => {
+  it('a title with a department after of is not a foreign company', () => {
     const roles = people.map((person) => person.role);
     expect(roles.some((role) => /VP of Engineering/i.test(role ?? ''))).toBe(true);
   });
 
-  it('пункти меню і підписи кнопок не стають іменами', () => {
+  it('menu items and button labels do not become names', () => {
     const names = people.map((person) => person.name?.toLowerCase());
     for (const junk of ['home', 'about', 'team', 'contact', 'careers', 'blog', 'services']) {
       expect(names).not.toContain(junk);
@@ -109,44 +108,44 @@ describe('картки команди без прізвищ', () => {
   });
 });
 
-describe('відсів чужих людей', () => {
+describe('filtering out outsiders', () => {
   /*
-   * Перший прогін по десяти компаніях дав 104 контакти. Майже все це були інвестори
-   * і автори відгуків з лендінгів, тому тут закріплено кожен клас помилки окремо.
+   * The first run over ten companies gave 104 contacts. Almost all were investors and
+   * testimonial authors from landing pages, so each class of error is pinned down separately.
    */
-  it('колишня посада в чужій компанії це інвестор, а не контакт', () => {
+  it('a former title at another company is an investor, not a contact', () => {
     const html = '<div><p>Nat Friedman</p><p>Former CEO of GitHub</p></div>';
     expect(extractPeople(html, 'https://acme.com/about')).toHaveLength(0);
   });
 
-  it('посада з назвою чужої компанії теж відкидається', () => {
+  it('a title naming another company is dropped too', () => {
     const html = '<div><p>David Cramer</p><p>Founder and CEO of Sentry</p></div>';
     expect(extractPeople(html, 'https://acme.com/about')).toHaveLength(0);
   });
 
-  it('собака в підписі теж означає чужу компанію', () => {
+  it('an at sign in the caption also means another company', () => {
     const html = '<div><p>Tom Preston-Werner</p><p>Founder @ GitHub</p></div>';
     expect(extractPeople(html, 'https://acme.com/about')).toHaveLength(0);
   });
 
-  it('навігація не читається як людина', () => {
+  it('navigation is not read as a person', () => {
     const html = '<a>Brand Assets</a><a>Partner Catalog</a><a>System Status</a><a>Become a Partner</a>';
     expect(extractPeople(html, 'https://acme.com/about')).toHaveLength(0);
   });
 
-  it('підпис поля форми не читається як імʼя', () => {
+  it('a form field label is not read as a name', () => {
     const html = '<label>First Name</label><span>Co-founder</span>';
     expect(extractPeople(html, 'https://acme.com/about')).toHaveLength(0);
   });
 
-  it('своя посада без чужої компанії лишається', () => {
+  it('an own title without another company stays', () => {
     const html = '<div><p>Anton Malyy</p><p>CTO</p></div>';
     const people = extractPeople(html, 'https://acme.com/about');
     expect(people).toHaveLength(1);
     expect(people[0]!.name).toBe('Anton Malyy');
   });
 
-  it('людей беремо тільки зі сторінок команди, головна це відгуки і інвестори', () => {
+  it('people come only from team pages, the home page is testimonials and investors', () => {
     expect(isTeamPage('https://acme.com/about-us/')).toBe(true);
     expect(isTeamPage('https://acme.com/team')).toBe(true);
     expect(isTeamPage('https://acme.com/contact')).toBe(true);
@@ -155,8 +154,8 @@ describe('відсів чужих людей', () => {
   });
 });
 
-describe('пошта', () => {
-  it('знаходить адресу з mailto і позначає загальні скриньки', () => {
+describe('email', () => {
+  it('finds an address in mailto and marks generic mailboxes', () => {
     const found = extractEmails(withPeople);
     const welcome = found.find((item) => item.email === 'welcome@triare.net');
 
@@ -164,49 +163,49 @@ describe('пошта', () => {
     expect(welcome!.generic).toBe(true);
   });
 
-  it('іменна адреса не позначається загальною', () => {
-    const found = extractEmails('<a href="mailto:anton.malyy@triare.net">пошта</a>');
+  it('a personal address is not marked generic', () => {
+    const found = extractEmails('<a href="mailto:anton.malyy@triare.net">email</a>');
     expect(found[0]).toEqual({ email: 'anton.malyy@triare.net', generic: false });
   });
 
-  it('відкидає файли і приклади, які виглядають як адреса', () => {
+  it('drops files and examples that look like an address', () => {
     const html = '<img src="logo@2x.png"><span>your@email.com</span><span>test@example.com</span>';
     expect(extractEmails(html)).toHaveLength(0);
   });
 
-  it('одна адреса не дублюється, навіть якщо трапилась і в mailto, і в тексті', () => {
+  it('one address is not duplicated, even when it appears in mailto and in text', () => {
     const html = '<a href="mailto:hi@acme.com">hi@acme.com</a> hi@acme.com';
     expect(extractEmails(html)).toHaveLength(1);
   });
 });
 
-describe('профілі і ознаки живості', () => {
-  it('знаходить LinkedIn на сторінці', () => {
+describe('profiles and signs of life', () => {
+  it('finds LinkedIn on the page', () => {
     expect(extractProfiles(leadership).linkedin.length).toBeGreaterThan(0);
   });
 
-  it('не вважає посиланням на профіль службові шляхи X', () => {
-    const html = '<a href="https://twitter.com/intent/tweet">поділитись</a>';
+  it('does not treat service paths of X as a profile link', () => {
+    const html = '<a href="https://twitter.com/intent/tweet">share</a>';
     expect(extractProfiles(html).x).toHaveLength(0);
   });
 
-  it('витягає рік копірайту, це головна ознака мертвого сайту', () => {
+  it('extracts the copyright year, the main sign of a dead site', () => {
     expect(extractSignals('<footer>© 2019 Acme</footer>').copyrightYear).toBe(2019);
     expect(extractSignals('<footer>Copyright 2026 Acme</footer>').copyrightYear).toBe(2026);
   });
 
-  it('бачить наявність блогу', () => {
-    expect(extractSignals('<a href="/blog/hello">пост</a>').hasBlog).toBe(true);
-    expect(extractSignals('<a href="/pricing">ціни</a>').hasBlog).toBe(false);
+  it('notices a blog', () => {
+    expect(extractSignals('<a href="/blog/hello">post</a>').hasBlog).toBe(true);
+    expect(extractSignals('<a href="/pricing">pricing</a>').hasBlog).toBe(false);
   });
 });
 
-describe('обхід сайту', () => {
-  it('збирає посилання на сторінки команди тільки в межах домену', () => {
+describe('site crawl', () => {
+  it('collects team page links only within the domain', () => {
     const html = `
       <a href="/about-us">About us</a>
       <a href="/team">Our team</a>
-      <a href="https://other.com/team">чужий сайт</a>
+      <a href="https://other.com/team">another site</a>
       <a href="/pricing">Pricing</a>
     `;
     const links = findTeamLinks(html, 'https://acme.com');
@@ -217,19 +216,19 @@ describe('обхід сайту', () => {
     expect(links.some((url) => url.includes('pricing'))).toBe(false);
   });
 
-  it('сплощення html викидає скрипти і стилі', () => {
-    const lines = toLines('<style>.a{color:red}</style><script>var x=1</script><p>Текст</p>');
-    expect(lines).toEqual(['Текст']);
+  it('flattening html drops scripts and styles', () => {
+    const lines = toLines('<style>.a{color:red}</style><script>var x=1</script><p>Text</p>');
+    expect(lines).toEqual(['Text']);
   });
 });
 
-describe('кого enrichment бере першим', () => {
+describe('who enrichment takes first', () => {
   beforeAll(async () => {
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${config.dbPath}${suffix}`, { force: true });
     const { sqlite } = runMigrations();
     sqlite.close();
 
-    // Порядок створення навмисно поганий: гігант першим, як воно й лежало в базі.
+    // The creation order is deliberately bad: the giant first, as it was in the database.
     await upsertCompany({ name: 'Giant', domain: 'giant.com', source: 'greenhouse' });
     await upsertCompany({ name: 'Agency', domain: 'agency.com', source: 'clutch', tags: ['Web Design'] });
     await upsertCompany({ name: 'Seed', domain: 'seed.com', source: 'getro', tags: ['startup'] });
@@ -237,11 +236,11 @@ describe('кого enrichment бере першим', () => {
   });
 
   /*
-   * Без сортування прохід брав перші рядки таблиці, тобто продуктових гігантів,
-   * у яких сторінки команди з контактами немає, і давав нуль контактів на сотню
-   * доменів. Це виглядало як зламаний enrichment, хоча він просто шукав не там.
+   * Without sorting the pass took the first table rows, that is, product giants with no team
+   * page with contacts, and gave zero contacts per hundred domains. It looked like broken
+   * enrichment, while it was simply looking in the wrong place.
    */
-  it('студії і стартапи йдуть попереду продуктових', async () => {
+  it('studios and startups go ahead of product companies', async () => {
     const order = (await candidatesForEnrichment({ limit: 10 })).map((company) => company.domain);
 
     expect(order[0]).toBe('agency.com');
@@ -249,11 +248,11 @@ describe('кого enrichment бере першим', () => {
   });
 
   /*
-   * Прохід іде партіями по кілька компаній, тому черга мусить рухатись. Компанія,
-   * чий сайт не відкрився, лишається без контактів і без цього правила трималась би
-   * на початку черги вічно: кожна партія бралась би за ту саму.
+   * The pass runs in batches of a few companies, so the queue has to move. A company whose site
+   * did not open stays without contacts, and without this rule it would stay at the head of the
+   * queue forever: every batch would take the same one.
    */
-  it('перевірена нещодавно йде в кінець черги серед рівних', async () => {
+  it('a recently checked company goes to the end of the queue among equals', async () => {
     const before = (await candidatesForEnrichment({ limit: 10 })).map((company) => company.domain);
     expect(before.indexOf('agency.com')).toBeLessThan(before.indexOf('studio.com'));
 
@@ -266,19 +265,19 @@ describe('кого enrichment бере першим', () => {
     expect(after.indexOf('studio.com')).toBeLessThan(after.indexOf('agency.com'));
   });
 
-  it('каже, скільки компаній лишилось у черзі', async () => {
+  it('reports how many companies are left in the queue', async () => {
     expect(await pendingEnrichment()).toBe(4);
   });
 });
 
 /*
- * Пошта, яку видно очима на сайті, регулярно не знаходилась. Причин рівно чотири,
- * і жодна з них не про те, що адреси немає: її ховає Cloudflare, ховають сутності,
- * ріжуть теги, або її взагалі немає в HTML, бо сторінку малює скрипт.
+ * An email visible on a site was regularly not found. There are exactly four causes, and none of
+ * them is a missing address: Cloudflare hides it, entities hide it, tags cut it, or it is not in
+ * the HTML at all because the page is rendered by script.
  */
-describe('пошта, яку ховає верстка', () => {
-  it('Cloudflare Email Protection розшифровується', () => {
-    // Той самий XOR, яким його кодує Cloudflare: перший байт це ключ.
+describe('email hidden by the markup', () => {
+  it('Cloudflare Email Protection is decoded', () => {
+    // The same XOR Cloudflare encodes it with: the first byte is the key.
     const plain = 'hello@studio.com';
     const key = 0x2a;
     const hex =
@@ -290,31 +289,32 @@ describe('пошта, яку ховає верстка', () => {
     expect(extractEmails(`<span data-cfemail="${hex}">[protected]</span>`)[0]?.email).toBe(plain);
   });
 
-  it('сміття замість hex не ламає розбір', () => {
+  it('garbage instead of hex does not break parsing', () => {
     expect(decodeCfEmail('zzzz')).toBeNull();
     expect(decodeCfEmail('2a2b')).toBeNull();
   });
 
-  it('адреса, записана сутностями, читається', () => {
+  it('an address written with entities is read', () => {
     const html = '<p>&#104;&#101;&#108;&#108;&#111;&#64;studio.com</p>';
     expect(extractEmails(html)[0]?.email).toBe('hello@studio.com');
   });
 
-  it('адреса, розрізана тегами, збирається з тексту сторінки', () => {
+  it('an address split by tags is assembled from the page text', () => {
     const html = '<p><span>hello</span>@<span>studio.com</span></p>';
     expect(extractEmails(html)[0]?.email).toBe('hello@studio.com');
   });
 
-  it('написання словами теж читається', () => {
+  it('an address spelled out in words is read too', () => {
     expect(unmaskEmails('hello (at) studio dot com')).toBe('hello@studio.com');
+    expect(unmaskEmails('hello собака studio крапка com')).toBe('hello@studio.com');
   });
 
-  it('порожня розмітка це ознака клієнтського рендера', () => {
+  it('empty markup is a sign of client-side rendering', () => {
     expect(visibleTextLength('<body><div id="root"></div><script>var a=1</script></body>')).toBe(0);
-    expect(visibleTextLength(`<body><p>${'слово '.repeat(60)}</p></body>`)).toBeGreaterThan(200);
+    expect(visibleTextLength(`<body><p>${'word '.repeat(60)}</p></body>`)).toBeGreaterThan(200);
   });
 
-  it('бандли того самого домену беруться, чужі ні, головні першими', () => {
+  it('bundles from the same domain are taken, foreign ones are not, main ones first', () => {
     const html = `
       <script src="/assets/chunk-42.js"></script>
       <script src="https://cdn.other.com/analytics.js"></script>
@@ -330,11 +330,11 @@ describe('пошта, яку ховає верстка', () => {
 });
 
 /*
- * Черга для браузера. Сайт, намальований скриптом, серверний обхід читати не вміє,
- * тому такі домени чекають на розширення, а не пропадають з поля зору.
+ * The browser queue. The server-side crawl cannot read a site rendered by script, so such
+ * domains wait for the extension instead of dropping out of sight.
  */
-describe('черга для браузера', () => {
-  it('приймає знайдене, заводить контакт і знімає прапорець', async () => {
+describe('browser queue', () => {
+  it('accepts what was found, adds the contact and clears the flag', async () => {
     const db = getDb();
     const { company } = await upsertCompany({ name: 'Spa', domain: 'spa-site.com', source: 'test' });
     await db.update(companies).set({ needsBrowser: true }).where(eq(companies.id, company.id));
@@ -358,10 +358,10 @@ describe('черга для браузера', () => {
   });
 
   /*
-   * Прапорець знімається навіть коли нічого не знайшлось: сторінку вже відкривали
-   * у браузері, і ганяти її туди щоразу заново означало б вічну чергу з тих самих.
+   * The flag is cleared even when nothing was found: the page has already been opened in a
+   * browser, and sending it there again every time would mean an endless queue of the same ones.
    */
-  it('порожній результат теж закриває чергу', async () => {
+  it('an empty result closes the queue item too', async () => {
     const db = getDb();
     const { company } = await upsertCompany({ name: 'Mute', domain: 'mute-site.com', source: 'test' });
     await db.update(companies).set({ needsBrowser: true }).where(eq(companies.id, company.id));
@@ -373,17 +373,17 @@ describe('черга для браузера', () => {
     expect(row!.needsBrowser).toBe(false);
   });
 
-  it('невідомий домен не створює компанію', async () => {
+  it('an unknown domain does not create a company', async () => {
     const saved = await saveBrowserFindings({ domain: 'nobody-knows-this.com', emails: [] });
     expect(saved.companyId).toBeNull();
   });
 
   /*
-   * Домен береться з адреси вкладки вже після редиректів, тому він розходиться з
-   * базою щоразу, коли студія переїхала. Раніше на цьому все й закінчувалось:
-   * пошта знаходилась і зникала, а виглядало це як порожній сайт.
+   * The domain comes from the tab address after redirects, so it differs from the database
+   * every time a studio has moved. That used to be the end of it: the email was found and lost,
+   * and it looked like an empty site.
    */
-  it('знаходить компанію по номеру, коли домен у вкладці інший', async () => {
+  it('finds the company by id when the tab domain differs', async () => {
     const { company } = await upsertCompany({ name: 'Moved', domain: 'moved-old.com', source: 'test' });
 
     const saved = await saveBrowserFindings({
@@ -397,11 +397,11 @@ describe('черга для браузера', () => {
   });
 
   /*
-   * Головна віддає презентацію, контакти віддають адресу, а сторінка команди імена
-   * з посадами. Зійтись в один контакт вони мають ще до запису, інакше в базі
-   * лежать дві половинки, з яких лист не напишеш.
+   * The home page gives the pitch, the contact page gives the address, the team page gives names
+   * with titles. They have to meet in one contact before writing, otherwise the database holds
+   * two halves nobody can write a letter from.
    */
-  it('збирає імʼя з однієї сторінки і пошту з іншої в один контакт', async () => {
+  it('joins a name from one page and an email from another into one contact', async () => {
     const db = getDb();
     const { company } = await upsertCompany({ name: 'Multi', domain: 'multi-site.com', source: 'test' });
 
@@ -423,28 +423,28 @@ describe('черга для браузера', () => {
     expect(anna?.email).toBe('anna.koval@multi-site.com');
     expect(anna?.role).toBe('CTO');
 
-    // Загальна скринька лишається окремим рядком і нікому не приписується.
+    // The generic mailbox stays a separate row and is attributed to nobody.
     expect(rows.find((row) => row.email === 'hello@multi-site.com')?.name).toBeNull();
-    // Людина без адреси теж зберігається: далі по імені шукається пошта.
+    // A person without an address is stored too: the email is searched for by name later.
     expect(rows.find((row) => row.name === 'Ihor Bondar')?.email).toBeNull();
   });
 
-  it('не приписує загальну скриньку людині з схожим іменем', () => {
+  it('does not attribute a generic mailbox to a person with a similar name', () => {
     expect(emailBelongsTo('anna@studio.com', 'Anna Koval')).toBe(true);
     expect(emailBelongsTo('a.koval@studio.com', 'Anna Koval')).toBe(true);
     expect(emailBelongsTo('hello@studio.com', 'Anna Koval')).toBe(false);
-    // "ann" усередині "announcements" це не Anna: збіг має бути по цілому слову.
+    // "ann" inside "announcements" is not Anna: the match has to be a whole word.
     expect(emailBelongsTo('announcements@studio.com', 'Anna Koval')).toBe(false);
   });
 });
 
 /*
- * Сайт, який не відкрився серверу, це не глухий кут. Захист відповідає 403 саме на
- * запит без справжнього браузера, а у браузері власника та сама сторінка відкриється,
- * тому такі домени йдуть у ту саму чергу, що й намальовані скриптом.
+ * A site that did not open for the server is not a dead end. Protection answers 403 exactly to
+ * requests without a real browser, and in the owner's browser the same page opens, so such
+ * domains go to the same queue as script-rendered ones.
  */
-describe('сайт, який не відкрився серверу', () => {
-  it('потрапляє в чергу для браузера і отримує позначку часу', async () => {
+describe('a site that did not open for the server', () => {
+  it('goes to the browser queue and gets a timestamp', async () => {
     const db = getDb();
     const { company } = await upsertCompany({ name: 'Closed', domain: 'closed-site.com', source: 'test' });
 
@@ -460,12 +460,12 @@ describe('сайт, який не відкрився серверу', () => {
 
     const [row] = await db.select().from(companies).where(eq(companies.id, company.id));
     expect(row!.needsBrowser).toBe(true);
-    // Позначка часу тепер ставиться завжди, інакше компанія вічно перша в черзі.
+    // The timestamp is always set now, otherwise the company is forever first in line.
     expect(row!.lastChecked).not.toBeNull();
     expect((await browserQueue()).map((item) => item.domain)).toContain('closed-site.com');
   });
 
-  it('знайдена адреса знімає потребу в браузері', async () => {
+  it('a found address removes the need for a browser', async () => {
     const db = getDb();
     const { company } = await upsertCompany({ name: 'Found', domain: 'found-site.com', source: 'test' });
 
@@ -494,12 +494,12 @@ describe('сайт, який не відкрився серверу', () => {
 });
 
 /*
- * Повний перегляд по кнопці. Сам обхід тут не перевіряється: він ходить у мережу,
- * а його частини (discovery, enrichment, збереження) накриті окремо. Тут важливо
- * інше, щоб кнопка на видаленій компанії давала зрозумілу помилку, а не мовчала.
+ * A full review on a button press. The crawl itself is not tested here: it goes to the network,
+ * and its parts (discovery, enrichment, storage) are covered separately. What matters here is
+ * that the button on a deleted company gives a clear error instead of staying silent.
  */
-describe('перегляд однієї компанії', () => {
-  it('неіснуюча компанія це помилка з номером', async () => {
+describe('reviewing one company', () => {
+  it('a missing company is an error with its id', async () => {
     await expect(refreshCompany(999_999)).rejects.toThrow('999999');
   });
 });

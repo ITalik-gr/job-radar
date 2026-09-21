@@ -17,7 +17,7 @@ import type { ThreadMessage } from '../src/lib/gmail.js';
 
 let acme: Company;
 
-const OWN = 'italik@example.com';
+const OWN = 'olena@example.com';
 const NOW = new Date('2026-09-10T09:00:00Z');
 
 function message(over: Partial<ThreadMessage> = {}): ThreadMessage {
@@ -210,7 +210,7 @@ describe('checkReplies', () => {
   it('тред тільки з власними листами це ще не відповідь', async () => {
     await sentLetter();
     const report = await checkReplies({
-      fetchThread: async () => [message({ from: `Alex <${OWN}>` })],
+      fetchThread: async () => [message({ from: `Olena <${OWN}>` })],
       ownEmail: OWN,
       now: NOW,
     });

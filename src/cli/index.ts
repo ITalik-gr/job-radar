@@ -63,15 +63,15 @@ program.name('radar').description('Job Radar CLI').version('0.1.0');
 
 program
   .command('db:migrate')
-  .description('застосувати міграції')
+  .description('apply migrations')
   .action(() => {
     runMigrations();
-    log.info({ db: config.dbPath }, 'міграції застосовано');
+    log.info({ db: config.dbPath }, 'migrations applied');
   });
 
 program
   .command('db:stats')
-  .description('скільки чого в базі')
+  .description('how much of what is in the database')
   .action(() => {
     const sqlite = getSqlite();
     const tables = ['companies', 'company_state', 'contacts', 'snapshots', 'vacancies', 'outreach', 'runs'];
@@ -85,11 +85,11 @@ program
 
 program
   .command('sources:list')
-  .description('перелік зареєстрованих джерел')
+  .description('list registered sources')
   .action(() => {
     const all = listSources();
     if (all.length === 0) {
-      console.log('джерел ще немає, вони зʼявляться на Етапі 2');
+      console.log('no sources registered yet');
       return;
     }
     console.table(all.map((s) => ({ id: s.id, kind: s.kind, browser: Boolean(s.needsBrowser) })));
@@ -97,8 +97,8 @@ program
 
 program
   .command('runs:last')
-  .description('останні запуски адаптерів')
-  .option('-n, --limit <number>', 'скільки рядків', '20')
+  .description('recent adapter runs')
+  .option('-n, --limit <number>', 'how many rows', '20')
   .action(async (opts: { limit: string }) => {
     const db = getDb();
     const rows = await db
@@ -107,7 +107,7 @@ program
       .orderBy(desc(runs.startedAt))
       .limit(Number(opts.limit));
     if (rows.length === 0) {
-      console.log('запусків ще не було');
+      console.log('no runs yet');
       return;
     }
     console.table(
@@ -125,14 +125,14 @@ program
 
 program
   .command('companies:add')
-  .description('додати компанію вручну')
-  .argument('<domain>', 'домен, наприклад vercel.com')
-  .option('-n, --name <name>', 'назва, за замовчуванням домен')
+  .description('add a company by hand')
+  .argument('<domain>', 'domain, for example vercel.com')
+  .option('-n, --name <name>', 'name, defaults to the domain')
   .option('--ats <kind>', 'greenhouse | lever | ashby | html | rss | none')
-  .option('--slug <slug>', 'slug дошки в ATS')
-  .option('--careers-url <url>', 'сторінка вакансій')
-  .option('--country <country>', 'країна')
-  .option('--city <city>', 'місто')
+  .option('--slug <slug>', 'ATS board slug')
+  .option('--careers-url <url>', 'careers page')
+  .option('--country <country>', 'country')
+  .option('--city <city>', 'city')
   .action(async (domain: string, opts: Record<string, string>) => {
     const { company, created } = await upsertCompany({
       name: opts.name ?? domain,
@@ -144,28 +144,28 @@ program
       city: opts.city ?? null,
       source: 'manual',
     });
-    console.log(created ? 'створено' : 'оновлено', `#${company.id}`, company.domain, `[${company.careersKind}${company.careersSlug ? ':' + company.careersSlug : ''}]`);
+    console.log(created ? 'created' : 'updated', `#${company.id}`, company.domain, `[${company.careersKind}${company.careersSlug ? ':' + company.careersSlug : ''}]`);
   });
 
 program
   .command('import:csv')
-  .description('імпорт компаній з CSV: name,domain,country,note[,ats,slug,careers_url]')
-  .argument('<files...>', 'шляхи до файлів')
+  .description('import companies from CSV: name,domain,country,note[,ats,slug,careers_url]')
+  .argument('<files...>', 'file paths')
   .action(async (files: string[]) => {
     for (const file of files) {
       const report = await importCsvFile(file);
-      console.log(`${file}: створено ${report.created}, оновлено ${report.updated}, пропущено ${report.skipped.length}`);
-      for (const skip of report.skipped) console.log(`  рядок ${skip.line}: ${skip.reason}`);
+      console.log(`${file}: created ${report.created}, updated ${report.updated}, skipped ${report.skipped.length}`);
+      for (const skip of report.skipped) console.log(`  line ${skip.line}: ${skip.reason}`);
     }
   });
 
 program
   .command('source:run')
-  .description('прогнати адаптер і показати знайдене')
-  .argument('<id>', 'id джерела, дивись sources:list')
-  .option('--slug <slug>', 'разовий slug ATS без запису в базу')
-  .option('-n, --limit <number>', 'скільки компаній обійти')
-  .option('--full', 'показати повний текст першої вакансії')
+  .description('run an adapter and show what it found')
+  .argument('<id>', 'source id, see sources:list')
+  .option('--slug <slug>', 'one-off ATS slug, not stored')
+  .option('-n, --limit <number>', 'how many companies to visit')
+  .option('--full', 'show the full text of the first vacancy')
   .action(async (id: string, opts: { slug?: string; limit?: string; full?: boolean }) => {
     const result = await crawlSource(id, {
       slug: opts.slug,
@@ -173,7 +173,7 @@ program
     });
 
     if (result.vacancies.length === 0) {
-      console.log('нуль записів, дивись WARN у логах вище');
+      console.log('zero records, see the WARN in the log above');
       return;
     }
 
@@ -182,14 +182,14 @@ program
         company: v.companyName ?? '',
         title: (v.title ?? '').slice(0, 48),
         location: (v.location ?? '').slice(0, 28),
-        remote: v.remote === null ? '?' : v.remote ? 'так' : 'ні',
+        remote: v.remote === null ? '?' : v.remote ? 'yes' : 'no',
         chars: v.rawText.length,
       })),
     );
-    console.log(`всього ${result.vacancies.length}, помилок ${result.errors.length}`);
+    console.log(`total ${result.vacancies.length}, errors ${result.errors.length}`);
 
     if (opts.full && result.vacancies[0]) {
-      console.log('\n--- перша вакансія ---\n');
+      console.log('\n--- first vacancy ---\n');
       console.log(result.vacancies[0].url);
       console.log(result.vacancies[0].rawText.slice(0, 1500));
     }
@@ -197,15 +197,15 @@ program
 
 program
   .command('page:normalize')
-  .description('показати, що лишається від сторінки після нормалізації')
-  .argument('<target>', 'шлях до файлу або URL')
+  .description('show what is left of a page after normalization')
+  .argument('<target>', 'file path or URL')
   .action(async (target: string) => {
     const html = /^https?:\/\//.test(target)
       ? (await fetchText(target)).body
       : readFileSync(target, 'utf8');
     const page = normalizePage(html);
 
-    console.log(`хеш ${page.contentHash}, блоків ${page.blocks.length}\n`);
+    console.log(`hash ${page.contentHash}, blocks ${page.blocks.length}\n`);
     console.table(
       page.blocks.map((b) => ({
         hash: b.hash,
@@ -213,27 +213,27 @@ program
         url: (b.url ?? '').slice(0, 52),
       })),
     );
-    console.log('\n--- нормалізований текст ---\n');
+    console.log('\n--- normalized text ---\n');
     console.log(page.text);
   });
 
 program
   .command('page:check')
-  .description('зняти знімок career-сторінки компанії і показати діф із попереднім')
-  .argument('<domain>', 'домен компанії з бази')
-  .argument('[url]', 'сторінка, за замовчуванням careers_url компанії')
+  .description('snapshot a company careers page and show the diff against the previous one')
+  .argument('<domain>', 'company domain from the database')
+  .argument('[url]', 'page, defaults to the company careers_url')
   .action(async (domain: string, url?: string) => {
     const db = getDb();
     const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
     if (!company) {
-      console.error(`компанії ${domain} немає в базі, додай через companies:add`);
+      console.error(`company ${domain} is not in the database, add it with companies:add`);
       process.exitCode = 1;
       return;
     }
 
     const target = url ?? company.careersUrl;
     if (!target) {
-      console.error(`у ${domain} немає careers_url, передай URL другим аргументом`);
+      console.error(`${domain} has no careers_url, pass the URL as the second argument`);
       process.exitCode = 1;
       return;
     }
@@ -242,28 +242,28 @@ program
     const result = await saveSnapshot(company.id, target, body);
 
     if (result.first) {
-      console.log(`перший знімок, блоків ${result.diff.added.length}, хеш ${result.snapshot.contentHash}`);
+      console.log(`first snapshot, blocks ${result.diff.added.length}, hash ${result.snapshot.contentHash}`);
     } else if (!result.diff.changed) {
-      console.log(`без змін, блоків ${result.diff.unchanged}, хеш ${result.snapshot.contentHash}`);
+      console.log(`unchanged, blocks ${result.diff.unchanged}, hash ${result.snapshot.contentHash}`);
     } else {
-      console.log(`нових ${result.diff.added.length}, зниклих ${result.diff.removed.length}, без змін ${result.diff.unchanged}`);
+      console.log(`new ${result.diff.added.length}, gone ${result.diff.removed.length}, unchanged ${result.diff.unchanged}`);
     }
 
     for (const block of result.diff.added) {
       console.log(`  + ${block.title ?? ''} ${block.url ?? ''}`);
     }
     for (const hash of result.diff.removed) {
-      console.log(`  - блок ${hash}`);
+      console.log(`  - block ${hash}`);
     }
   });
 
 function reportCatalog(stats: { itemsFound: number; itemsNew: number; updated: number; skipped: { name: string; reason: string }[]; errors: string[] }) {
   console.table({
-    знайдено: stats.itemsFound,
-    нових: stats.itemsNew,
-    оновлено: stats.updated,
-    'без домену': stats.skipped.length,
-    помилок: stats.errors.length,
+    found: stats.itemsFound,
+    new: stats.itemsNew,
+    updated: stats.updated,
+    'no domain': stats.skipped.length,
+    errors: stats.errors.length,
   });
   for (const skip of stats.skipped.slice(0, 10)) console.log(`  ? ${skip.name}: ${skip.reason}`);
   for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
@@ -271,7 +271,7 @@ function reportCatalog(stats: { itemsFound: number; itemsNew: number; updated: n
 
 program
   .command('bookmarklet')
-  .description('код закладки, яка збирає каталог прямо з відкритої сторінки')
+  .description('bookmarklet code that collects a catalog straight from the open page')
   .action(() => {
     const source = readFileSync('tools/collector.js', 'utf8');
     const minified = source
@@ -280,47 +280,47 @@ program
       .replace(/\s+/g, ' ')
       .trim();
 
-    console.log('Створи закладку в браузері і встав це в поле адреси:\n');
+    console.log('Create a browser bookmark and paste this into its address field:\n');
     console.log(`javascript:${encodeURI(minified)}`);
     console.log(
-      '\nЯк користуватись: відкрий сторінку каталогу (Clutch, GoodFirms, DesignRush, Sortlist),' +
-        '\nдочекайся завантаження і натисни закладку. Компанії підуть у базу, зʼявиться підсумок.' +
-        '\nJob Radar має бути запущений: pnpm start',
+      '\nHow to use: open a catalog page (Clutch, GoodFirms, DesignRush, Sortlist),' +
+        '\nwait for it to load and click the bookmark. Companies go into the database and a summary appears.' +
+        '\nJob Radar has to be running: pnpm start',
     );
   });
 
 program
   .command('import:clutch')
-  .description('імпорт збережених сторінок каталогу (Clutch, TechBehemoths) або CSV')
-  .argument('<files...>', 'шляхи до html або csv')
-  .option('--source <name>', 'мітка джерела', 'clutch')
+  .description('import saved catalog pages (Clutch, TechBehemoths) or CSV')
+  .argument('<files...>', 'paths to html or csv')
+  .option('--source <name>', 'source label', 'clutch')
   .action(async (files: string[], opts: { source: string }) => {
     reportCatalog(await importFiles(files, opts.source));
   });
 
 program
   .command('catalog:run')
-  .description('прогнати каталог компаній за id, напр. awwwards')
-  .argument('<id>', 'id каталогу')
+  .description('run a company catalog by id, e.g. awwwards')
+  .argument('<id>', 'catalog id')
   .action(async (id: string) => {
     const stats = await syncCatalog(id);
     console.table({
-      'знайдено': stats.itemsFound,
-      'нових': stats.itemsNew,
-      'оновлено': stats.updated,
-      'пропущено': stats.skipped,
-      'помилок': stats.errors.length,
+      found: stats.itemsFound,
+      new: stats.itemsNew,
+      updated: stats.updated,
+      skipped: stats.skipped,
+      errors: stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
   });
 
 program
   .command('catalog:dou')
-  .description('зібрати компанії з каталогу DOU за фільтрами')
-  .option('-n, --limit <number>', 'скільки компаній максимум', '40')
-  .option('--business <types>', `типи бізнесу через кому, доступні: ${BUSINESS_TYPES.join(', ')}`)
-  .option('--domains <list>', `домени через кому, наприклад: ${DOMAINS.slice(0, 2).join(', ')}`)
-  .option('--skip-profiles', 'не ходити на сторінки компаній, домен лишиться порожнім')
+  .description('collect companies from the DOU catalog by filters')
+  .option('-n, --limit <number>', 'maximum number of companies', '40')
+  .option('--business <types>', `comma separated business types, available: ${BUSINESS_TYPES.join(', ')}`)
+  .option('--domains <list>', `comma separated domains, for example: ${DOMAINS.slice(0, 2).join(', ')}`)
+  .option('--skip-profiles', 'do not visit company pages, the domain stays empty')
   .action(async (opts: { limit: string; business?: string; domains?: string; skipProfiles?: boolean }) => {
     reportCatalog(
       await syncDou({
@@ -334,12 +334,12 @@ program
 
 program
   .command('source:sync')
-  .description('забрати джерело, класифікувати і записати в базу')
-  .argument('<id>', 'id джерела')
-  .option('--slug <slug>', 'разовий slug ATS')
-  .option('-n, --limit <number>', 'обмежити кількість компаній або вакансій')
-  .option('--skip-llm', 'без викликів моделі, тільки стоп-слова і ваги')
-  .option('--no-detail', 'не довантажувати сторінки коротких вакансій')
+  .description('fetch a source, classify and store it')
+  .argument('<id>', 'source id')
+  .option('--slug <slug>', 'one-off ATS slug')
+  .option('-n, --limit <number>', 'limit the number of companies or vacancies')
+  .option('--skip-llm', 'no model calls, only stop words and weights')
+  .option('--no-detail', 'do not fetch pages of short vacancies')
   .action(async (id: string, opts: { slug?: string; limit?: string; skipLlm?: boolean; detail?: boolean }) => {
     const result = await syncSource(id, {
       slug: opts.slug,
@@ -349,28 +349,28 @@ program
     });
 
     console.table({
-      знайдено: result.itemsFound,
-      нових: result.created,
-      оновлено: result.updated,
-      'відсіяно стоп-словами': result.stopped,
-      класифіковано: result.classified,
-      'на ручний перегляд': result.needsReview,
-      довантажено: result.detailed,
-      закрито: result.closed,
-      помилок: result.errors.length,
+      found: result.itemsFound,
+      new: result.created,
+      updated: result.updated,
+      'filtered by stop words': result.stopped,
+      classified: result.classified,
+      'for manual review': result.needsReview,
+      'details fetched': result.detailed,
+      closed: result.closed,
+      errors: result.errors.length,
     });
     for (const error of result.errors) console.log(`  ! ${error}`);
-    console.log(`лишилось викликів моделі сьогодні: ${await remainingBudget()}`);
+    console.log(`model calls left today: ${await remainingBudget()}`);
   });
 
 program
   .command('studios')
-  .description('черга студій і агенцій, яким варто написати')
-  .option('-n, --limit <number>', 'скільки карток', '20')
-  .option('--min <score>', 'мінімальний рахунок')
-  .option('--country <code>', 'фільтр за країною')
-  .option('-q, --search <text>', 'пошук за назвою, доменом або тегом')
-  .option('--all', 'показати і тих, кому вже писали')
+  .description('queue of studios and agencies worth writing to')
+  .option('-n, --limit <number>', 'how many cards', '20')
+  .option('--min <score>', 'minimum score')
+  .option('--country <code>', 'filter by country')
+  .option('-q, --search <text>', 'search by name, domain or tag')
+  .option('--all', 'include those already contacted')
   .action(async (opts: { limit: string; min?: string; country?: string; search?: string; all?: boolean }) => {
     const cards = await studioQueue({
       limit: Number(opts.limit),
@@ -381,7 +381,7 @@ program
     });
 
     if (cards.length === 0) {
-      console.log('черга студій порожня, спробуй знизити --min або зібрати більше каталогів');
+      console.log('the studio queue is empty, try lowering --min or collecting more catalogs');
       return;
     }
 
@@ -405,16 +405,16 @@ program
 
 program
   .command('score:explain')
-  .description('чому вакансія або компанія має такий рахунок')
+  .description('why a vacancy or a company has its score')
   .argument('<what>', 'vacancy | company')
-  .argument('<id>', 'id запису')
+  .argument('<id>', 'record id')
   .action(async (what: string, id: string) => {
     const db = getDb();
     if (what === 'vacancy') {
       const [row] = await db.select().from(vacancies).where(eq(vacancies.id, Number(id)));
-      if (!row) throw new Error('вакансії немає');
+      if (!row) throw new Error('no such vacancy');
       const [owner] = await db.select().from(companiesTable).where(eq(companiesTable.id, row.companyId));
-      console.log(`${row.title}\n${row.url}\nлокація: ${row.location ?? 'невідома'}\n`);
+      console.log(`${row.title}\n${row.url}\nlocation: ${row.location ?? 'unknown'}\n`);
       console.log(
         explain(
           scoreVacancy({
@@ -432,14 +432,14 @@ program
           }),
         ),
       );
-      console.log(`\nу базі записано: ${row.score}`);
+      console.log(`\nstored in the database: ${row.score}`);
       return;
     }
 
     const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, Number(id)));
-    if (!company) throw new Error('компанії немає');
+    if (!company) throw new Error('no such company');
     const breakdown = scoreCompany({ company });
-    console.log(`${company.name} ${company.domain}\nрахунок: ${breakdown.score}`);
+    console.log(`${company.name} ${company.domain}\nscore: ${breakdown.score}`);
     for (const item of [...breakdown.positives, ...breakdown.negatives]) {
       console.log(`  ${item.weight > 0 ? '+' : ''}${item.weight}  ${item.reason}`);
     }
@@ -447,7 +447,7 @@ program
 
 program
   .command('score:recalc')
-  .description('перерахувати рахунки після зміни config/scoring.json')
+  .description('rescore after changing the rules')
   .action(async () => {
     const stats = await recalcScores();
     console.table(stats);
@@ -455,12 +455,12 @@ program
 
 program
   .command('queue')
-  .description('черга на сьогодні')
-  .option('-n, --limit <number>', 'скільки карток')
+  .description("today's queue")
+  .option('-n, --limit <number>', 'how many cards')
   .action(async (opts: { limit?: string }) => {
     const rows = await queue(opts.limit ? Number(opts.limit) : undefined);
     if (rows.length === 0) {
-      console.log('черга порожня');
+      console.log('the queue is empty');
       return;
     }
 
@@ -479,59 +479,59 @@ program
 
 program
   .command('classify:pending')
-  .description('догнати класифікацію вакансій, які лежать у базі без неї')
-  .option('-n, --limit <number>', 'скільки записів', '20')
+  .description('catch up on classification for vacancies stored without it')
+  .option('-n, --limit <number>', 'how many records', '20')
   .action(async (opts: { limit: string }) => {
     const stats = await classifyPending(Number(opts.limit));
     console.table(stats);
-    console.log(`лишилось викликів моделі сьогодні: ${await remainingBudget()}`);
+    console.log(`model calls left today: ${await remainingBudget()}`);
   });
 
 program
   .command('discover')
-  .description('знайти career-сторінки і стек компаній без ATS')
-  .option('-n, --limit <number>', 'скільки компаній обійти', '25')
-  .option('--domain <domain>', 'конкретна компанія')
-  .option('--all', 'без обмеження за цікавістю і стеком')
+  .description('find careers pages and the stack of companies without an ATS')
+  .option('-n, --limit <number>', 'how many companies to visit', '25')
+  .option('--domain <domain>', 'a specific company')
+  .option('--all', 'no limit by interest and stack')
   .action(async (opts: { limit: string; domain?: string; all?: boolean }) => {
     const stats = await discover({ limit: Number(opts.limit), domain: opts.domain, all: opts.all });
     console.table({
-      'кандидатів': stats.itemsFound,
-      'обійдено': stats.checked,
-      'знайдено ATS': stats.withAts,
-      'знайдено html-сторінку': stats.withHtml,
-      'без вакансій': stats.none,
-      'нових careers_url': stats.itemsNew,
-      'помилок': stats.errors.length,
+      candidates: stats.itemsFound,
+      checked: stats.checked,
+      'ATS found': stats.withAts,
+      'html page found': stats.withHtml,
+      'no vacancies': stats.none,
+      'new careers_url': stats.itemsNew,
+      errors: stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
   });
 
 program
   .command('enrich')
-  .description('зібрати контакти і ознаки живості з сайтів компаній')
-  .option('-n, --limit <number>', 'скільки компаній обійти', '25')
-  .option('--domain <domain>', 'конкретна компанія')
-  .option('--all', 'включно з тими, у кого контакти вже є')
+  .description('collect contacts and signs of life from company sites')
+  .option('-n, --limit <number>', 'how many companies to visit', '25')
+  .option('--domain <domain>', 'a specific company')
+  .option('--all', 'including those that already have contacts')
   .action(async (opts: { limit: string; domain?: string; all?: boolean }) => {
     const stats = await enrich({ limit: Number(opts.limit), domain: opts.domain, all: opts.all });
     console.table({
-      'обійдено компаній': stats.checked,
-      'сторінок завантажено': stats.pagesFetched,
-      'з іменними контактами': stats.withPeople,
-      'хоч з якоюсь поштою': stats.withEmail,
-      'контактів додано': stats.contactsAdded,
-      'помилок': stats.errors.length,
+      'companies checked': stats.checked,
+      'pages fetched': stats.pagesFetched,
+      'with named contacts': stats.withPeople,
+      'with any email': stats.withEmail,
+      'contacts added': stats.contactsAdded,
+      errors: stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
   });
 
 program
   .command('export:csv')
-  .description('вивантажити чергу або студії у CSV для ручної роботи в таблиці')
-  .argument('<what>', 'queue або studios')
-  .option('-o, --out <file>', 'куди записати, за замовчуванням у stdout')
-  .option('--named', 'тільки студії з іменним контактом')
+  .description('export the queue or studios to CSV for manual work in a spreadsheet')
+  .argument('<what>', 'queue or studios')
+  .option('-o, --out <file>', 'where to write, stdout by default')
+  .option('--named', 'only studios with a named contact')
   .action(async (what: string, opts: { out?: string; named?: boolean }) => {
     let csv = '';
 
@@ -539,49 +539,49 @@ program
       const cards = await getQueue(todayKey());
       csv = toCsv(
         cards.map((card) => ({
-          компанія: card.company,
-          домен: card.domain,
-          вакансія: card.title,
-          рахунок: card.score,
-          грейд: card.seniority,
-          локація: card.location,
-          вилка: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
-          стек: card.stack.join(' '),
-          посилання: card.url,
-          рішення: card.decision ?? '',
+          company: card.company,
+          domain: card.domain,
+          vacancy: card.title,
+          score: card.score,
+          seniority: card.seniority,
+          location: card.location,
+          salary: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
+          stack: card.stack.join(' '),
+          url: card.url,
+          decision: card.decision ?? '',
         })),
       );
     } else if (what === 'studios') {
       const page = await studioPage({ limit: 1000, withNamedContact: opts.named });
       csv = toCsv(
         page.cards.map((card) => ({
-          компанія: card.name,
-          домен: card.domain,
-          тип: card.kind,
-          рахунок: card.score,
-          де: [card.city, card.country].filter(Boolean).join(', '),
-          контакт: card.contacts.find((contact) => contact.name)?.name ?? '',
-          посада: card.contacts.find((contact) => contact.name)?.role ?? '',
-          пошта:
+          company: card.name,
+          domain: card.domain,
+          kind: card.kind,
+          score: card.score,
+          location: [card.city, card.country].filter(Boolean).join(', '),
+          contact: card.contacts.find((contact) => contact.name)?.name ?? '',
+          role: card.contacts.find((contact) => contact.name)?.role ?? '',
+          email:
             card.contacts.find((contact) => contact.name && contact.email)?.email ??
             card.contacts.find((contact) => contact.email)?.email ??
             '',
-          вакансій: card.openVacancies,
+          vacancies: card.openVacancies,
         })),
       );
     } else {
-      throw new Error(`невідомий тип вивантаження: ${what}. Доступні: queue, studios`);
+      throw new Error(`unknown export type: ${what}. Available: queue, studios`);
     }
 
     if (!csv) {
-      console.log('нічого вивантажувати');
+      console.log('nothing to export');
       return;
     }
 
     if (opts.out) {
       const { writeFile } = await import('node:fs/promises');
       await writeFile(opts.out, csv, 'utf8');
-      console.log(`записано у ${opts.out}`);
+      console.log(`written to ${opts.out}`);
     } else {
       process.stdout.write(csv);
     }
@@ -589,34 +589,34 @@ program
 
 program
   .command('queue:top-up')
-  .description('добрати картки в сьогоднішній зріз до денного ліміту')
+  .description("top up today's slice to the daily limit")
   .action(async () => {
     const result = await topUpQueue();
-    console.log(`додано ${result.added}, у зрізі тепер ${result.total}`);
+    console.log(`added ${result.added}, the slice now has ${result.total}`);
   });
 
 program
   .command('embed')
-  .description('порахувати вектори компаній через Workers AI, для пошуку схожих')
-  .option('-n, --limit <number>', 'скільки компаній обробити', '200')
+  .description('compute company vectors through Workers AI, for finding similar ones')
+  .option('-n, --limit <number>', 'how many companies to process', '200')
   .action(async (opts: { limit: string }) => {
     const stats = await embedCompanies(Number(opts.limit));
     console.table({
-      'без векторів було': stats.itemsFound,
-      'порахувано': stats.itemsNew,
-      'помилок': stats.errors.length,
+      'without vectors': stats.itemsFound,
+      computed: stats.itemsNew,
+      errors: stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 5)) console.log(`  ! ${error}`);
   });
 
 program
   .command('similar')
-  .description('схожі компанії за описом')
-  .argument('<id>', 'id компанії')
+  .description('similar companies by description')
+  .argument('<id>', 'company id')
   .action(async (id: string) => {
     const rows = await similarCompanies(Number(id));
     if (rows.length === 0) {
-      console.log('схожих не знайшлось, або в компанії ще немає вектора');
+      console.log('nothing similar found, or the company has no vector yet');
       return;
     }
     console.table(rows);
@@ -624,61 +624,61 @@ program
 
 program
   .command('kinds')
-  .description('проставити тип компаній: студія, дизайн, стартап, продукт, аутстаф')
-  .option('--force', 'перерахувати навіть тим, у кого тип уже стоїть')
+  .description('assign company kinds: studio, design, startup, product, outstaff')
+  .option('--force', 'recompute even where a kind is already set')
   .action(async (opts: { force?: boolean }) => {
     console.table(await backfillKinds(Boolean(opts.force)));
   });
 
 program
   .command('backfill:catalog')
-  .description('розкласти ставку, мінімальний проєкт і рік заснування з тегів по колонках')
+  .description('split hourly rate, minimum project and founding year from tags into columns')
   .action(async () => {
     console.table(await backfillCatalogFields());
   });
 
 program
   .command('stats')
-  .description('статистика: топ технологій, вилки, час життя вакансій, воронка')
+  .description('stats: top technologies, salaries, vacancy lifetime, funnel')
   .action(async () => {
     const stats = await fullStats();
-    console.log('\nтоп технологій');
+    console.log('\ntop technologies');
     console.table(stats.topTech.slice(0, 15));
-    console.log('\nмедіанна вилка за грейдом');
+    console.log('\nmedian salary by seniority');
     console.table(stats.salariesBySeniority);
-    console.log('\nчас життя вакансій');
+    console.log('\nvacancy lifetime');
     console.table({
-      'медіана днів': stats.lifetimes.medianDays ?? 'даних ще немає',
-      'закритих': stats.lifetimes.closedCount,
-      'підозр на ghost jobs': stats.lifetimes.ghosts.length,
+      'median days': stats.lifetimes.medianDays ?? 'no data yet',
+      closed: stats.lifetimes.closedCount,
+      'suspected ghost jobs': stats.lifetimes.ghosts.length,
     });
-    console.log('\nворонка');
+    console.log('\nfunnel');
     console.table(stats.funnel);
   });
 
 program
   .command('notify:check')
-  .description('перевірити звʼязок з телеграмом і показати доступні chat_id')
+  .description('check the Telegram connection and show available chat_id values')
   .action(async () => {
     const result = await probe();
-    console.log(`бот: ${result.botUsername ? '@' + result.botUsername : 'невідомий'}`);
-    console.log(`chat_id у .env: ${result.configuredChatId || 'порожній'}`);
-    console.log(`доступність: ${result.reachable ? 'так' : 'ні'}`);
+    console.log(`bot: ${result.botUsername ? '@' + result.botUsername : 'unknown'}`);
+    console.log(`chat_id in .env: ${result.configuredChatId || 'empty'}`);
+    console.log(`reachable: ${result.reachable ? 'yes' : 'no'}`);
     console.log(result.hint);
     if (result.chats.length > 0) {
-      console.log('\nчати, які бачить бот:');
+      console.log('\nchats the bot can see:');
       console.table(result.chats);
     }
   });
 
 program
   .command('notify')
-  .description('надіслати сповіщення в телеграм')
-  .argument('<kind>', 'digest | highscore | followups | broken | help | status | test')
-  .option('--dry', 'показати текст, але не надсилати')
+  .description('send a Telegram notification')
+  .argument('<kind>', 'summary | digest | highscore | followups | broken | help | status | test')
+  .option('--dry', 'show the text without sending')
   .action(async (kind: string, opts: { dry?: boolean }) => {
     if (!isConfigured() && !opts.dry) {
-      console.error('немає TELEGRAM_BOT_TOKEN або TELEGRAM_CHAT_ID у .env');
+      console.error('TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing from .env');
       process.exitCode = 1;
       return;
     }
@@ -686,6 +686,8 @@ program
     const sender = opts.dry ? async (text: string) => console.log(text) : undefined;
     const sent = await (async () => {
       switch (kind) {
+        case 'summary':
+          return notify.summary({ sender });
         case 'digest':
           return notify.digest({ sender });
         case 'highscore':
@@ -695,27 +697,27 @@ program
         case 'broken':
           return notify.broken({ sender });
         case 'test':
-          return notify.raw('Job Radar на звʼязку', { sender });
+          return notify.raw('Job Radar is online', { sender });
         case 'help':
           return notify.raw(HELP_TEXT, { sender });
         case 'status':
           return statusText().then((text) => notify.raw(text, { sender }));
         default:
-          throw new Error(`невідомий тип сповіщення: ${kind}`);
+          throw new Error(`unknown notification type: ${kind}`);
       }
     })();
 
-    console.log(sent ? 'надіслано' : 'нічого надсилати, повідомлення порожнє');
+    console.log(sent ? 'sent' : 'nothing to send, the message is empty');
   });
 
 program
   .command('export:sql')
-  .description('вивантажити дані локальної бази як INSERT-и для D1')
-  .argument('<file>', 'куди писати, наприклад /tmp/data.sql')
-  .option('--tables <list>', 'які таблиці, через кому')
+  .description('export the local database as INSERT statements for D1')
+  .argument('<file>', 'where to write, for example /tmp/data.sql')
+  .option('--tables <list>', 'which tables, comma separated')
   .action(async (file: string, opts: { tables?: string }) => {
     const sqlite = getSqlite();
-    // Порядок важливий: спершу компанії, потім усе, що на них посилається.
+    // Order matters: companies first, then everything that references them.
     const order = [
       'companies',
       'company_state',
@@ -758,15 +760,15 @@ program
     }
 
     writeFileSync(file, lines.join('\n'), 'utf8');
-    console.log(`\nзаписано ${total} рядків у ${file}`);
-    console.log('далі: pnpm wrangler d1 execute job-radar --remote --file=' + file);
+    console.log(`\nwrote ${total} rows to ${file}`);
+    console.log('next: pnpm wrangler d1 execute job-radar --remote --file=' + file);
   });
 
 program
   .command('doctor')
-  .description('перевірити задеплоєний радар: база, міграції, токен')
-  .argument('<url>', 'адреса воркера, наприклад https://job-radar.xxx.workers.dev')
-  .option('--token <token>', 'RADAR_TOKEN, якщо заданий')
+  .description('check a deployed radar: database, migrations, token')
+  .argument('<url>', 'worker address, for example https://job-radar.xxx.workers.dev')
+  .option('--token <token>', 'RADAR_TOKEN, if set')
   .action(async (url: string, opts: { token?: string }) => {
     const base = url.replace(/\/$/, '');
     const headers = opts.token ? { 'x-radar-token': opts.token } : undefined;
@@ -781,59 +783,59 @@ program
       error?: string;
     };
 
-    console.log(`статус: ${response.status}`);
+    console.log(`status: ${response.status}`);
     console.log(
       body.db
-        ? `база: ${body.db}`
-        : 'база: перевірка недоступна, у проді старий білд без ?deep=1, потрібен передеплой',
+        ? `database: ${body.db}`
+        : 'database: check unavailable, production runs an old build without ?deep=1, redeploy it',
     );
-    if (body.tables) console.log(`таблиць: ${body.tables.length}`);
-    if (body.missing?.length) console.log(`бракує таблиць: ${body.missing.join(', ')}`);
-    // Міграція з новими колонками лишає перелік таблиць незмінним, тому проба окремо.
-    if (body.columns) console.log(`бракує колонок: ${body.columns}`);
-    if (body.hint) console.log(`що робити: ${body.hint}`);
-    if (body.error) console.log(`помилка: ${body.error}`);
+    if (body.tables) console.log(`tables: ${body.tables.length}`);
+    if (body.missing?.length) console.log(`missing tables: ${body.missing.join(', ')}`);
+    // A migration with new columns leaves the table list unchanged, hence the separate probe.
+    if (body.columns) console.log(`missing columns: ${body.columns}`);
+    if (body.hint) console.log(`what to do: ${body.hint}`);
+    if (body.error) console.log(`error: ${body.error}`);
 
     const companies = await fetch(`${base}/api/companies`, { headers });
     const data = (await companies.json()) as unknown;
     console.log(
-      `/api/companies: ${companies.status}, ${Array.isArray(data) ? `${data.length} записів` : JSON.stringify(data).slice(0, 160)}`,
+      `/api/companies: ${companies.status}, ${Array.isArray(data) ? `${data.length} records` : JSON.stringify(data).slice(0, 160)}`,
     );
   });
 
 program
   .command('fix:detail')
-  .description('перечитати вакансії, у яких замість опису збереглось меню сайту')
-  .option('--limit <n>', 'скільки сторінок відкрити за прохід', '50')
-  .option('--source <id>', 'джерело, чиї вакансії перечитати', 'getro')
+  .description('re-read vacancies that stored the site menu instead of a description')
+  .option('--limit <n>', 'how many pages to open per pass', '50')
+  .option('--source <id>', 'source whose vacancies to re-read', 'getro')
   .action(async (options: { limit: string; source: string }) => {
     const report = await refreshDetails({ limit: Number(options.limit), source: options.source });
     console.log(
-      `перевірено ${report.checked}, виправлено ${report.fixed}, без змін ${report.unchanged}, без опису ${report.stillEmpty}`,
+      `checked ${report.checked}, fixed ${report.fixed}, unchanged ${report.unchanged}, still no description ${report.stillEmpty}`,
     );
-    if (report.fixed > 0) console.log('далі: pnpm cli classify:pending, щоб перекласифікувати');
+    if (report.fixed > 0) console.log('next: pnpm cli classify:pending to reclassify');
   });
 
 program
   .command('llm:ping')
-  .description('живий виклик моделі: перевірка ключа, шлюзу і провайдера')
+  .description('live model call: checks the key, the gateway and the provider')
   .action(async () => {
-    console.log(`провайдер: ${config.llm.provider}, модель: ${config.llm.activeModel}`);
-    console.log(`шлюз: ${config.llm.baseUrl || 'прямий виклик, без AI Gateway'}`);
+    console.log(`provider: ${config.llm.provider}, model: ${config.llm.activeModel}`);
+    console.log(`gateway: ${config.llm.baseUrl || 'direct call, no AI Gateway'}`);
     console.log(
-      `автентифікація шлюзу: ${config.cloudflare.gatewayToken ? 'токен заданий' : 'токена немає'}`,
+      `gateway authentication: ${config.cloudflare.gatewayToken ? 'token set' : 'no token'}`,
     );
 
     try {
-      const raw = await callModelWith('Відповідай одним словом.', 'скажи ok');
-      console.log(`відповідь: ${raw.text.trim().slice(0, 40)}`);
-      console.log(`токени: ${raw.inputTokens} вхідних, ${raw.outputTokens} вихідних`);
+      const raw = await callModelWith('Reply with one word.', 'say ok');
+      console.log(`reply: ${raw.text.trim().slice(0, 40)}`);
+      console.log(`tokens: ${raw.inputTokens} in, ${raw.outputTokens} out`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.log(`помилка: ${message}`);
+      console.log(`error: ${message}`);
       if (message.includes('401')) {
         console.log(
-          'що робити: або вимкнути автентифікацію в Settings шлюзу, або створити токен з правом AI Gateway Run і покласти його в AI_GATEWAY_TOKEN',
+          'what to do: either turn off authentication in the gateway Settings, or create a token with the AI Gateway Run permission and put it into AI_GATEWAY_TOKEN',
         );
       }
       process.exitCode = 1;
@@ -842,25 +844,25 @@ program
 
 program
   .command('llm:budget')
-  .description('скільки викликів моделі лишилось сьогодні')
+  .description('how many model calls are left today')
   .action(async () => {
-    console.log(`${today()}: лишилось ${await remainingBudget()}`);
+    console.log(`${today()}: ${await remainingBudget()} left`);
   });
 
 program
   .command('outreach:seed')
-  .description('додати стартові шаблони розсилки, яких ще немає')
+  .description('add the missing starter sending templates')
   .action(async () => {
     const added = await seedOutreachTemplates();
-    console.log(added === 0 ? 'усі шаблони розсилки вже на місці' : `додано шаблонів: ${added}`);
+    console.log(added === 0 ? 'all sending templates are already in place' : `templates added: ${added}`);
   });
 
 program
   .command('outreach:prepare')
-  .description('зібрати чернетки листів')
-  .option('--limit <n>', 'скільки компаній узяти', '20')
-  .option('--dry-run', 'показати і нічого не писати в базу')
-  .option('--ai', 'перший абзац пише модель, з валідацією і відкатом')
+  .description('prepare letter drafts')
+  .option('--limit <n>', 'how many companies to take', '20')
+  .option('--dry-run', 'show them and write nothing to the database')
+  .option('--ai', 'the model writes the first paragraph, with validation and fallback')
   .action(async (options: { limit: string; dryRun?: boolean; ai?: boolean }) => {
     const report = await prepareDrafts({
       limit: Number(options.limit),
@@ -871,151 +873,151 @@ program
     for (const draft of report.drafts) {
       console.log('─'.repeat(70));
       console.log(
-        `${draft.companyId} ${draft.contactEmail ?? 'без адреси'} | ${draft.templateSlug} | ${draft.language}`,
+        `${draft.companyId} ${draft.contactEmail ?? 'no address'} | ${draft.templateSlug} | ${draft.language}`,
       );
-      console.log(`тема: ${draft.subject || '(порожня)'}`);
-      console.log(draft.body.trim() || '(порожнє тіло)');
-      if (draft.aiUsed) console.log('абзац: модель');
-      else if (draft.aiFallbackReason) console.log(`абзац: відкат на шаблон, ${draft.aiFallbackReason}`);
+      console.log(`subject: ${draft.subject || '(empty)'}`);
+      console.log(draft.body.trim() || '(empty body)');
+      if (draft.aiUsed) console.log('intro: model');
+      else if (draft.aiFallbackReason) console.log(`intro: fell back to the template, ${draft.aiFallbackReason}`);
       if (draft.error) console.log(`! ${draft.error}`);
     }
 
     console.log('─'.repeat(70));
-    for (const skip of report.skipped) console.log(`пропущено ${skip.company}: ${skip.reason}`);
+    for (const skip of report.skipped) console.log(`skipped ${skip.company}: ${skip.reason}`);
     console.log(
-      `кандидатів ${report.candidates}, чернеток ${options.dryRun ? report.drafts.length : report.created}, потребують уваги ${report.needsAttention}`,
+      `candidates ${report.candidates}, drafts ${options.dryRun ? report.drafts.length : report.created}, need attention ${report.needsAttention}`,
     );
   });
 
 program
   .command('outreach:send')
-  .description('надіслати одну чернетку за id')
-  .argument('<id>', 'id чернетки зі списку outreach:drafts')
+  .description('send one draft by id')
+  .argument('<id>', 'draft id from outreach:drafts')
   .action(async (id: string) => {
     const outcome = await sendDraft(Number(id));
     if (outcome.sent) {
-      console.log(`надіслано, threadId ${outcome.threadId}`);
+      console.log(`sent, threadId ${outcome.threadId}`);
       return;
     }
-    console.log('не надіслано:');
+    console.log('not sent:');
     for (const blocker of outcome.blockers) console.log(`  ${blocker.code}: ${blocker.message}`);
   });
 
 program
   .command('outreach:limits')
-  .description('скільки листів дозволено сьогодні')
+  .description('how many letters are allowed today')
   .action(async () => {
     const counters = await sendCounters();
-    console.log(`день ${counters.day}: ${counters.sentToday} з ${counters.limit}`);
-    console.log(`вікно відправки: ${counters.windowOpen ? 'відкрите' : 'закрите'}`);
+    console.log(`day ${counters.day}: ${counters.sentToday} of ${counters.limit}`);
+    console.log(`sending window: ${counters.windowOpen ? 'open' : 'closed'}`);
     if (counters.nextAllowedAt) {
-      console.log(`наступний лист не раніше ${new Date(counters.nextAllowedAt).toLocaleTimeString()}`);
+      console.log(`next letter no earlier than ${new Date(counters.nextAllowedAt).toLocaleTimeString()}`);
     }
-    console.log(`баунси: ${Math.round(counters.bounceRate * 100)} відсотків`);
+    console.log(`bounces: ${Math.round(counters.bounceRate * 100)} percent`);
   });
 
 program
   .command('outreach:replies')
-  .description('перевірити відповіді і баунси в надісланих листах')
+  .description('check replies and bounces on sent letters')
   .action(async () => {
     const report = await checkReplies({ ownEmail: config.gmail.fromEmail });
     console.log(
-      `перевірено ${report.checked}, відповідей ${report.replies}, баунсів ${report.bounces}`,
+      `checked ${report.checked}, replies ${report.replies}, bounces ${report.bounces}`,
     );
-    for (const error of report.errors) console.log(`  помилка ${error}`);
+    for (const error of report.errors) console.log(`  error ${error}`);
   });
 
 program
   .command('outreach:followups')
-  .description('зібрати чернетки фолоу-апів, кому час писати вдруге')
+  .description('prepare follow-up drafts for those due a second letter')
   .action(async () => {
     const report = await prepareFollowups();
-    console.log(`настало ${report.due}, чернеток ${report.created}`);
-    for (const skip of report.skipped) console.log(`  пропущено ${skip.company}: ${skip.reason}`);
+    console.log(`due ${report.due}, drafts ${report.created}`);
+    for (const skip of report.skipped) console.log(`  skipped ${skip.company}: ${skip.reason}`);
   });
 
 program
   .command('outreach:stats')
-  .description('конверсія шаблонів, відкати валідації, баунси')
+  .description('template conversion, validation fallbacks, bounces')
   .action(async () => {
     const stats = await outreachStats();
     console.table(stats.byTemplate);
-    console.log(`AI: ${stats.ai.sent} надіслано, ${stats.ai.positive} позитивних`);
-    console.log(`шаблон: ${stats.static.sent} надіслано, ${stats.static.positive} позитивних`);
-    console.log(`відкатів валідації: ${Math.round(stats.fallbackShare * 100)} відсотків`);
+    console.log(`AI: ${stats.ai.sent} sent, ${stats.ai.positive} positive`);
+    console.log(`template: ${stats.static.sent} sent, ${stats.static.positive} positive`);
+    console.log(`validation fallbacks: ${Math.round(stats.fallbackShare * 100)} percent`);
     for (const item of stats.fallbacks) console.log(`  ${item.reason}: ${item.count}`);
-    console.log(`баунси: ${Math.round(stats.bounceRate * 100)} відсотків`);
+    console.log(`bounces: ${Math.round(stats.bounceRate * 100)} percent`);
     console.log(
-      `медіанний час до відповіді: ${stats.medianReplyHours === null ? 'ще немає' : `${stats.medianReplyHours.toFixed(1)} год`}`,
+      `median time to reply: ${stats.medianReplyHours === null ? 'none yet' : `${stats.medianReplyHours.toFixed(1)} h`}`,
     );
   });
 
 program
   .command('outreach:drafts')
-  .description('що зараз лежить у чернетках')
+  .description('what is in the drafts right now')
   .action(async () => {
     const rows = await listDrafts();
     if (rows.length === 0) {
-      console.log('чернеток немає, зібрати: pnpm cli outreach:prepare');
+      console.log('no drafts, prepare them with: pnpm cli outreach:prepare');
       return;
     }
     console.table(
       rows.map((row) => ({
         id: row.id,
-        компанія: row.company,
-        кому: row.contactEmail ?? '',
-        шаблон: row.templateUsed ?? '',
-        мова: row.language ?? '',
-        проблема: row.error ?? '',
+        company: row.company,
+        to: row.contactEmail ?? '',
+        template: row.templateUsed ?? '',
+        language: row.language ?? '',
+        problem: row.error ?? '',
       })),
     );
   });
 
 program
   .command('auth:gmail')
-  .description('підключити Gmail через OAuth')
+  .description('connect Gmail through OAuth')
   .action(async () => {
     const token = await authorize();
-    console.log(`підключено: ${token.email ?? 'акаунт невідомий'}`);
-    console.log(`токен збережено: ${config.gmail.tokenPath}`);
+    console.log(`connected: ${token.email ?? 'unknown account'}`);
+    console.log(`token saved: ${config.gmail.tokenPath}`);
   });
 
 program
   .command('gmail:status')
-  .description('стан підключення пошти')
+  .description('mail connection status')
   .action(() => {
     const status = gmailStatus();
-    console.log(`налаштовано: ${status.configured ? 'так' : 'ні'}`);
-    console.log(`підключено: ${status.connected ? (status.email ?? 'так') : 'ні'}`);
-    if (status.scopes.length > 0) console.log(`дозволи: ${status.scopes.join(' ')}`);
-    if (status.hint) console.log(`що робити: ${status.hint}`);
+    console.log(`configured: ${status.configured ? 'yes' : 'no'}`);
+    console.log(`connected: ${status.connected ? (status.email ?? 'yes') : 'no'}`);
+    if (status.scopes.length > 0) console.log(`scopes: ${status.scopes.join(' ')}`);
+    if (status.hint) console.log(`what to do: ${status.hint}`);
   });
 
 program
   .command('gmail:test')
-  .description('надіслати тестовий лист собі')
-  .argument('[email]', 'кому, за замовчуванням власна адреса')
+  .description('send a test letter to yourself')
+  .argument('[email]', 'recipient, defaults to your own address')
   .action(async (email?: string) => {
     const to = email ?? config.gmail.fromEmail;
-    if (!to) throw new Error('нема адреси: заповнити GMAIL_FROM_EMAIL у .env');
+    if (!to) throw new Error('no address: set GMAIL_FROM_EMAIL in .env');
 
-    // Кирилиця в темі і тілі навмисно: саме на ній ламається кодування.
+    // Non-ASCII in the subject on purpose, a Cyrillic word included: that is where encoding breaks.
     const result = await deliver({
       to,
-      subject: 'Job Radar: перевірка кодування, тест',
+      subject: 'Job Radar: encoding check, тест, café',
       body: [
-        'Це технічний лист від Job Radar.',
+        'This is a technical letter from Job Radar.',
         '',
-        'Якщо тема і цей рядок читаються без кракозябр, кодування правильне.',
+        'If the subject and this line read without garbled characters, the encoding is right.',
         '',
         '',
       ].join('\n'),
     });
 
-    console.log(`надіслано на ${to} через ${mailer().id}`);
+    console.log(`sent to ${to} through ${mailer().id}`);
     console.log(`messageId: ${result.messageId}`);
     console.log(`threadId: ${result.threadId}`);
-    console.log(`Message-Id: ${result.rfcMessageId ?? 'не віддався'}`);
+    console.log(`Message-Id: ${result.rfcMessageId ?? 'not returned'}`);
   });
 
 await program.parseAsync(process.argv);

@@ -112,6 +112,7 @@ export async function prepareFollowups(now = new Date()): Promise<FollowupReport
       company: candidate.company,
       domain: '',
       contactName: candidate.contactName,
+      language: candidate.language,
       intro: template.intro ?? '',
       signature,
     });

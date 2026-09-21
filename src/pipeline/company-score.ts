@@ -3,17 +3,16 @@ import { rules } from './rules.js';
 import type { ScoreReason } from './score.js';
 
 /**
- * Скоринг компаній, яким варто написати. Це окрема від вакансій задача:
- * невеликій веб-студії вакансія не потрібна, потрібен виконавець на проєкт.
- * Тому тут важать розмір, профіль послуг, живий фронтендовий стек і країна,
- * а не наявність відкритої позиції.
+ * Scoring companies worth writing to. A separate task from vacancies: a small web studio needs no
+ * vacancy, it needs a contractor for a project. So what matters here is size, service profile, a
+ * living front end stack and country, not an open position.
  */
 
 export interface CompanyScoreInput {
   company: Company;
   openVacancies?: number;
   status?: string | null;
-  /** Поточний час. Окремим полем, щоб штраф за давність можна було перевірити тестом. */
+  /** The current time. A separate field so the staleness penalty can be tested. */
   now?: number;
 }
 
@@ -28,7 +27,7 @@ function normalize(value: string): string {
   return value.toLowerCase().trim();
 }
 
-/** Розмір з каталогів приходить рядком: "10 - 49", "200...800 спеціалістів", "51-200". */
+/** Size from catalogs arrives as a string: "10 - 49", "200...800 спеціалістів" (DOU), "51-200". */
 export function sizeBucket(sizeHint: string | null): string | null {
   if (!sizeHint) return null;
   const direct = Object.keys(rules().companies.sizeWeights).find(
@@ -62,11 +61,11 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   };
 
   if (input.status === 'blacklist') {
-    return { score: -100, positives, negatives, rejectedBy: 'компанія в blacklist' };
+    return { score: -100, positives, negatives, rejectedBy: 'company is blacklisted' };
   }
 
   const bucket = sizeBucket(company.sizeHint);
-  if (bucket) push(`розмір ${bucket}`, config.sizeWeights[bucket] ?? 0);
+  if (bucket) push(`size ${bucket}`, config.sizeWeights[bucket] ?? 0);
 
   const tags = company.tags.map(normalize);
   for (const [tag, weight] of Object.entries(config.tagWeights)) {
@@ -74,68 +73,68 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   }
 
   /*
-   * Ставка тепер має власну колонку, але в компаніях, зібраних раніше, вона лежить
-   * серед тегів. Читаються обидва місця, інакше беквіл коштував би перезбір каталогів.
+   * The hourly rate now has its own column, but in companies collected earlier it sits among the
+   * tags. Both places are read, otherwise the backfill would cost re-collecting the catalogs.
    */
   const rateCandidates = [company.hourlyRate, ...tags].filter((value): value is string => Boolean(value));
   for (const [tag, weight] of Object.entries(config.hourlyRateBonus)) {
-    if (rateCandidates.some((value) => normalize(value) === normalize(tag))) push(`ставка ${tag}`, weight);
+    if (rateCandidates.some((value) => normalize(value) === normalize(tag))) push(`rate ${tag}`, weight);
   }
 
   /*
-   * Репутація в каталозі. Студія з десятками відгуків і високою оцінкою реально
-   * працює з клієнтами, тобто там є кому читати лист. Картка без жодного відгуку
-   * часто просто заповнена і покинута, тому це окремий, невеликий штраф.
+   * Catalog reputation. A studio with dozens of reviews and a high rating really works with
+   * clients, so there is someone to read the letter. A profile without a single review is often
+   * just filled in and abandoned, hence a separate small penalty.
    */
   const reputation = config.reputation;
   if (reputation) {
     if (company.rating !== null && company.rating >= reputation.goodRating) {
-      push(`оцінка ${company.rating}`, reputation.goodRatingBonus);
+      push(`rating ${company.rating}`, reputation.goodRatingBonus);
     }
     if (company.rating !== null && company.rating > 0 && company.rating < reputation.weakRating) {
-      push(`низька оцінка ${company.rating}`, reputation.weakRatingPenalty);
+      push(`low rating ${company.rating}`, reputation.weakRatingPenalty);
     }
     if ((company.reviewsCount ?? 0) >= reputation.reviewsFrom) {
-      push(`відгуків ${company.reviewsCount}`, reputation.reviewsBonus);
+      push(`${company.reviewsCount} reviews`, reputation.reviewsBonus);
     }
-    if (company.reviewsCount === 0) push('жодного відгуку', reputation.noReviewsPenalty);
+    if (company.reviewsCount === 0) push('no reviews', reputation.noReviewsPenalty);
   }
 
   const tech = company.techHints.map(normalize);
   for (const [name, weight] of Object.entries(config.techWeights)) {
-    if (tech.includes(normalize(name))) push(`стек: ${name}`, weight);
+    if (tech.includes(normalize(name))) push(`stack: ${name}`, weight);
   }
 
   if (company.country) {
     const weight = config.countryWeights[company.country];
-    if (weight) push(`країна ${company.country}`, weight);
+    if (weight) push(`country ${company.country}`, weight);
   }
 
   const kindWeight = config.kindWeights?.[company.kind];
-  if (kindWeight) push(`тип: ${company.kind}`, kindWeight);
+  if (kindWeight) push(`kind: ${company.kind}`, kindWeight);
 
   /*
-   * Мертвий сайт. Ідея власника зі STATUS.md: агенція з останньою публікацією
-   * 2019 року не наймає і не відповідає. Ознаки збирає enrichment, тому штраф
-   * зʼявляється тільки після проходу по сайту, а не вгадується з повітря.
+   * A dead site. The idea from STATUS.md: an agency whose last post dates from 2019 neither hires
+   * nor answers. Enrichment collects the signs, so the penalty appears only after a pass over the
+   * site rather than being guessed out of thin air.
    */
   const stale = config.stale;
   if (stale) {
     const thisYear = new Date(input.now ?? Date.now()).getFullYear();
     if (company.copyrightYear && thisYear - company.copyrightYear >= stale.copyrightYearsBehind) {
-      push(`копірайт ${company.copyrightYear}`, stale.copyrightPenalty);
+      push(`copyright ${company.copyrightYear}`, stale.copyrightPenalty);
     }
 
     if (company.lastPostAt) {
       const silentDays = ((input.now ?? Date.now()) - company.lastPostAt) / 86_400_000;
       if (silentDays >= stale.blogSilentDays) {
-        push(`без публікацій ${Math.round(silentDays)} днів`, stale.blogPenalty);
+        push(`no posts for ${Math.round(silentDays)} days`, stale.blogPenalty);
       }
     }
   }
 
-  if (company.careersUrl) push('є сторінка вакансій', config.hasCareersPage);
-  if ((input.openVacancies ?? 0) > 0) push('є відкриті вакансії', config.hasOpenVacancies);
+  if (company.careersUrl) push('has a careers page', config.hasCareersPage);
+  if ((input.openVacancies ?? 0) > 0) push('has open vacancies', config.hasOpenVacancies);
 
   const sum =
     positives.reduce((acc, item) => acc + item.weight, 0) +

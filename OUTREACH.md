@@ -93,14 +93,14 @@ https://www.googleapis.com/auth/gmail.readonly
 `users.messages.send`, тіло у форматі RFC 2822, base64url.
 
 Обовʼязково:
-- `From` з іменем: `Alex Example <адреса>`
+- `From` з іменем: `Olena Koval <адреса>`
 - `Reply-To` та сама адреса
 - `text/plain`, **не HTML**. HTML-листи від незнайомців фільтруються жорсткіше
 - підпис у кінці:
   ```
-  Alex Example
+  Olena Koval
   Front-end / Full-stack developer
-  example.dev
+  olena.dev
   ```
 - максимум одне посилання в тілі листа
 

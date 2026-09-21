@@ -10,21 +10,21 @@ import { detectStack } from './discover.js';
 import { normalizeEmail, rememberContact } from './outreach.js';
 
 /**
- * Збір контактів і ознак живості з сайту компанії.
+ * Collecting contacts and signs of life from a company site.
  *
- * Навіщо: у базі сотні студій, і майже в кожної в картці написано "іменних контактів
- * немає". Список без адреси нікуди не веде, а лист на hello@ читає менеджер, не техлід.
+ * Why: the database has hundreds of studios, and almost every card says "no named contacts".
+ * A list without an address leads nowhere, and a letter to hello@ is read by a manager, not a tech lead.
  *
- * Модель тут не викликається взагалі, і це свідомо: розбір іменних контактів з HTML
- * робиться регулярками по сплощеному тексту, тому прохід по всій базі коштує нуль.
- * Правило з CLAUDE.md розділ 9 описує саме такий збір.
+ * No model is called here at all, deliberately: named contacts are parsed out of HTML with
+ * regexes over the flattened text, so a pass over the whole database costs nothing.
+ * Section 9 of CLAUDE.md describes exactly this kind of collection.
  */
 
-/** Сторінки, де живуть команда і контакти. Порядок від найціннішого до найзагальнішого. */
+/** Pages where the team and contacts live. Ordered from most to least valuable. */
 /**
- * Сторінки послуг. Люди звідти не збираються, а стек збирається: студія описує там
- * словами, що вона робить клієнтам, і це часто не збігається з тим, на чому зроблений
- * її власний сайт. Контора, яка робить headless-магазини, сама може сидіти на WordPress.
+ * Service pages. People are not collected from them, but the stack is: a studio describes
+ * there in words what it does for clients, and that often differs from what its own site is
+ * built on. A shop that builds headless stores may itself run on WordPress.
  */
 export const SERVICE_PATHS = [
   '/services',
@@ -49,56 +49,57 @@ export const TEAM_PATHS = [
   '/contact-us',
 ];
 
-/** Посилання в меню, які ведуть на ті самі сторінки під іншими адресами. */
+/**
+ * Menu links that lead to the same pages under other addresses. The Ukrainian words are
+ * matched on purpose: Ukrainian studio sites label these links in Ukrainian.
+ */
 const TEAM_TEXT = /(team|about|people|leadership|contact|команда|про нас|контакт)/i;
 
 /*
- * Акроніми ловляться тільки у верхньому регістрі і з межами слова. Без цього "coo"
- * знаходився всередині "cookie" і давав по 130 фальшивих збігів на сторінку,
- * бо cookie-банер є всюди.
+ * Acronyms match only in upper case and on word boundaries. Without that "coo" was found
+ * inside "cookie" and gave 130 false matches per page, because the cookie banner is everywhere.
  */
 const ROLE_ACRONYM = /\b(?:CTO|CEO|COO|CPO|CIO|CMO|VP)\b/;
 const ROLE_PHRASE =
   /\b(?:co-?founder|founder|tech(?:nical)? lead|team lead|head of [a-z/& ]{2,24}|engineering manager|lead (?:developer|engineer)|managing director|delivery manager)\b/i;
 
 /*
- * Роль чужої компанії означає інвестора або відгук, а не людину з цієї команди.
- * На лендінгах продуктових компаній таких блоків десятки: "Nat Friedman, Former CEO
- * of GitHub". Перший прогін по десяти компаніях приніс 104 контакти, з них більшість
- * була саме звідти.
+ * A role at another company means an investor or a testimonial, not a member of this team.
+ * Product landing pages have dozens of such blocks: "Nat Friedman, Former CEO of GitHub".
+ * The first run over ten companies brought 104 contacts, and most of them came from there.
  */
 const FOREIGN_ROLE = /\b(?:former|ex-|previously|investor|advisor|board member)\b/i;
 
 /**
  * "CEO of Sentry", "Head of Engineering, Ramp", "Co-Founder @ FPV Ventures":
- * група це назва згаданої компанії. Собака теж роздільник, на лендінгах з відгуками
- * саме через неї підписані інвестори.
+ * the group is the name of the mentioned company. The at sign is a separator too, testimonial
+ * landing pages sign investors exactly that way.
  */
 const ROLE_MENTIONS_COMPANY = /(?:\bof\b|\bat\b|,|@)\s*([A-Z][\w.&-]{2,})/g;
 
 /**
- * Слово після "of" далеко не завжди компанія. "Head of Engineering", "VP of Operations",
- * "Director of Product" це відділ, тобто своя людина, а правило читало їх як чужу
- * фірму і викидало. Через це enrichment мовчки відкидав рівно ті посади, заради
- * яких він і написаний: розділ 9 у CLAUDE.md просить саме Head of Engineering.
+ * The word after "of" is far from always a company. "Head of Engineering", "VP of Operations",
+ * "Director of Product" are departments, that is, the company's own people, yet the rule read
+ * them as a foreign firm and threw them away. Enrichment silently dropped exactly the titles it
+ * was written for: section 9 of CLAUDE.md asks for Head of Engineering specifically.
  */
 const NOT_A_COMPANY =
   /^(engineering|operations|product|design|technology|technologies|development|delivery|people|marketing|sales|growth|data|platform|talent|partnerships|business|digital|strategy|innovation|quality|security|research|support|success|staff|department|team|projects?|accounts?|customer|client|content|brand|creative|communications|ux|ui|it|ai|qa|hr|pmo|ceo|cto|coo|cpo|cio|cmo|vp|director|founder|board|the)$/i;
 
-/** Слова, після яких рядок точно не імʼя людини. */
+/** Words after which a line is certainly not a person's name. */
 const NOT_A_NAME =
   /(\d|@|http|\.com|\.net|\.org|cookie|policy|privacy|terms|reading time|read more|all rights|copyright|ltd|llc|inc\b|gmbh|solutions|agency|studio|software|digital|group|technolog|first name|last name|full name|marketplace|catalog|assets|status|changelog|pricing|docs|sign in|log in|get started|contact us|learn more|our team|the team)/i;
 
 const NAME_SHAPE = /^[A-ZА-ЯІЇЄҐ][\p{L}'’-]{1,20}(?: [A-ZА-ЯІЇЄҐ][\p{L}'’-]{1,20}){1,2}$/u;
 
-/** Загальні скриньки. Вони теж потрібні, але як запасний варіант, не як контакт людини. */
+/** Generic mailboxes. They are needed too, but as a fallback, not as a person's contact. */
 const GENERIC_MAILBOX =
   /^(hello|info|contact|office|sales|hi|team|mail|admin|support|inquiries|enquiries|hr|jobs|career|careers|welcome|business|marketing|pr|press)@/i;
 
 /*
- * Стелі на компанію. Реальна команда студії це одиниці людей на сторінці. Тридцять
- * знайдених означає, що розбір зачепив не той блок, і зберігати це шкідливо:
- * власник відкриє картку і не побачить, кому насправді писати.
+ * Per-company caps. A real studio team is a handful of people on the page. Thirty found means
+ * the parser caught the wrong block, and storing that does harm: the owner opens the card and
+ * cannot see who to actually write to.
  */
 const MAX_PEOPLE = 12;
 const MAX_GENERIC = 4;
@@ -113,15 +114,15 @@ export interface FoundContact {
 }
 
 export interface SiteSignals {
-  /** Рік у копірайті футера. Мертвий сайт видно саме тут. */
+  /** Year in the footer copyright. This is where a dead site shows. */
   copyrightYear: number | null;
   hasBlog: boolean;
-  /** Найсвіжіша дата, знайдена на сторінці блогу або новин. */
+  /** The most recent date found on a blog or news page. */
   lastPostAt: number | null;
   techHints: string[];
 }
 
-/** HTML у рядки видимого тексту. Скрипти і стилі викидаються, теги стають переносами. */
+/** HTML into lines of visible text. Scripts and styles are dropped, tags become line breaks. */
 export function toLines(html: string): string[] {
   const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -145,15 +146,15 @@ function looksLikeName(line: string): boolean {
 }
 
 /**
- * Одне слово з великої літери: "Pavel", "Alex".
+ * A single capitalised word: "Pavel", "Alex".
  *
- * Половина сучасних сайтів студій підписує картку команди самим імʼям, без
- * прізвища, і правило "імʼя це два слова" пропускало такі сторінки цілком:
- * прохід по 100 студіях давав нуль контактів при 267 завантажених сторінках.
+ * Half of modern studio sites sign a team card with the first name only, and the "a name is
+ * two words" rule skipped such pages entirely: a pass over 100 studios gave zero contacts from
+ * 267 downloaded pages.
  *
- * Правило свідомо вужче за основне: таке імʼя приймається тільки впритул до
- * посади і тільки на сторінці команди, інакше в контакти полізли б підписи
- * кнопок і пунктів меню.
+ * The rule is deliberately narrower than the main one: such a name is accepted only right next
+ * to a title and only on a team page, otherwise button labels and menu items would end up as
+ * contacts.
  */
 const NOT_A_SINGLE_NAME =
   /^(home|about|team|contact|careers?|blog|news|services?|portfolio|works?|clients?|projects?|more|menu|next|back|prev|search|login|email|phone|address|company|people|culture|values|mission|vision|history|awards|partners|process|approach|hello|hi|ua|en|ru|pl|de)$/i;
@@ -163,7 +164,7 @@ const SINGLE_NAME_SHAPE = /^[A-ZА-ЯІЇЄҐ][\p{L}'’-]{2,19}$/u;
 function looksLikeSingleName(line: string): boolean {
   if (NOT_A_SINGLE_NAME.test(line)) return false;
   if (NOT_A_NAME.test(line)) return false;
-  // Сама посада теж одне слово з великої ("CEO", "Designer"), і імʼям вона не є.
+  // A title can also be one capitalised word ("CEO", "Designer"), and it is not a name.
   if (ROLE_ACRONYM.test(line) || ROLE_PHRASE.test(line)) return false;
   return SINGLE_NAME_SHAPE.test(line);
 }
@@ -177,20 +178,20 @@ function cleanRole(line: string): string {
 }
 
 /**
- * Імена шукаються від ролі, а не навпаки. Роль це короткий і впізнаваний рядок,
- * а імʼя поруч із ним: у різних версток воно стоїть то перед роллю, то після,
- * тому береться найближчий рядок, схожий на імʼя, з вікна в дві позиції.
+ * Names are found starting from the role, not the other way round. A role is a short and
+ * recognisable line with the name next to it: layouts put it before or after the role, so the
+ * closest name-like line within a window of two positions is taken.
  */
 /**
- * Чи згадана в посаді чужа компанія. "CTO at TRIARE" на сайті triare.net це своя
- * людина, а "Founder and CEO of Sentry" на тому самому сайті це відгук або інвестор.
- * Назва своєї компанії береться з адреси сторінки, тому додаткових аргументів не треба.
+ * Whether a title mentions another company. "CTO at TRIARE" on triare.net is one of their own,
+ * while "Founder and CEO of Sentry" on the same site is a testimonial or an investor. The
+ * company's own name comes from the page address, so no extra arguments are needed.
  */
 function mentionsOtherCompany(role: string, ownName: string): boolean {
   /*
-   * Перевіряються всі згадки в рядку, а не перша. "Former CEO of GitHub" має дві:
-   * "Former" і "GitHub", і достатньо однієї чужої, щоб рядок був відгуком, а не
-   * своєю людиною. Раніше бралась лише перша, і порядок слів вирішував результат.
+   * Every mention in the line is checked, not just the first. "Former CEO of GitHub" has two:
+   * "Former" and "GitHub", and one foreign mention is enough for the line to be a testimonial
+   * rather than a team member. Only the first used to be taken, and word order decided the outcome.
    */
   for (const match of role.matchAll(ROLE_MENTIONS_COMPANY)) {
     const raw = match[1]!;
@@ -205,7 +206,7 @@ function mentionsOtherCompany(role: string, ownName: string): boolean {
   return false;
 }
 
-/** Друге ім'я домену: triare.net це "triare", а www.acme.co.uk це "acme". */
+/** The second-level domain name: triare.net is "triare", www.acme.co.uk is "acme". */
 function ownNameFromUrl(sourceUrl: string): string {
   try {
     const host = new URL(sourceUrl).hostname.replace(/^www\./, '');
@@ -220,13 +221,12 @@ export function extractPeople(html: string, sourceUrl: string): FoundContact[] {
 }
 
 /**
- * Той самий розбір, але від уже готових рядків тексту.
+ * The same parsing, but starting from ready lines of text.
  *
- * Потрібен розширенню: воно читає намальовану сторінку в браузері власника, де
- * HTML як такого вже немає, зате є DOM, і віддає звідти рівно такий самий плаский
- * список рядків, який тут робить `toLines`. Тобто сторінка, яку сервер не зміг
- * відкрити сам, розбирається тим самим кодом і тими самими правилами, а не
- * другою копією регулярок, яка тихо розійдеться з цією через місяць.
+ * The extension needs it: it reads a rendered page in the owner's browser, where there is no
+ * HTML as such but there is a DOM, and hands over exactly the same flat list of lines that
+ * `toLines` builds here. So a page the server could not open is parsed by the same code and the
+ * same rules, not by a second copy of the regexes that quietly drifts away in a month.
  */
 export function peopleFromLines(lines: string[], sourceUrl: string): FoundContact[] {
   const ownName = ownNameFromUrl(sourceUrl);
@@ -249,8 +249,8 @@ export function peopleFromLines(lines: string[], sourceUrl: string): FoundContac
       }
     }
 
-    // Імʼя без прізвища приймається лише впритул до посади: одне слово надто
-    // схоже на пункт меню, щоб шукати його через рядок.
+    // A first name alone is accepted only right next to a title: one word looks too much
+    // like a menu item to search for it a line away.
     if (!name) {
       for (const candidate of [lines[index - 1], lines[index + 1]]) {
         if (candidate && looksLikeSingleName(candidate)) {
@@ -270,8 +270,8 @@ export function peopleFromLines(lines: string[], sourceUrl: string): FoundContac
 }
 
 /**
- * HTML-сутності назад у символи. Пошта регулярно пишеться саме так, щоб її не
- * зібрали роботи: `&#104;&#101;&#108;...` або хоча б `&#64;` замість равлика.
+ * HTML entities back into characters. Emails are regularly written this way to keep robots from
+ * harvesting them: `&#104;&#101;&#108;...` or at least `&#64;` instead of the at sign.
  */
 export function decodeEntities(html: string): string {
   return html
@@ -282,12 +282,12 @@ export function decodeEntities(html: string): string {
 }
 
 /**
- * Розшифровка Cloudflare Email Protection.
+ * Decoding Cloudflare Email Protection.
  *
- * Cloudflare замінює адресу на `<a href="/cdn-cgi/l/email-protection#1a2b3c">` або
- * `<span data-cfemail="1a2b3c">`, а справжній текст збирає скриптом уже в браузері.
- * У HTML її після цього немає взагалі, і саме тому пошта, яку видно очима на сайті,
- * не знаходилась. Схема проста: перший байт це ключ, решта байтів з ним у XOR.
+ * Cloudflare replaces the address with `<a href="/cdn-cgi/l/email-protection#1a2b3c">` or
+ * `<span data-cfemail="1a2b3c">`, and assembles the real text with script in the browser.
+ * After that the HTML has no address at all, which is why an email visible on the site was not
+ * found. The scheme is simple: the first byte is the key, the remaining bytes are XORed with it.
  */
 export function decodeCfEmail(hex: string): string | null {
   if (!/^[0-9a-f]{4,}$/i.test(hex) || hex.length % 2 !== 0) return null;
@@ -300,9 +300,9 @@ export function decodeCfEmail(hex: string): string | null {
 }
 
 /**
- * Розмаскування ручних хитрощів: "hello (at) studio dot com" і сусіди. Такі написи
- * ставлять саме для того, щоб адресу не забрав робот, але людина її читає, тому
- * і радар мусить, інакше він зупиняється там, де власник читає адресу очима.
+ * Unmasking hand-made tricks: "hello (at) studio dot com" and the like. Such spellings exist to
+ * keep robots from taking the address, but a person reads it, so the radar has to as well,
+ * including the Ukrainian "собака" and "крапка" used on Ukrainian sites.
  */
 export function unmaskEmails(text: string): string {
   return text
@@ -318,7 +318,7 @@ export function extractEmails(html: string): { email: string; generic: boolean }
 
   const add = (raw: string) => {
     const email = raw.toLowerCase().trim().replace(/^mailto:/, '');
-    // Хвости на кшталт .png трапляються, коли адреса склеїлась з іменем файла.
+    // Tails like .png appear when an address got glued to a file name.
     if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) return;
     if (/\.(png|jpe?g|gif|svg|webp|css|js)$/.test(email)) return;
     if (/^(example|test|your|name|email|user|domain|sentry|wordpress)@/.test(email)) return;
@@ -329,7 +329,7 @@ export function extractEmails(html: string): { email: string; generic: boolean }
 
   const decoded = decodeEntities(html);
 
-  // Cloudflare йде першим: після нього адреса зʼявляється там, де її взагалі не було.
+  // Cloudflare goes first: after it an address appears where there was none at all.
   for (const match of decoded.matchAll(/data-cfemail="([0-9a-f]+)"/gi)) {
     const email = decodeCfEmail(match[1]!);
     if (email) add(email);
@@ -343,7 +343,7 @@ export function extractEmails(html: string): { email: string; generic: boolean }
     try {
       add(decodeURIComponent(match[1]!));
     } catch {
-      // Побитий percent-encoding це не привід валити розбір усієї сторінки.
+      // Broken percent-encoding is no reason to fail parsing the whole page.
     }
   }
 
@@ -351,9 +351,9 @@ export function extractEmails(html: string): { email: string; generic: boolean }
   for (const match of decoded.matchAll(plain)) add(match[0]);
 
   /*
-   * Той самий пошук по видимому тексту, а не по розмітці. Адреса часто розрізана
-   * тегами: `<span>hello</span>@<span>studio.com</span>`, і в сирому HTML вона не
-   * збігається з жодним шаблоном, а в тексті сторінки збігається.
+   * The same search over the visible text rather than the markup. An address is often split by
+   * tags: `<span>hello</span>@<span>studio.com</span>`, and in raw HTML it matches no pattern,
+   * while in the page text it does.
    */
   const text = unmaskEmails(
     cheerio.load(decoded)('body').text().replace(/\s*\n\s*/g, ' '),
@@ -382,8 +382,8 @@ export function extractProfiles(html: string): { linkedin: string[]; x: string[]
 }
 
 /**
- * Ознаки живості. Агенція з копірайтом 2019 року і без свіжих постів навряд чи
- * наймає, і лист туди це витрачений вечір.
+ * Signs of life. An agency with a 2019 copyright and no recent posts is unlikely to be hiring,
+ * and a letter there is a wasted evening.
  */
 export function extractSignals(html: string): SiteSignals {
   const years = [...html.matchAll(/(?:©|&copy;|copyright)[^0-9]{0,20}(20\d{2})/gi)].map((match) =>
@@ -397,21 +397,21 @@ export function extractSignals(html: string): SiteSignals {
     copyrightYear: years.length > 0 ? Math.max(...years) : null,
     hasBlog: /href="[^"]*\/(blog|news|insights|articles)\b/i.test(html),
     lastPostAt: isoDates.length > 0 ? Math.max(...isoDates.filter(Number.isFinite)) : null,
-    // Розмітка і текст разом: перше каже, на чому зроблений сайт, друге, що вони вміють.
+    // Markup and text together: the first tells what the site is built on, the second what they can do.
     techHints: detectStack(html),
   };
 }
 
 /**
- * Чи схожа адреса на сторінку команди. Люди збираються тільки з таких сторінок:
- * на головній стоять відгуки клієнтів і логотипи інвесторів, і кожен такий блок
- * виглядає для розбору точно як картка співробітника.
+ * Whether an address looks like a team page. People are collected only from such pages: the
+ * home page carries client testimonials and investor logos, and each such block looks to the
+ * parser exactly like an employee card.
  */
 export function isTeamPage(url: string): boolean {
   return /\/(team|about|people|company|leadership|contacts?|about-us|our-team|contact-us)\b/i.test(url);
 }
 
-/** Посилання на сторінки команди з головної, плюс вгадані шляхи. */
+/** Links to team pages from the home page, plus guessed paths. */
 export function findTeamLinks(html: string, base: string): string[] {
   const urls = new Set<string>();
 
@@ -423,7 +423,7 @@ export function findTeamLinks(html: string, base: string): string[] {
       const url = new URL(href, base);
       if (url.hostname === new URL(base).hostname) urls.add(url.href);
     } catch {
-      // Побите посилання це не привід валити весь обхід.
+      // A broken link is no reason to fail the whole crawl.
     }
   }
 
@@ -431,10 +431,9 @@ export function findTeamLinks(html: string, base: string): string[] {
 }
 
 /**
- * Адреси скриптів того самого домену. Потрібні для сайтів, які малюють вміст у
- * браузері: у HTML там порожній `<div id="root">`, а пошта лежить у бандлі, який
- * цей div заповнює. Ходити туди дорого, тому це останній крок і тільки коли в
- * розмітці не знайшлось жодної адреси.
+ * Script URLs on the same domain. Needed for sites that render in the browser: the HTML has an
+ * empty `<div id="root">`, and the email sits in the bundle that fills that div. Fetching it is
+ * expensive, so this is the last step and only when the markup had no address at all.
  */
 export function findScripts(html: string, base: string): string[] {
   const host = new URL(base).hostname;
@@ -447,19 +446,19 @@ export function findScripts(html: string, base: string): string[] {
       if (!/\.m?js(\?|$)/i.test(url.pathname)) continue;
       urls.push(url.href);
     } catch {
-      // Побитий src це не привід валити обхід.
+      // A broken src is no reason to fail the crawl.
     }
   }
 
   /*
-   * Спершу головні бандли: у них лежить каркас сторінки з підвалом і контактами.
-   * Дрібні чанки це найчастіше окремі маршрути, і адреси в них немає.
+   * Main bundles first: they hold the page shell with the footer and contacts.
+   * Small chunks are usually separate routes with no address in them.
    */
   const weight = (url: string) => (/(main|index|app|bundle|entry)/i.test(url) ? 0 : 1);
   return [...new Set(urls)].sort((a, b) => weight(a) - weight(b));
 }
 
-/** Скільки тексту видно без скриптів. Порожня сторінка означає рендер у браузері. */
+/** How much text is visible without scripts. An empty page means rendering in the browser. */
 export function visibleTextLength(html: string): number {
   const $ = cheerio.load(html);
   $('script, style, noscript, svg').remove();
@@ -472,18 +471,18 @@ export interface EnrichResult {
   contacts: FoundContact[];
   signals: SiteSignals | null;
   pagesFetched: number;
-  /** Сайт малює вміст скриптом: у HTML тексту майже немає. Пояснює порожній результат. */
+  /** The site renders its content with script: the HTML has almost no text. Explains an empty result. */
   clientRendered: boolean;
   /**
-   * Головна взагалі не відкрилась серверу: таймаут, 403 від захисту, мертвий домен.
-   * Це не те саме, що "нічого не знайшли", і поводитись з цим треба інакше.
+   * The home page did not open for the server at all: timeout, 403 from protection, dead domain.
+   * That is not the same as "found nothing", and it needs different handling.
    */
   reachable: boolean;
 }
 
 /**
- * Обійти сайт однієї компанії. Ліміт сторінок навмисно малий: цінність швидко падає,
- * а `fetchText` тримає паузу на домен, тому кожна зайва сторінка це секунда прогону.
+ * Crawl one company site. The page limit is deliberately small: value drops quickly, and
+ * `fetchText` keeps a per-domain pause, so every extra page is a second of the run.
  */
 export async function enrichCompany(
   company: Company,
@@ -509,10 +508,10 @@ export async function enrichCompany(
     result.pagesFetched += 1;
     result.reachable = true;
     result.signals = extractSignals(homepage);
-    // Двісті символів це менше за один абзац: такий HTML це каркас, а не сторінка.
+    // Two hundred characters is less than one paragraph: such HTML is a shell, not a page.
     result.clientRendered = visibleTextLength(homepage) < 200;
   } catch (error) {
-    log.warn({ domain: company.domain, err: String(error) }, 'головна не відкрилась, enrichment пропущено');
+    log.warn({ domain: company.domain, err: String(error) }, 'home page did not open, enrichment skipped');
     return result;
   }
 
@@ -521,9 +520,9 @@ export async function enrichCompany(
 
   const harvest = (html: string, url: string) => {
     /*
-     * Стек добирається з кожної відкритої сторінки, а не тільки з головної.
-     * На головній часто стоїть слоган і три картинки, а перелік технологій живе
-     * на сторінці послуг, і саме він показує, чи має сенс писати цій студії.
+     * The stack is collected from every opened page, not only the home page. The home page often
+     * has a slogan and three pictures, while the technology list lives on the services page, and
+     * that list shows whether writing to this studio makes sense.
      */
     if (result.signals) {
       result.signals.techHints = [...new Set([...result.signals.techHints, ...detectStack(html)])];
@@ -537,7 +536,7 @@ export async function enrichCompany(
     for (const item of extractEmails(html)) emails.push({ ...item, sourceUrl: url });
   };
 
-  // З головної беремо тільки пошту і ознаки живості, людей звідти не беремо.
+  // From the home page only email and signs of life are taken, not people.
   harvest(homepage, base);
 
   const candidates = [
@@ -545,7 +544,7 @@ export async function enrichCompany(
     ...TEAM_PATHS.map((path) => `${base}${path}`),
   ];
 
-  // Сторінки послуг ідуть окремим невеликим бюджетом, щоб не з'їдати ліміт у людей.
+  // Service pages get their own small budget so they do not eat the budget for people.
   const servicePages = SERVICE_PATHS.map((path) => `${base}${path}`);
 
   for (const url of [...new Set([...candidates.slice(0, maxPages), ...servicePages.slice(0, maxServicePages)])]) {
@@ -555,14 +554,14 @@ export async function enrichCompany(
       result.pagesFetched += 1;
       harvest(res.body, url);
     } catch {
-      // 404 на вгаданому шляху це нормальний результат.
+      // A 404 on a guessed path is a normal outcome.
     }
   }
 
   /*
-   * Досі жодної адреси. Найчастіша причина це сайт на React або іншому клієнтському
-   * рушії: розмітка порожня, а підвал з поштою збирає скрипт уже в браузері. Тоді
-   * читаємо самі бандли, адреса лежить у них рядком.
+   * Still no address. The most common cause is a site on React or another client-side engine:
+   * the markup is empty, and the footer with the email is assembled by script in the browser.
+   * Then the bundles themselves are read, the address sits in them as a string.
    */
   if (emails.length === 0) {
     for (const url of findScripts(homepage, base).slice(0, maxScripts)) {
@@ -572,14 +571,14 @@ export async function enrichCompany(
         for (const item of extractEmails(res.body)) emails.push({ ...item, sourceUrl: url });
         if (emails.length > 0) break;
       } catch {
-        // Бандл міг переїхати або бути завеликим, це не привід валити обхід.
+        // A bundle may have moved or be too large, no reason to fail the crawl.
       }
     }
   }
 
   const profiles = extractProfiles(homepage);
 
-  // Іменні контакти йдуть першими, загальні скриньки окремими записами з роллю general.
+  // Named contacts go first, generic mailboxes as separate records with the general role.
   const people = [...byName.values()];
   for (const [index, person] of people.entries()) {
     person.linkedin = profiles.linkedin[index] ?? null;
@@ -590,8 +589,8 @@ export async function enrichCompany(
   const genericEmails = uniqueEmails.filter((item) => item.generic);
 
   /*
-   * Іменну адресу привʼязуємо до людини лише коли локальна частина справді збігається
-   * з іменем. Інакше вийшло б, що пошта випадкової людини приписана директору.
+   * A personal address is tied to a person only when the local part really matches the name.
+   * Otherwise a random person's email would end up attributed to the director.
    */
   for (const person of people) {
     const parts = person.name!.toLowerCase().split(' ');
@@ -616,7 +615,7 @@ export async function enrichCompany(
   return result;
 }
 
-/** Зберегти знайдене. Наявні контакти не дублюються, а доповнюються. */
+/** Store what was found. Existing contacts are not duplicated but completed. */
 export async function saveEnrichment(result: EnrichResult): Promise<{ added: number }> {
   const db = getDb();
   const existing = await db.select().from(contacts).where(eq(contacts.companyId, result.companyId));
@@ -641,26 +640,26 @@ export async function saveEnrichment(result: EnrichResult): Promise<{ added: num
   const hasEmail = result.contacts.some((item) => item.email);
 
   /*
-   * Позначка часу ставиться завжди, навіть коли сайт не відкрився зовсім.
+   * The timestamp is always set, even when the site did not open at all.
    *
-   * Раніше вона писалась тільки при успіху, і компанія з мертвою або закритою
-   * головною лишалась із порожнім `last_checked`, тобто вічно першою в черзі:
-   * кожна наступна партія бралась саме за неї і знову впиралась у ту саму стіну.
+   * It used to be written only on success, and a company with a dead or blocked home page kept an
+   * empty `last_checked`, which made it forever first in line: every next batch took exactly that
+   * company and hit the same wall again.
    */
   const patch: Record<string, unknown> = { lastChecked: Date.now() };
 
   /*
-   * Два різні випадки, а черга одна: сторінку має відкрити браузер.
+   * Two different cases, one queue: the page has to be opened by a browser.
    *
-   * Перший, сайт намальований скриптом, і в сирому HTML немає нічого. Другий,
-   * головна не віддалась серверу взагалі: захист відповів 403 на запит без
-   * справжнього браузера. У браузері власника обидва відкриються нормально,
-   * тому обидва йдуть у чергу розширення, а не в нікуди.
+   * The first, the site is rendered by script, and the raw HTML has nothing. The second, the
+   * home page was not served to the server at all: protection answered 403 to a request without
+   * a real browser. In the owner's browser both open fine, so both go to the extension queue
+   * rather than nowhere.
    */
   patch.needsBrowser = !hasEmail && (result.clientRendered || !result.reachable);
 
   if (result.signals) {
-    // Ознаки живості зберігаються, а не тільки рахуються: на них спирається скоринг.
+    // Signs of life are stored, not just computed: scoring relies on them.
     if (result.signals.copyrightYear) patch.copyrightYear = result.signals.copyrightYear;
     if (result.signals.lastPostAt) patch.lastPostAt = result.signals.lastPostAt;
 
@@ -681,7 +680,7 @@ export async function saveEnrichment(result: EnrichResult): Promise<{ added: num
 export interface EnrichOptions {
   limit?: number;
   domain?: string;
-  /** Брати всіх підряд, а не тільки тих, у кого контактів ще немає. */
+  /** Take everyone, not only those without contacts yet. */
   all?: boolean;
 }
 
@@ -695,14 +694,14 @@ export async function candidatesForEnrichment(options: EnrichOptions = {}): Prom
   const withContacts = db.select({ id: contacts.companyId }).from(contacts);
 
   /*
-   * Порядок тут важить більше, ніж здається. Без нього бралися просто перші рядки
-   * таблиці, а це Vercel, Anthropic і Stripe: у продуктових гігантів сторінки команди
-   * з іменами і поштою немає, тому прохід по 120 компаніях дав рівно нуль контактів
-   * і виглядав як поламаний enrichment. Насправді він шукав не там.
+   * The order matters more than it seems. Without it the first table rows were taken, and those
+   * are Vercel, Anthropic and Stripe: product giants have no team page with names and emails, so
+   * a pass over 120 companies gave exactly zero contacts and looked like broken enrichment. In
+   * fact it was looking in the wrong place.
    *
-   * Тому спершу ті, кому власник реально пише холодні листи: студії, дизайн-агенції
-   * і стартапи. Продуктові йдуть останніми, а компанія з профілем у каталозі
-   * попереду тієї, що прийшла лише з ATS: у каталозі майже завжди справжня агенція.
+   * So first come those the owner actually writes cold letters to: studios, design agencies and
+   * startups. Product companies go last, and a company with a catalog profile goes ahead of one
+   * that only came from an ATS: a catalog almost always means a real agency.
    */
   const priority = sql`case ${companies.kind}
       when 'studio' then 0
@@ -722,9 +721,9 @@ export async function candidatesForEnrichment(options: EnrichOptions = {}): Prom
         : and(sql`${companies.domain} <> ''`, sql`${companies.id} not in ${withContacts}`),
     )
     /*
-     * Останній критерій це час дотику, найдавніші попереду. Компанія, чий сайт не
-     * відкрився, лишається без контактів і без нього назавжди трималась би на початку
-     * черги: кожна наступна партія бралась би за ту саму двадцятку.
+     * The last criterion is the time of last touch, oldest first. A company whose site did not
+     * open stays without contacts, and without this it would sit at the head of the queue
+     * forever: every next batch would take the same twenty.
      */
     .orderBy(
       priority,
@@ -737,7 +736,7 @@ export async function candidatesForEnrichment(options: EnrichOptions = {}): Prom
   return rows;
 }
 
-/** Скільки компаній ще чекає на збір контактів. Інтерфейс за цим числом зупиняє прохід. */
+/** How many companies still await contact collection. The interface stops the pass by this number. */
 export async function pendingEnrichment(options: EnrichOptions = {}): Promise<number> {
   const db = getDb();
   const withContacts = db.selectDistinct({ id: contacts.companyId }).from(contacts);
@@ -754,7 +753,7 @@ export async function pendingEnrichment(options: EnrichOptions = {}): Promise<nu
   return row?.count ?? 0;
 }
 
-/** `itemsFound` і `itemsNew` потрібні обгортці `withRun`, решта полів для звіту. */
+/** `itemsFound` and `itemsNew` are needed by the `withRun` wrapper, the other fields are for the report. */
 export interface EnrichStats {
   itemsFound: number;
   itemsNew: number;
@@ -764,11 +763,11 @@ export interface EnrichStats {
   withEmail: number;
   contactsAdded: number;
   pagesFetched: number;
-  /** Скільки компаній лишилось після цієї партії. Нуль означає, що збір закінчено. */
+  /** How many companies are left after this batch. Zero means collection is done. */
   remaining: number;
-  /** Сайтів, які малюють вміст скриптом. Пояснює порожній результат, а не ховає його. */
+  /** Sites that render content with script. Explains an empty result instead of hiding it. */
   clientRendered: number;
-  /** Сайтів, які взагалі не відкрились серверу: таймаут, 403 від захисту, мертвий домен. */
+  /** Sites that did not open for the server at all: timeout, 403 from protection, dead domain. */
   unreachable: number;
 }
 
@@ -806,9 +805,9 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
         stats.contactsAdded += saved.added;
         stats.itemsNew += saved.added;
       } catch (error) {
-        // Один недоступний сайт не має валити прохід по решті сотні.
+        // One unreachable site must not fail the pass over the other hundred.
         stats.errors.push(`${company.domain}: ${error instanceof Error ? error.message : String(error)}`);
-        // Позначка часу навіть на невдачі, інакше ця компанія вічно перша в черзі.
+        // Timestamp even on failure, otherwise this company is forever first in line.
         await getDb()
           .update(companies)
           .set({ lastChecked: Date.now() })
@@ -817,17 +816,16 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
     }
 
     /*
-     * Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх. Прохід по
-     * сотні доменів без жодного контакту означає або зламаний парсер, або те, що
-     * шукали не в тих компаніях. Мовчати про це не можна, інакше наступний прохід
-     * так само згорить у нікуди.
+     * Rule 3 of CLAUDE.md: an empty result is an error, not a success. A pass over a hundred
+     * domains without a single contact means either a broken parser or looking in the wrong
+     * companies. Staying silent is not allowed, otherwise the next pass burns out the same way.
      */
     if (stats.checked >= 10 && stats.contactsAdded === 0) {
-      const message = `перевірено ${stats.checked} доменів і не знайдено жодного контакту`;
+      const message = `checked ${stats.checked} domains and found no contacts at all`;
       stats.errors.push(message);
       log.warn(stats, message);
     } else {
-      log.info(stats, 'enrichment завершено');
+      log.info(stats, 'enrichment finished');
     }
 
     return stats;
@@ -835,12 +833,12 @@ export async function enrich(options: EnrichOptions = {}): Promise<EnrichStats> 
 }
 
 /**
- * Черга для розширення: домени, з яких серверний обхід нічого не дістав, бо сторінку
- * малює скрипт. Розширення відкриває їх у власному браузері власника, читає з готового
- * DOM і присилає знайдене сюди ж.
+ * The extension queue: domains the server-side crawl got nothing from because the page is
+ * rendered by script. The extension opens them in the owner's own browser, reads the finished
+ * DOM and sends what it found back here.
  *
- * Ліміт малий навмисно: це прохід по чужих сайтах у справжньому браузері, з паузами,
- * як гортає людина. Розділ 4 CLAUDE.md.
+ * The limit is small on purpose: this is a pass over other people's sites in a real browser,
+ * with pauses, the way a person browses. Section 4 of CLAUDE.md.
  */
 export interface BrowserTarget {
   companyId: number;
@@ -867,7 +865,7 @@ export async function browserQueue(limit = 20): Promise<BrowserTarget[]> {
 
 export interface BrowserPage {
   url: string;
-  /** Плаский текст сторінки по рядках, у тому ж вигляді, що дає `toLines`. */
+  /** The flat page text by line, in the same shape `toLines` produces. */
   lines: string[];
 }
 
@@ -878,7 +876,7 @@ export interface BrowserFindings {
   techHints?: string[];
   copyrightYear?: number | null;
   lastPostAt?: number | null;
-  /** Сторінки, які розширення встигло прочитати: головна і те, на що вона посилалась. */
+  /** Pages the extension managed to read: the home page and what it linked to. */
   pages?: BrowserPage[];
 }
 
@@ -886,16 +884,16 @@ export interface BrowserSaveResult {
   companyId: number | null;
   contactsAdded: number;
   techAdded: number;
-  /** Скільки сторінок прийшло, скільки адрес і скільки людей з них вийшло. */
+  /** How many pages came in, and how many addresses and people came out of them. */
   pagesRead: number;
   emailsFound: number;
   peopleFound: number;
 }
 
 /**
- * Чи ця адреса належить цій людині. `anna@` і `a.koval@` це Anna Koval, а `hello@`
- * не належить нікому. Потрібно, щоб контакт зберігся одним рядком з іменем, роллю
- * і поштою, а не двома половинками, з яких лист не напишеш.
+ * Whether this address belongs to this person. `anna@` and `a.koval@` are Anna Koval, while
+ * `hello@` belongs to nobody. Needed so the contact is stored as one row with name, role and
+ * email rather than two halves nobody can write a letter from.
  */
 export function emailBelongsTo(email: string, name: string): boolean {
   const local = email.split('@')[0]!.toLowerCase();
@@ -907,31 +905,31 @@ export function emailBelongsTo(email: string, name: string): boolean {
     .filter((part) => part.length >= 3);
   if (parts.length === 0) return false;
 
-  // Ціле слово, інакше "ann" у "announcements@" зійшлося б за підрядком.
+  // A whole word, otherwise "ann" in "announcements@" would match as a substring.
   const tokens = local.split(/[^a-z]+/).filter(Boolean);
   return parts.some((part) => tokens.includes(part) || (tokens.length === 1 && tokens[0] === parts.join('')));
 }
 
 /**
- * Прийняти те, що розширення прочитало з намальованої сторінки.
+ * Accept what the extension read from a rendered page.
  *
- * Прапорець `needs_browser` знімається в будь-якому разі, навіть коли нічого не
- * знайшлось: сторінку вже відкривали у браузері, і ганяти її туди щоразу заново
- * означало б вічну чергу з тих самих доменів.
+ * The `needs_browser` flag is cleared in any case, even when nothing was found: the page has
+ * already been opened in a browser, and sending it there again every time would mean an endless
+ * queue of the same domains.
  */
 export async function saveBrowserFindings(input: BrowserFindings): Promise<BrowserSaveResult> {
   const db = getDb();
   const domain = normalizeDomain(input.domain);
-  if (!domain) throw new Error(`невалідний домен: ${input.domain}`);
+  if (!domain) throw new Error(`invalid domain: ${input.domain}`);
 
   /*
-   * Спершу по домену, а якщо його немає, по номеру компанії, який дала черга.
+   * By domain first, and if there is none, by the company id the queue provided.
    *
-   * Домен береться з адреси вкладки вже після редиректів, і цього достатньо, щоб
-   * не збігтись: студія з `agency.io` переїхала на `agency.com`, вкладка показує
-   * нову адресу, а в базі стара. Раніше пошук у такому разі не знаходив нічого і
-   * функція мовчки поверталась з нулем: сайт відкривався, пошта знаходилась, і
-   * зникала по дорозі. Номер компанії в запиті був, ним просто ніхто не користався.
+   * The domain comes from the tab address after redirects, and that is enough to miss: a studio
+   * moved from `agency.io` to `agency.com`, the tab shows the new address, the database has the
+   * old one. The lookup used to find nothing in that case and the function silently returned zero:
+   * the site opened, the email was found, and it got lost on the way. The company id was in the
+   * request, nobody used it.
    */
   const [byDomain] = await db.select().from(companies).where(eq(companies.domain, domain));
   const [company] = byDomain
@@ -942,16 +940,16 @@ export async function saveBrowserFindings(input: BrowserFindings): Promise<Brows
 
   const empty = { companyId: null, contactsAdded: 0, techAdded: 0, pagesRead: 0, emailsFound: 0, peopleFound: 0 };
   if (!company) {
-    log.warn({ domain, companyId: input.companyId }, 'дані з браузера нікуди покласти: компанії немає');
+    log.warn({ domain, companyId: input.companyId }, 'nowhere to store browser data: no such company');
     return empty;
   }
 
   const pages = input.pages ?? [];
 
   /*
-   * Люди розбираються тим самим кодом, що й на сторінках, які сервер завантажив
-   * сам. Сторінка команди дає ім'я і посаду, сторінка контактів дає адресу, і
-   * зійтись в один контакт вони мають ще тут, до запису.
+   * People are parsed by the same code as on pages the server downloaded itself. A team page
+   * gives a name and a title, a contact page gives an address, and they have to meet in one
+   * contact right here, before writing.
    */
   const people = new Map<string, FoundContact>();
   for (const page of pages) {
@@ -974,9 +972,9 @@ export async function saveBrowserFindings(input: BrowserFindings): Promise<Brows
   let contactsAdded = 0;
 
   /*
-   * Іменні контакти першими, і лише вони мають право донести до бази пару
-   * ім'я-адреса. Людина без пошти теж зберігається: знати, що технічним директором
-   * працює конкретна Анна, вже досить, щоб далі шукати адресу цілеспрямовано.
+   * Named contacts first, and only they may carry a name and address pair into the database. A
+   * person without an email is stored too: knowing that a specific Anna is the CTO is enough to
+   * look for the address deliberately later.
    */
   const existing = await db.select().from(contacts).where(eq(contacts.companyId, company.id));
   const known = new Set(existing.map((row) => `${row.name ?? ''}|${row.email ?? ''}`));
@@ -990,7 +988,7 @@ export async function saveBrowserFindings(input: BrowserFindings): Promise<Brows
       continue;
     }
 
-    // Без пошти `rememberContact` не працює: він шукає наявний запис саме за нею.
+    // Without an email `rememberContact` does not work: it looks up the existing record by it.
     if (known.has(`${person.name}|`)) continue;
     known.add(`${person.name}|`);
     await db.insert(contacts).values({
@@ -1032,15 +1030,15 @@ export async function saveBrowserFindings(input: BrowserFindings): Promise<Brows
   };
 
   /*
-   * Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх. Браузер щойно
-   * відкрив чотири сторінки чужого сайту і повернувся ні з чим, і це або верстка,
-   * якої розбір не бере, або домен, на якому справді нічого немає. Мовчати про це
-   * не можна: саме так збір і виглядав робочим, поки нічого не збирав.
+   * Rule 3 of CLAUDE.md: an empty result is an error, not a success. The browser just opened four
+   * pages of someone's site and came back with nothing, which is either a layout the parser does
+   * not handle or a domain that really has nothing. Staying silent is not allowed: that is exactly
+   * how collection looked like it worked while collecting nothing.
    */
   if (emails.length === 0 && people.size === 0) {
-    log.warn(result, 'браузер прочитав сторінки і не знайшов ні пошти, ні людей');
+    log.warn(result, 'the browser read the pages and found neither emails nor people');
   } else {
-    log.info(result, 'дані з браузера збережено');
+    log.info(result, 'browser data saved');
   }
 
   return result;

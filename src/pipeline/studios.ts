@@ -6,8 +6,8 @@ import { rules } from './rules.js';
 import { HIDDEN_STATUSES } from './queue.js';
 
 /**
- * Черга студій: кому писати з пропозицією послуг. Вакансія тут не потрібна,
- * тому це окремий список від черги вакансій, з тими самими діями над станом компанії.
+ * The studio queue: who to write to with an offer of services. No vacancy is needed here, so this
+ * is a list separate from the vacancy queue, with the same actions on company state.
  */
 
 export interface StudioCard {
@@ -18,35 +18,35 @@ export interface StudioCard {
   city: string | null;
   sizeHint: string | null;
   kind: string;
-  /** Ознаки живості сайту. null означає, що enrichment ще не ходив. */
+  /** Signs of life on the site. null means enrichment has not been there yet. */
   copyrightYear: number | null;
   lastPostAt: number | null;
   tags: string[];
   techHints: string[];
-  /** Репутація в каталозі. null означає, що каталог її не показував. */
+  /** Catalog reputation. null means the catalog did not show it. */
   rating: number | null;
   reviewsCount: number | null;
   minProject: string | null;
   hourlyRate: string | null;
   foundedYear: number | null;
-  /** Блок "Інше": усе, що каталог показав понад перелічені поля. */
+  /** The "Other" block: everything the catalog showed beyond the listed fields. */
   extra: Record<string, string>;
   description: string | null;
   careersUrl: string | null;
-  /** Сторінка компанії в каталозі, звідки вона прийшла. */
+  /** The company page in the catalog it came from. */
   sourceUrl: string | null;
   sources: string[];
   status: string;
   openVacancies: number;
   score: number;
   why: { reason: string; weight: number }[];
-  /** `id` потрібен, щоб контакт можна було правити прямо з картки. */
+  /** `id` is there so the contact can be edited right from the card. */
   contacts: {
     id: number;
     name: string | null;
     role: string | null;
     email: string | null;
-    /** false означає hard bounce: адреса лишається, але писати на неї не можна. */
+    /** false means a hard bounce: the address stays but must not be written to. */
     emailValid: boolean;
   }[];
   lastContactedAt: number | null;
@@ -55,63 +55,61 @@ export interface StudioCard {
 export interface StudioFilters {
   limit?: number;
   minScore?: number;
-  /** Показати всіх, включно з тими, кому вже писали. */
+  /** Show everyone, including those already contacted. */
   includeContacted?: boolean;
   country?: string;
   search?: string;
-  /** studio | design | startup | product | outstaff. Порожнє означає всі, крім продуктових. */
+  /** studio | design | startup | product | outstaff. Empty means everything except product companies. */
   kind?: string;
-  /** Тільки ті, де є контакт з іменем. Лист на hello@ читає менеджер, не техлід. */
+  /** Only those with a named contact. A letter to hello@ is read by a manager, not a tech lead. */
   withNamedContact?: boolean;
-  /** Мінімальна оцінка в каталозі. Компанії без оцінки вважаються такими, що не проходять. */
+  /** Minimum catalog rating. Companies without a rating count as not passing. */
   minRating?: number;
 }
 
 export interface StudioPage {
   cards: StudioCard[];
-  /** Скільком компаніям порахували рахунок після фільтрів пошуку і країни. */
+  /** How many companies got a score after the search and country filters. */
   total: number;
-  /** Скільки з них пройшли поріг. Різниця з total це те, що приховав поріг. */
+  /** How many of them cleared the threshold. The difference from total is what the threshold hid. */
   aboveThreshold: number;
   threshold: number;
 }
 
 /**
- * Порахувати рахунок усім компаніям, які проходять фільтри, без порога і без ліміту.
- * Поділ на цю функцію і `studioPage` потрібен, щоб інтерфейс міг сказати не лише
- * скільки студій показано, а й скільки приховав поріг: без цього порожній список
- * виглядає як зламаний збір, хоча компанії в базі є.
+ * Score every company that passes the filters, with no threshold and no limit. The split between
+ * this function and `studioPage` lets the interface say not only how many studios are shown but
+ * also how many the threshold hid: without that an empty list looks like broken collection,
+ * although the database has companies.
  */
 async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
   const db = getDb();
   const now = Date.now();
 
   /*
-   * Відбір робить SQL, а не JavaScript.
+   * Selection is done by SQL, not JavaScript.
    *
-   * Раніше сюди зачитувалась уся таблиця компаній і вся таблиця контактів, а
-   * фільтри застосовувались уже в памʼяті. На двох тисячах компаній це ще
-   * працювало, але ціна не залежала від запиту: пошук по слову "design", який
-   * лишає пʼятдесят рядків, коштував рівно стільки ж, скільки порожній список.
-   * А оскільки поле пошуку слало запит на кожну літеру, одне слово коштувало
-   * шість таких проходів.
+   * The whole companies table and the whole contacts table used to be read here, with the filters
+   * applied in memory. At two thousand companies that still worked, but the cost did not depend on
+   * the query: a search for "design" that leaves fifty rows cost exactly as much as an empty list.
+   * And since the search field sent a request per letter, one word cost six such passes.
    *
-   * Тепер до JavaScript доїжджає вже відфільтроване, і ціна запиту нарешті
-   * залежить від того, скільки рядків він насправді просить.
+   * Now JavaScript receives already filtered rows, and the cost of a query finally depends on how
+   * many rows it actually asks for.
    */
   const conditions = [
-    // Компанія без домену нікуди не веде: ні листа, ні сайту, ні обходу.
+    // A company without a domain leads nowhere: no letter, no site, no crawl.
     ne(companies.domain, ''),
     filters.country ? eq(companies.country, filters.country) : undefined,
     /*
-     * Без явного типу продуктові компанії зі списку прибираються: у них холодний
-     * лист "можу допомогти з проєктом" не працює, для них є Черга з вакансіями.
+     * Without an explicit kind, product companies are removed from the list: a cold "I can help
+     * with your project" letter does not work for them, they have the vacancy Queue.
      */
     filters.kind ? eq(companies.kind, filters.kind) : ne(companies.kind, 'product'),
     filters.minRating === undefined
       ? undefined
       : sql`coalesce(${companies.rating}, 0) >= ${filters.minRating}`,
-    // Відкладена компанія не показується, поки не вийде строк.
+    // A snoozed company is not shown until the snooze ends.
     sql`(${companyState.snoozedUntil} is null or ${companyState.snoozedUntil} <= ${now})`,
     filters.includeContacted
       ? sql`coalesce(${companyState.status}, 'new') <> 'blacklist'`
@@ -120,10 +118,10 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
 
   if (filters.search) {
     /*
-     * Теги лежать у колонці як JSON-масив, і пошук іде по ньому рядком. Це трохи
-     * ширше за перебір елементів у памʼяті: збіг може випасти на межі двох тегів.
-     * Ціна цієї неточності одна зайва компанія в списку, а виграш у тому, що
-     * решта бази не піднімається в памʼять заради одного слова.
+     * Tags sit in the column as a JSON array, and the search runs over it as a string. That is a bit
+     * broader than matching elements in memory: a match can fall across the boundary of two tags.
+     * The price of that imprecision is one extra company in the list, and the gain is that the rest
+     * of the database is not loaded into memory for one word.
      */
     const needle = `%${filters.search.toLowerCase()}%`;
     conditions.push(
@@ -153,14 +151,14 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     .where(where);
 
   /*
-   * Контакти беруться тим самим відбором, підзапитом, а не списком номерів.
+   * Contacts come through the same selection, as a subquery rather than a list of ids.
    *
-   * Список номерів на дві тисячі компаній це дві тисячі параметрів в одному
-   * запиті, і рано чи пізно він упирається в стелю драйвера. Підзапит цієї стелі
-   * не має і на D1 поводиться так само, як локально.
+   * A list of ids for two thousand companies is two thousand parameters in one query, and sooner or
+   * later it hits the driver's ceiling. A subquery has no such ceiling and behaves on D1 the same
+   * way as locally.
    *
-   * Порядок задає SQL: іменні контакти поперед загальних скриньок, бо лист на
-   * hello@ читає менеджер, розділ 9 CLAUDE.md.
+   * SQL sets the order: named contacts before generic mailboxes, because a letter to hello@ is read
+   * by a manager, section 9 of CLAUDE.md.
    */
   const chosen = db
     .select({ id: companies.id })
@@ -176,8 +174,8 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
 
   const byCompany = new Map<number, typeof contactRows>();
   for (const row of contactRows) {
-    // Через push, а не через новий масив: копія на кожен контакт це зайва робота
-    // рівно там, де її найбільше, у компаній з довгим списком людей.
+    // push rather than a new array: a copy per contact is wasted work exactly where there is the
+    // most of it, at companies with a long list of people.
     const list = byCompany.get(row.companyId);
     if (list) list.push(row);
     else byCompany.set(row.companyId, [row]);
@@ -232,7 +230,7 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
   return cards;
 }
 
-/** Сторінка списку студій разом із лічильниками для інтерфейсу. */
+/** A page of the studio list together with counters for the interface. */
 export async function studioPage(filters: StudioFilters = {}): Promise<StudioPage> {
   const threshold = filters.minScore ?? rules().companies.threshold;
   const all = await scoreAll(filters);
@@ -248,7 +246,7 @@ export async function studioPage(filters: StudioFilters = {}): Promise<StudioPag
   };
 }
 
-/** Тонка обгортка для тестів і для викликів, яким потрібен лише список. */
+/** A thin wrapper for tests and for callers that need only the list. */
 export async function studioQueue(filters: StudioFilters = {}): Promise<StudioCard[]> {
   return (await studioPage(filters)).cards;
 }
@@ -259,7 +257,7 @@ export interface StudioActionInput {
   note?: string | null;
   days?: number;
   channel?: string;
-  /** Знімок контакту на момент листа. Потрібен, щоб через рік було видно, кому писали. */
+  /** A contact snapshot at send time. Needed so that a year later it is clear who was written to. */
   contactName?: string | null;
   contactEmail?: string | null;
   templateUsed?: string | null;
@@ -273,11 +271,11 @@ const STATUS_BY_ACTION: Record<StudioActionInput['action'], string> = {
   snooze: 'snoozed',
 };
 
-/** Дії над студією: те саме, що на картці вакансії, але без привʼязки до вакансії. */
+/** Actions on a studio: the same as on a vacancy card, but without a vacancy. */
 export async function applyStudioAction(input: StudioActionInput): Promise<{ status: string; outreachId: number | null }> {
   const db = getDb();
   const status = STATUS_BY_ACTION[input.action];
-  if (!status) throw new Error(`невідома дія: ${input.action}`);
+  if (!status) throw new Error(`unknown action: ${input.action}`);
 
   const snoozedUntil = input.action === 'snooze' ? Date.now() + (input.days ?? 30) * 86_400_000 : null;
   const [existing] = await db.select().from(companyState).where(eq(companyState.companyId, input.companyId));
@@ -315,7 +313,7 @@ export async function applyStudioAction(input: StudioActionInput): Promise<{ sta
   return { status, outreachId };
 }
 
-/** Компанії, які варто обійти першими: високий рахунок і ще не обходились. */
+/** Companies worth crawling first: a high score and never crawled yet. */
 export async function studiosToEnrich(limit = 25): Promise<Company[]> {
   const db = getDb();
   const rows = await db

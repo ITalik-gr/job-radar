@@ -4,11 +4,11 @@ import { config } from '../config.js';
 import { setTokenStore, type StoredToken } from './gmail.js';
 
 /**
- * Файлове сховище рефреш-токена для Node. Імпортується там, де є файлова система:
- * CLI, локальний API, планувальник. У бандл воркера цей файл не потрапляє.
+ * File-based refresh token store for Node. Imported where there is a filesystem: the CLI, the
+ * local API, the scheduler. This file never reaches the worker bundle.
  *
- * Токен лежить окремим файлом, а не в базі: бекап бази з рефреш-токеном усередині
- * означав би доступ до пошти власника в кожному архіві.
+ * The token lives in a separate file rather than the database: a database backup with the
+ * refresh token inside would mean access to the owner's mailbox in every archive.
  */
 setTokenStore({
   load(): StoredToken | null {
@@ -18,7 +18,7 @@ setTokenStore({
   },
   save(token: StoredToken): void {
     mkdirSync(dirname(config.gmail.tokenPath), { recursive: true });
-    // Права 600: файл дає доступ до пошти, і читати його має тільки власник.
+    // Mode 600: the file grants mailbox access, and only the owner may read it.
     writeFileSync(config.gmail.tokenPath, `${JSON.stringify(token, null, 2)}\n`, { mode: 0o600 });
   },
   forget(): void {

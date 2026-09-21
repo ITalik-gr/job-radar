@@ -17,6 +17,10 @@ export default defineConfig({
       LOG_LEVEL: 'silent',
       LOG_FILE: 'logs/test.log',
       DB_PATH: 'data/test-radar.db',
+      // Empty on purpose: dotenv does not override variables that already exist, so the
+      // real bot from .env stays unreachable and a test run never messages the owner.
+      TELEGRAM_BOT_TOKEN: '',
+      TELEGRAM_CHAT_ID: '',
     },
   },
 });

@@ -1,13 +1,13 @@
 /**
- * Підстановка значень у шаблон листа.
+ * Filling values into a letter template.
  *
- * Тут **немає генерації тексту**: лист пише власник, а ця функція лише підставляє
- * назву компанії, імʼя контакту і стек. Розділ 11 у CLAUDE.md забороняє генерувати
- * листи, і звернень до моделі в цьому файлі немає і не буде.
+ * There is **no text generation** here: the owner writes the letter, and this function only fills
+ * in the company name, the contact name and the stack. Section 11 of CLAUDE.md forbids generating
+ * letters, and this file has no model calls and never will.
  *
- * Файл лежить у `src/lib`, а не у фронті, щоб його покривали загальні тести
- * і типчек, і щоб та сама логіка була доступна серверу, якщо колись знадобиться.
- * Через це він мусить лишатись без залежностей від Node.
+ * The file lives in `src/lib` rather than the front end so that the shared tests and typecheck
+ * cover it, and so the same logic is available to the server. That is why it must stay free of
+ * Node dependencies.
  */
 
 export interface LetterContext {
@@ -21,54 +21,67 @@ export interface LetterContext {
   city?: string | null;
   country?: string | null;
   /**
-   * Перший абзац листа: або від моделі, або статичний з шаблона. Приходить сюди
-   * готовим рядком, бо рішення, чий саме це текст, приймається до підстановки.
+   * The letter language, uk or en. It decides which words `{{niche}}` expands to: a Ukrainian
+   * label inside an English letter reads as a glitch. Defaults to en.
+   */
+  language?: string | null;
+  /**
+   * The first paragraph of the letter: either from the model or static from the template. It
+   * arrives as a ready string, because who wrote it is decided before substitution.
    */
   intro?: string | null;
   /**
-   * Підпис. Лежить окремо від тексту шаблона, бо він однаковий у всіх листах,
-   * а правити його в десяти шаблонах по черзі означає рано чи пізно розійтись
-   * у них між собою.
+   * The signature. Kept apart from the template text because it is the same in every letter, and
+   * editing it in ten templates one by one means they drift apart sooner or later.
    */
   signature?: string | null;
 }
 
-/** Підписи для редактора шаблонів: власник має бачити, що взагалі можна вставити. */
+/** Hints for the template editor: the owner has to see what can be inserted at all. */
 export const LETTER_PLACEHOLDERS: { token: string; hint: string }[] = [
-  { token: 'company', hint: 'назва компанії' },
-  { token: 'domain', hint: 'домен, напр. acme.com' },
-  { token: 'contact_name', hint: 'імʼя контакту, якщо знайшли' },
-  { token: 'first_name', hint: 'тільки перше слово з імені' },
-  { token: 'niche', hint: 'студія, дизайн-студія, стартап' },
-  { token: 'their_stack', hint: 'стек із їхнього сайту, через кому' },
-  { token: 'vacancy_title', hint: 'назва вакансії, якщо лист із Черги' },
-  { token: 'intro', hint: 'перший абзац: від моделі або статичний з шаблона' },
-  { token: 'signature', hint: 'підпис, спільний для всіх листів' },
-  { token: 'city', hint: 'місто компанії' },
-  { token: 'country', hint: 'країна компанії' },
+  { token: 'company', hint: 'company name' },
+  { token: 'domain', hint: 'domain, e.g. acme.com' },
+  { token: 'contact_name', hint: 'contact name, if found' },
+  { token: 'first_name', hint: 'only the first word of the name' },
+  { token: 'niche', hint: 'studio, design studio, startup, in the letter language' },
+  { token: 'their_stack', hint: 'stack from their site, comma separated' },
+  { token: 'vacancy_title', hint: 'vacancy title, if the letter comes from the Queue' },
+  { token: 'intro', hint: 'first paragraph: from the model or static from the template' },
+  { token: 'signature', hint: 'the signature shared by all letters' },
+  { token: 'city', hint: 'company city' },
+  { token: 'country', hint: 'company country' },
 ];
 
-const NICHE_LABELS: Record<string, string> = {
-  studio: 'студія',
-  design: 'дизайн-студія',
-  startup: 'стартап',
-  product: 'продуктова компанія',
-  outstaff: 'аутстаф-компанія',
+const NICHE_LABELS: Record<'en' | 'uk', Record<string, string>> = {
+  en: {
+    studio: 'a development studio',
+    design: 'a design studio',
+    startup: 'a startup',
+    product: 'a product company',
+    outstaff: 'an outstaffing company',
+  },
+  // Ukrainian letters get Ukrainian words: this is letter content, not interface copy.
+  uk: {
+    studio: 'студія',
+    design: 'дизайн-студія',
+    startup: 'стартап',
+    product: 'продуктова компанія',
+    outstaff: 'аутстаф-компанія',
+  },
 };
 
 export interface RenderedLetter {
   text: string;
-  /** Плейсхолдери, для яких не знайшлось значення. Інтерфейс має їх підсвітити. */
+  /** Placeholders that got no value. The interface has to highlight them. */
   missing: string[];
-  /** Токени, яких немає в переліку підтримуваних. Найчастіше це друкарська помилка. */
+  /** Tokens missing from the supported list. Most often a typo. */
   unknown: string[];
 }
 
 /**
- * Порожній плейсхолдер замінюється на порожній рядок, а не лишається як `{{...}}`.
- * Причина проста: власник копіює текст і вставляє в пошту, і фігурні дужки в листі
- * виглядають як недбалість. Але список порожніх повертається, щоб інтерфейс
- * попередив до того, як лист піде.
+ * An empty placeholder is replaced with an empty string rather than left as `{{...}}`. The reason
+ * is simple: the owner copies the text into a mail client, and curly braces in a letter look
+ * careless. But the list of empty ones is returned, so the interface can warn before the letter goes.
  */
 export function renderLetter(template: string, context: LetterContext): RenderedLetter {
   const base: Record<string, string> = {
@@ -76,7 +89,7 @@ export function renderLetter(template: string, context: LetterContext): Rendered
     domain: context.domain ?? '',
     contact_name: context.contactName ?? '',
     first_name: (context.contactName ?? '').split(' ')[0] ?? '',
-    niche: context.kind ? (NICHE_LABELS[context.kind] ?? '') : '',
+    niche: context.kind ? (NICHE_LABELS[context.language === 'uk' ? 'uk' : 'en'][context.kind] ?? '') : '',
     their_stack: (context.stack ?? []).join(', '),
     vacancy_title: context.vacancyTitle ?? '',
     city: context.city ?? '',
@@ -85,13 +98,12 @@ export function renderLetter(template: string, context: LetterContext): Rendered
   };
 
   /*
-   * Перший абзац підставляється не як готовий рядок, а сам проходить підстановку.
-   * Інакше `{{company}}`, написаний у полі "Перший абзац", доїжджав би до пошти
-   * фігурними дужками: заміна робиться за один прохід і вставлений текст повторно
-   * не переглядається.
+   * The first paragraph is not inserted as a ready string, it goes through substitution itself.
+   * Otherwise `{{company}}` written in the "First paragraph" field would reach the mail as curly
+   * braces: replacement is a single pass, and inserted text is not scanned again.
    *
-   * Токена `intro` всередині самого абзацу немає навмисно: він потрапить у
-   * `unknown` і власник побачить попередження замість тихої рекурсії.
+   * The `intro` token inside the paragraph itself is left out on purpose: it lands in `unknown`,
+   * and the owner sees a warning instead of silent recursion.
    */
   const introMissing = new Set<string>();
   const introUnknown = new Set<string>();
@@ -104,8 +116,8 @@ export function renderLetter(template: string, context: LetterContext): Rendered
   const text = substitute(template, values, missing, unknown);
 
   /*
-   * Претензії до абзацу зараховуються лише тоді, коли шаблон його справді бере.
-   * Абзац, написаний "про запас" для шаблона без мітки, не має блокувати лист.
+   * Paragraph complaints count only when the template actually uses it. A paragraph written
+   * "just in case" for a template without the marker must not block the letter.
    */
   if (HAS_INTRO.test(template)) {
     for (const token of introMissing) missing.add(token);
@@ -113,7 +125,7 @@ export function renderLetter(template: string, context: LetterContext): Rendered
   }
 
   return {
-    // Підстановка порожнього значення лишає подвійні пробіли і висячі коми.
+    // Substituting an empty value leaves double spaces and dangling commas.
     text: text.replace(/[ \t]{2,}/g, ' ').replace(/ ,/g, ',').replace(/\n{3,}/g, '\n\n').trim(),
     missing: [...missing],
     unknown: [...unknown],
@@ -122,7 +134,7 @@ export function renderLetter(template: string, context: LetterContext): Rendered
 
 const TOKEN = /\{\{\s*([a-z_]+)\s*\}\}/gi;
 
-/** Чи бере шаблон перший абзац узагалі. Без цього абзац перевіряється даремно. */
+/** Whether the template uses the first paragraph at all. Without it the paragraph is checked for nothing. */
 export const HAS_INTRO = /\{\{\s*intro\s*\}\}/i;
 
 function substitute(
@@ -143,12 +155,12 @@ function substitute(
   });
 }
 
-/** Посилання `mailto:` з темою і тілом. Порожня адреса означає, що кнопка неактивна. */
+/** A `mailto:` link with subject and body. An empty address means the button is disabled. */
 export function mailtoLink(email: string | null, subject: string, body: string): string | null {
   if (!email) return null;
   const params = new URLSearchParams();
   if (subject) params.set('subject', subject);
   if (body) params.set('body', body);
-  // URLSearchParams кодує пробіл як +, а поштові клієнти чекають %20.
+  // URLSearchParams encodes a space as +, while mail clients expect %20.
   return `mailto:${email}?${params.toString().replace(/\+/g, '%20')}`;
 }

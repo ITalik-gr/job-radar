@@ -95,6 +95,7 @@ export function LetterBlock({
       vacancyTitle,
       city,
       country,
+      language: selected?.language,
       intro: selected?.intro ?? '',
     }),
     [company, domain, kind, stack, contactName, vacancyTitle, city, country, selected],

@@ -19,7 +19,7 @@ beforeAll(async () => {
   runMigrations().sqlite.close();
 
   await company({
-    name: 'Мала студія',
+    name: 'Small studio',
     domain: 'studio.ua',
     country: 'UA',
     sizeHint: '10 - 49',
@@ -27,7 +27,7 @@ beforeAll(async () => {
     tags: ['Web Development', 'Web Design', '$50 - $99 / hr'],
   });
   await company({
-    name: 'Величезний аутсорс',
+    name: 'Huge outsourcer',
     domain: 'giant.com',
     country: 'IN',
     sizeHint: '10,000+',
@@ -35,7 +35,7 @@ beforeAll(async () => {
     tags: ['Web Development'],
   });
   await company({
-    name: 'SEO контора',
+    name: 'SEO shop',
     domain: 'seo.com',
     country: 'US',
     sizeHint: '10 - 49',
@@ -54,7 +54,7 @@ beforeAll(async () => {
 });
 
 describe('sizeBucket', () => {
-  it('розуміє формати каталогів', () => {
+  it('understands catalog formats', () => {
     expect(sizeBucket('10 - 49')).toBe('10 - 49');
     expect(sizeBucket('200...800 спеціалістів')).toBe('250 - 999');
     expect(sizeBucket('51-200 співробітників')).toBe('50 - 249');
@@ -64,15 +64,15 @@ describe('sizeBucket', () => {
 });
 
 describe('scoreCompany', () => {
-  it('мала українська студія на React отримує високий рахунок', async () => {
+  it('a small Ukrainian React studio gets a high score', async () => {
     const [row] = await getDb().select().from(companies).where(eq(companies.domain, 'studio.ua'));
     const result = scoreCompany({ company: row! });
     expect(result.score).toBeGreaterThan(15);
     expect(result.positives.some((item) => item.reason.includes('10 - 49'))).toBe(true);
-    expect(result.positives.some((item) => item.reason === 'країна UA')).toBe(true);
+    expect(result.positives.some((item) => item.reason === 'country UA')).toBe(true);
   });
 
-  it('гігант на WordPress отримує мінуси за розмір і стек', async () => {
+  it('a WordPress giant gets penalties for size and stack', async () => {
     const [row] = await getDb().select().from(companies).where(eq(companies.domain, 'giant.com'));
     const result = scoreCompany({ company: row! });
     expect(result.negatives.some((item) => item.reason.includes('10,000+'))).toBe(true);
@@ -80,23 +80,23 @@ describe('scoreCompany', () => {
     expect(result.score).toBeLessThan(5);
   });
 
-  it('маркетингова контора не потрапляє в чергу', async () => {
+  it('a marketing shop does not get into the queue', async () => {
     const [row] = await getDb().select().from(companies).where(eq(companies.domain, 'seo.com'));
     const result = scoreCompany({ company: row! });
     expect(result.negatives.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('blacklist виключає повністю', async () => {
+  it('blacklist excludes entirely', async () => {
     const [row] = await getDb().select().from(companies).where(eq(companies.domain, 'studio.ua'));
     expect(scoreCompany({ company: row!, status: 'blacklist' }).score).toBe(-100);
   });
 });
 
-describe('вага за типом компанії', () => {
-  it('стартап без тегів каталогу все одно набирає бали', async () => {
+describe('weight by company kind', () => {
+  it('a startup without catalog tags still scores points', async () => {
     /*
-     * Getro не дає тегів і розміру, тому без ваги за типом стартап набирав майже
-     * нуль і не проходив поріг, тобто сторінка Стартапи була б порожньою при повній базі.
+     * Getro gives no tags and no size, so without a kind weight a startup scored almost zero and
+     * missed the threshold, which would leave the Startups page empty over a full database.
      */
     const { scoreCompany } = await import('../src/pipeline/company-score.js');
     const bare = {
@@ -123,7 +123,7 @@ describe('вага за типом компанії', () => {
     expect(scoreCompany({ company: bare }).score).toBeGreaterThan(0);
   });
 
-  it('аутстаф отримує мінус, туди писати сенсу немає', async () => {
+  it('outstaffing gets a minus, writing there makes no sense', async () => {
     const { scoreCompany } = await import('../src/pipeline/company-score.js');
     const base = {
       id: 0,
@@ -151,20 +151,20 @@ describe('вага за типом компанії', () => {
   });
 });
 
-describe('фільтр за іменним контактом', () => {
-  it('без фільтра показуються всі, з фільтром лише ті, де є людина', async () => {
+describe('named contact filter', () => {
+  it('without the filter everyone shows, with it only those with a person', async () => {
     const { contacts } = await import('../src/db/schema.js');
     const all = await studioQueue({ includeContacted: true, minScore: -100 });
     expect(all.length).toBeGreaterThan(0);
 
-    // Жодного іменного контакту ще немає, тому фільтр має віддати порожньо.
+    // There is no named contact yet, so the filter must return nothing.
     expect(
       await studioQueue({ includeContacted: true, minScore: -100, withNamedContact: true }),
     ).toHaveLength(0);
 
     await getDb().insert(contacts).values({
       companyId: all[0]!.companyId,
-      name: 'Марія Технічна',
+      name: 'Maria Tech',
       role: 'CTO',
       email: 'maria@studio.ua',
     });
@@ -178,7 +178,7 @@ describe('фільтр за іменним контактом', () => {
     expect(named[0]!.companyId).toBe(all[0]!.companyId);
   });
 
-  it('загальна скринька без імені не рахується за контакт', async () => {
+  it('a generic mailbox without a name does not count as a contact', async () => {
     const { contacts } = await import('../src/db/schema.js');
     const all = await studioQueue({ includeContacted: true, minScore: -100 });
     const target = all.find((card) => card.contacts.length === 0);
@@ -200,47 +200,47 @@ describe('фільтр за іменним контактом', () => {
   });
 });
 
-describe('тип компанії у списку', () => {
-  it('продуктові компанії не показуються без явного фільтра', async () => {
-    // Холодний лист "можу допомогти з проєктом" у Stripe не працює, для них є Черга.
+describe('company kind in the list', () => {
+  it('product companies are hidden without an explicit filter', async () => {
+    // A cold "I can help with your project" letter to Stripe does not work, they have the Queue.
     const cards = await studioQueue({ includeContacted: true, minScore: -100 });
     expect(cards.every((card) => card.kind !== 'product')).toBe(true);
   });
 
-  it('фільтр за типом віддає рівно свій тип', async () => {
+  it('the kind filter returns exactly that kind', async () => {
     const cards = await studioQueue({ kind: 'startup', includeContacted: true, minScore: -100 });
     expect(cards.every((card) => card.kind === 'startup')).toBe(true);
   });
 });
 
 describe('studioQueue', () => {
-  it('сортує за рахунком і відсікає нижче порогу', async () => {
+  it('sorts by score and cuts below the threshold', async () => {
     const cards = await studioQueue();
     expect(cards[0]!.domain).toBe('studio.ua');
     expect(cards.every((card) => card.score >= 5)).toBe(true);
     expect(cards.some((card) => card.domain === 'giant.com')).toBe(false);
   });
 
-  it('пояснює рахунок кожної картки', async () => {
+  it('explains the score of every card', async () => {
     const [card] = await studioQueue();
     expect(card!.why.length).toBeGreaterThan(2);
     expect(card!.why[0]!.weight).toBeGreaterThan(0);
   });
 
-  it('пошук працює за назвою, доменом і тегом', async () => {
+  it('search works by name, domain and tag', async () => {
     expect((await studioQueue({ search: 'studio.ua' }))).toHaveLength(1);
     expect((await studioQueue({ search: 'web design' }))).toHaveLength(1);
-    expect((await studioQueue({ search: 'нічого такого' }))).toHaveLength(0);
+    expect((await studioQueue({ search: 'nothing like this' }))).toHaveLength(0);
   });
 
-  it('фільтр за країною', async () => {
+  it('country filter', async () => {
     const cards = await studioQueue({ country: 'UA' });
     expect(cards.every((card) => card.country === 'UA')).toBe(true);
   });
 });
 
 describe('applyStudioAction', () => {
-  it('"написав" ставить статус і створює запис листування без вакансії', async () => {
+  it('"contacted" sets the status and creates a correspondence record without a vacancy', async () => {
     const [row] = await getDb().select().from(companies).where(eq(companies.domain, 'studio.ua'));
     const result = await applyStudioAction({
       companyId: row!.id,
@@ -254,12 +254,12 @@ describe('applyStudioAction', () => {
     expect(sent!.templateUsed).toBe('studio_pitch');
   });
 
-  it('після "написав" студія зникає з черги, але видно з прапорцем all', async () => {
+  it('after "contacted" the studio leaves the queue but shows with the all flag', async () => {
     expect((await studioQueue({ search: 'studio.ua' }))).toHaveLength(0);
     expect((await studioQueue({ search: 'studio.ua', includeContacted: true }))).toHaveLength(1);
   });
 
-  it('відкладена студія не показується до кінця терміну', async () => {
+  it('a snoozed studio is not shown until the snooze ends', async () => {
     const [row] = await getDb().select().from(companies).where(eq(companies.domain, 'seo.com'));
     await applyStudioAction({ companyId: row!.id, action: 'snooze', days: 60 });
 
@@ -268,7 +268,7 @@ describe('applyStudioAction', () => {
     expect((await studioQueue({ search: 'seo.com', includeContacted: true, minScore: -100 }))).toHaveLength(0);
   });
 
-  it('невідома дія відхиляється', async () => {
-    await expect(applyStudioAction({ companyId: 1, action: 'вигадана' as never })).rejects.toThrow();
+  it('an unknown action is rejected', async () => {
+    await expect(applyStudioAction({ companyId: 1, action: 'made_up' as never })).rejects.toThrow();
   });
 });

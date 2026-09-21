@@ -46,8 +46,8 @@
 			"0 */6 * * *",
 			"0 4 * * 1",
 			"0 5 * * 2",
-			"0 10 * * *",
-			"0 18 * * *",
+			// Telegram summary, Monday and Thursday. UTC: 07:00 here is 10:00 in Kyiv.
+			"0 7 * * MON,THU",
 			// Розсилка. Час у Cron Triggers завжди UTC: 06:30 тут це 09:30 за Києвом.
 			"5 * * * *",
 			"30 6 * * *"

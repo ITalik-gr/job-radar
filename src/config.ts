@@ -1,15 +1,15 @@
 import 'dotenv/config';
 
 /**
- * Конфіг читається лениво через геттери. Причина: на Cloudflare змінні приходять
- * біндінгами воркера вже після завантаження модулів, тому обчислення при імпорті
- * давало порожній ключ Anthropic і вимкнений телеграм, причому мовчки.
+ * The config is read lazily through getters. The reason: on Cloudflare variables arrive as worker
+ * bindings after the modules have loaded, so computing at import time gave an empty Anthropic
+ * key and a disabled Telegram, silently.
  */
 
 let runtime: Record<string, string | undefined> =
   typeof process !== 'undefined' && process.env ? { ...process.env } : {};
 
-/** Викликається воркером на кожен запит, до обробки. */
+/** Called by the worker on every request, before handling it. */
 export function setRuntimeEnv(env: Record<string, unknown>): void {
   const clean: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(env)) {
@@ -36,7 +36,7 @@ export const config = {
   get dbPath() {
     return str('DB_PATH', 'data/radar.db');
   },
-  /** Токен доступу. Порожній означає, що радар локальний і перевірки немає. */
+  /** Access token. Empty means the radar is local and there is no check. */
   get token() {
     return str('RADAR_TOKEN', '');
   },
@@ -63,13 +63,13 @@ export const config = {
     },
   },
   /**
-   * Доступ до Workers AI поза Workers: локальний CLI і тести.
+   * Access to Workers AI outside Workers: the local CLI and tests.
    *
-   * Імена навмисно свої, а не `CLOUDFLARE_API_TOKEN`. Wrangler читає `.env` і бере
-   * звідти саме `CLOUDFLARE_API_TOKEN` як свій ключ авторизації, тобто токен,
-   * виданий лише на Workers AI, підмінював логін власника і ламав усе інше:
-   * `wrangler d1 migrations apply` падав з 7403 "account is not authorized".
-   * Старі імена читаються далі, щоб нічий локальний .env не зламався.
+   * The names are our own on purpose, not `CLOUDFLARE_API_TOKEN`. Wrangler reads `.env` and takes
+   * exactly `CLOUDFLARE_API_TOKEN` from it as its own credentials, so a token issued only for
+   * Workers AI replaced the owner's login and broke everything else: `wrangler d1 migrations
+   * apply` failed with 7403 "account is not authorized". The old names are still read so that
+   * nobody's local .env breaks.
    */
   cloudflare: {
     get accountId() {
@@ -79,23 +79,23 @@ export const config = {
       return str('CF_AI_API_TOKEN', str('CLOUDFLARE_API_TOKEN', ''));
     },
     /**
-     * Ім'я AI Gateway. Через нього видно кожен запит до моделі, його вартість
-     * і кеш, тобто те, чого лічильник у `llm_usage` не показує.
+     * AI Gateway name. Through it every model request is visible, with its cost and cache hits,
+     * which the counter in `llm_usage` does not show.
      */
     get gatewayId() {
       return str('AI_GATEWAY_ID', '');
     },
     /**
-     * Токен для Authenticated Gateway. Якщо в налаштуваннях шлюзу увімкнена
-     * автентифікація, запит без заголовка `cf-aig-authorization` відбивається
-     * з 401 ще до провайдера, і виглядає це як "модель не відповідає".
+     * Token for an Authenticated Gateway. If authentication is enabled in the gateway settings, a
+     * request without the `cf-aig-authorization` header is rejected with 401 before reaching the
+     * provider, and it looks like "the model does not answer".
      *
-     * Виклики через біндінг `AI` у воркері токена не потребують.
+     * Calls through the `AI` binding in the worker need no token.
      */
     get gatewayToken() {
       return str('AI_GATEWAY_TOKEN', '');
     },
-    /** Базова адреса шлюзу. Порожня, якщо шлюз не налаштований. */
+    /** Gateway base URL. Empty if no gateway is configured. */
     get gatewayUrl() {
       const { accountId, gatewayId } = this;
       return accountId && gatewayId
@@ -106,11 +106,11 @@ export const config = {
 
   llm: {
     /**
-     * Хто класифікує: `anthropic` або `workers-ai`.
+     * Who classifies: `anthropic` or `workers-ai`.
      *
-     * Workers AI входить у платний план Cloudflare, який власник уже оплачує,
-     * тому класифікація там коштує нейрони з включеної квоти, а не окремі долари.
-     * Anthropic лишається за замовчуванням: якість вища, і саме на ній зібрано кеш.
+     * Workers AI is part of the paid Cloudflare plan, so classification there costs neurons from
+     * the included quota rather than separate dollars. Anthropic stays the default: the quality is
+     * higher, and the cache was built on it.
      */
     get provider(): 'anthropic' | 'workers-ai' {
       return str('LLM_PROVIDER', 'anthropic') === 'workers-ai' ? 'workers-ai' : 'anthropic';
@@ -122,78 +122,76 @@ export const config = {
       return str('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001');
     },
     /**
-     * Модель для першого абзацу листа. Навмисно сильніша за класифікаційну.
+     * Model for the first paragraph of a letter. Deliberately stronger than the classifier.
      *
-     * Рахунок різний на два порядки за обсягом, а не за ціною: класифікація це
-     * тисячі викликів на тисячі вакансій, а абзац це один виклик на компанію,
-     * якій справді пишеться лист, тобто десятки на місяць. Економити на тому,
-     * що читатиме людина, дорожче за різницю в кілька доларів.
+     * The bill differs by two orders of magnitude in volume, not in price: classification is
+     * thousands of calls for thousands of vacancies, while the paragraph is one call per company
+     * that really gets a letter, that is, dozens a month. Saving on what a person will read costs
+     * more than a few dollars of difference.
      */
     get outreachModel() {
       return str('OUTREACH_MODEL', 'claude-sonnet-5');
     },
     /**
-     * Модель для вердикту по компанії. Типово та сама, що пише перший абзац листа.
+     * Model for the company verdict. By default the same one that writes the first paragraph.
      *
-     * Задача одного порядку з нею за обсягом і за ціною помилки: це одне рішення
-     * на компанію, якій власник збирається писати, тобто десятки за місяць, а не
-     * тисячі. Haiku тут теж працює, але плутає близькі шаблони частіше, ніж вартує
-     * зекономлений цент, і кешу промпта на ній майже немає: мінімальний блок для
-     * кешування 4096 токенів, а системний блок з шаблонами коротший.
+     * The task is of the same order in volume and cost of error: one decision per company the
+     * owner is about to write to, dozens a month rather than thousands. Haiku works here too, but
+     * confuses similar templates more often than the saved cent is worth, and prompt caching barely
+     * applies to it: the minimum cacheable block is 4096 tokens, and the template system block is shorter.
      */
     get verdictModel() {
       return str('VERDICT_MODEL', this.outreachModel);
     },
-    /** Модель Workers AI. Llama 3.3 обрана як найдешевша з тих, що тримають строгий JSON. */
+    /** Workers AI model. Llama 3.3 is the cheapest of those that hold strict JSON. */
     get workersModel() {
       return str('WORKERS_AI_MODEL', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
     },
     /**
-     * Модель, яка реально працюватиме. Ключ кешу будується саме з неї: відповіді
-     * різних моделей не можна змішувати в одному кеші, інакше зміна провайдера
-     * мовчки віддавала б чужі класифікації.
+     * The model that will actually run. The cache key is built from it: answers from different
+     * models must not mix in one cache, otherwise switching providers would silently serve
+     * someone else's classifications.
      */
     get activeModel() {
       return this.provider === 'workers-ai' ? this.workersModel : this.model;
     },
     /**
-     * Базова адреса Anthropic. Порожня означає прямий виклик.
+     * Anthropic base URL. Empty means a direct call.
      *
-     * Якщо вказати шлюз AI Gateway, усі виклики йдуть через нього і зʼявляються
-     * кеш, жорсткий ліміт витрат і лог кожного запиту. Зараз видно лише лічильник
-     * у `llm_usage`, тобто скільки викликів, але не що саме і чому.
-     * Формат: https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic
+     * With an AI Gateway set, every call goes through it and gains a cache, a hard spend limit and
+     * a log of each request. Without it only the `llm_usage` counter is visible, that is, how many
+     * calls, but not what or why.
+     * Format: https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic
      */
     get baseUrl() {
       const explicit = str('ANTHROPIC_BASE_URL', '');
       if (explicit) return explicit;
-      // Шлюз налаштований один раз, і Anthropic іде через нього без окремої змінної.
+      // The gateway is configured once, and Anthropic goes through it without a separate variable.
       const gateway = config.cloudflare.gatewayUrl;
       return gateway ? `${gateway}/anthropic` : '';
     },
     /**
-     * Стеля викликів на добу. Різна для двох провайдерів навмисно: у Anthropic
-     * кожен виклик це гроші за токени, і 500 на добу це запобіжник від тихо
-     * спаленого бюджету. У Workers AI це нейрони вже оплаченого плану, тому
-     * та сама стеля означала б просто недороблену роботу.
+     * Daily call cap. Different for the two providers on purpose: with Anthropic every call is
+     * money for tokens, and 500 a day is a guard against a silently burned budget. With Workers AI
+     * it is neurons of an already paid plan, so the same cap would just mean unfinished work.
      */
     get dailyCallLimit() {
       return this.provider === 'workers-ai'
         ? num('WORKERS_AI_DAILY_CALL_LIMIT', 5000)
         : num('LLM_DAILY_CALL_LIMIT', 500);
     },
-    /** Скільки символів тексту вакансії йде в модель. Довший хвіст майже не додає користі. */
+    /** How many characters of vacancy text go to the model. A longer tail adds almost nothing. */
     get maxInputChars() {
       return num('LLM_MAX_INPUT_CHARS', 8000);
     },
   },
   /**
-   * Gmail для розсилки. OAuth2, не SMTP з app password: без `threadId` і читання
-   * вхідних неможливі ні детекція відповідей, ні коректне тредування фолоу-апів.
+   * Gmail for sending. OAuth2, not SMTP with an app password: without `threadId` and reading the
+   * inbox neither reply detection nor correct follow-up threading is possible.
    *
-   * Токен лежить окремим файлом, а не в базі: OUTREACH.md, розділ 0, правило 6.
-   * Разом з даними його тримати не можна, а бекап бази з рефреш-токеном усередині
-   * це доступ до пошти власника в архіві.
+   * The token lives in a separate file, not in the database: OUTREACH.md, section 0, rule 6.
+   * It must not be kept together with the data, and a database backup with the refresh token
+   * inside is access to the owner's mailbox in an archive.
    */
   /**
    * Who sends the letters. `gmail` is the default and the only provider that can
@@ -230,28 +228,28 @@ export const config = {
       return str('GMAIL_FROM_EMAIL', '');
     },
     /**
-     * Порт локального перехоплювача коду під час `auth:gmail`. Фіксований, бо той
-     * самий redirect_uri мусить бути вписаний у консолі Google.
+     * Port of the local code catcher during `auth:gmail`. Fixed, because the same redirect_uri
+     * has to be registered in the Google console.
      */
     get authPort() {
       return num('GMAIL_AUTH_PORT', 53682);
     },
     /**
-     * Куди Google повертає код. Порожнє означає локальний перехоплювач.
+     * Where Google returns the code. Empty means the local catcher.
      *
-     * На проді сюди йде адреса воркера, наприклад
-     * https://job-radar.workers.dev/api/gmail/callback, і тоді підключення
-     * робиться з браузера, без запуску проєкту на ноутбуці.
+     * In production this is the worker address, for example
+     * https://job-radar.example.workers.dev/api/gmail/callback, and then connecting happens from
+     * the browser, without running the project on a laptop.
      */
     get redirectUri() {
       return str('GMAIL_REDIRECT_URI', '');
     },
     /**
-     * Рефреш-токен як секрет середовища. Це шлях для Workers, де файлової
-     * системи немає: `wrangler secret put GMAIL_REFRESH_TOKEN`.
+     * The refresh token as an environment secret. This is the path for Workers, which have no
+     * filesystem: `wrangler secret put GMAIL_REFRESH_TOKEN`.
      *
-     * У базі йому місця немає навмисно, розділ 0 OUTREACH.md: бекап бази з
-     * токеном усередині це доступ до пошти власника в кожному архіві.
+     * It has no place in the database on purpose, section 0 of OUTREACH.md: a database backup
+     * with the token inside is access to the owner's mailbox in every archive.
      */
     get refreshToken() {
       return str('GMAIL_REFRESH_TOKEN', '');

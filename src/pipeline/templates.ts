@@ -4,12 +4,12 @@ import { outreach, templates, type Template } from '../db/schema.js';
 import { log } from '../lib/log.js';
 
 /**
- * Шаблони листів і резюме. Інструмент їх лише зберігає, підставляє в історію
- * контактів і дає редагувати. Генерація текстів заборонена розділом 11 CLAUDE.md,
- * тому тут немає жодного звернення до моделі і не буде.
+ * Letter and resume templates. The tool only stores them, records them in the contact history
+ * and lets them be edited. Generating text is forbidden by section 11 of CLAUDE.md, so there is
+ * no model call here and there never will be.
  *
- * Раніше список шаблонів був масивом рядків у коді фронта, і в базу писалась лише
- * мітка. Тобто змінити шаблон означало правити код, а сам текст жив у голові.
+ * The template list used to be an array of strings in the front end code, and only a label went
+ * into the database. Changing a template meant editing code, and the text itself lived in someone's head.
  */
 
 export type TemplateKind = 'vacancy' | 'studio' | 'resume';
@@ -25,18 +25,18 @@ export interface TemplateInput {
   body?: string;
   note?: string | null;
   archived?: boolean;
-  /** uk | en. Мова тексту, за нею шаблон підбирається під країну компанії. Типове en. */
+  /** uk | en. The text language, used to match the template to the company country. Defaults to en. */
   language?: string;
   /**
-   * Роль у розсилці: vacancy | studio_named | studio_generic | followup.
-   * Порожнє означає, що шаблон у розсилці не бере участі і лежить для копіювання.
+   * Sending role: vacancy | studio_named | studio_generic | followup.
+   * Empty means the template takes no part in sending and is kept for copying.
    */
   targetType?: string | null;
-  /** Статичний перший абзац. Підставляється в тіло через {{intro}}. */
+  /** Static first paragraph. Inserted into the body through {{intro}}. */
   intro?: string | null;
 }
 
-/** Slug лягає в outreach.template_used, тому мусить бути стабільним і без пробілів. */
+/** The slug lands in outreach.template_used, so it must be stable and without spaces. Cyrillic names are kept as is. */
 export function slugify(value: string): string {
   const base = value
     .toLowerCase()
@@ -47,22 +47,22 @@ export function slugify(value: string): string {
 }
 
 /**
- * Стартовий набір. Це ті самі мітки, що були зашиті у фронті, тому історія контактів
- * не втрачає зв'язок зі шаблоном. Тексти порожні: їх пише власник.
+ * The starter set. These are the same labels that used to be hardcoded in the front end, so the
+ * contact history keeps its link to the template. The texts are empty: the owner writes them.
  */
 const SEED: { slug: string; name: string; kind: TemplateKind }[] = [
-  { slug: 'fullstack_ai', name: 'Fullstack і AI', kind: 'vacancy' },
+  { slug: 'fullstack_ai', name: 'Fullstack and AI', kind: 'vacancy' },
   { slug: 'frontend_react', name: 'Frontend React', kind: 'vacancy' },
-  { slug: 'referral', name: 'Через знайомого', kind: 'vacancy' },
-  { slug: 'studio_pitch', name: 'Пітч студії', kind: 'studio' },
-  { slug: 'agency_cold', name: 'Холодний лист агенції', kind: 'studio' },
-  { slug: 'project_offer', name: 'Пропозиція проєкту', kind: 'studio' },
+  { slug: 'referral', name: 'Referral', kind: 'vacancy' },
+  { slug: 'studio_pitch', name: 'Studio pitch', kind: 'studio' },
+  { slug: 'agency_cold', name: 'Cold letter to an agency', kind: 'studio' },
+  { slug: 'project_offer', name: 'Project offer', kind: 'studio' },
 ];
 
 /**
- * Шаблон разом з тим, скільки листів ним написано. Без цього числа видалення сліпе:
- * незрозуміло, чи це чернетка, яку ніхто не використовував, чи ключ, що стоїть
- * у півсотні записів історії.
+ * A template together with how many letters were written with it. Without that number deletion
+ * is blind: there is no telling whether this is a draft nobody used or a key present in fifty
+ * history records.
  */
 export interface TemplateWithUsage extends Template {
   usageCount: number;
@@ -86,9 +86,9 @@ export async function listTemplates(kind?: string): Promise<TemplateWithUsage[]>
 }
 
 /**
- * Вільний slug на основі бажаного. Дублікат отримує суфікс, а не помилку: людина
- * назвала шаблон так, як їй зручно, і вимагати іншу назву через технічний ключ
- * означає перекласти на неї роботу, яку код робить сам.
+ * A free slug based on the desired one. A duplicate gets a suffix, not an error: the person named
+ * the template the way they like, and demanding another name because of a technical key would
+ * shift onto them work the code does by itself.
  */
 export async function uniqueSlug(desired: string, exceptId?: number): Promise<string> {
   const db = getDb();
@@ -133,17 +133,16 @@ export async function createTemplate(input: TemplateInput): Promise<Template> {
 export async function updateTemplate(id: number, input: Partial<TemplateInput>): Promise<Template> {
   const db = getDb();
   const [existing] = await db.select().from(templates).where(eq(templates.id, id));
-  if (!existing) throw new Error(`шаблону ${id} немає`);
+  if (!existing) throw new Error(`no template ${id}`);
 
   const patch: Record<string, unknown> = { updatedAt: Date.now() };
 
   /*
-   * Slug можна перейменувати, але сам собою він не міняється разом з назвою.
+   * The slug can be renamed, but it does not change by itself along with the name.
    *
-   * Причина обох правил одна: цей ключ уже стоїть у `outreach.template_used`.
-   * Тому мовчазне перейменування при кожній правці назви розірвало б історію,
-   * а явне перейменування переписує і історію теж, одним рухом. Без цього
-   * запис "писали шаблоном studio_pitch" вказував би в нікуди.
+   * Both rules have one reason: this key already sits in `outreach.template_used`. A silent rename
+   * on every name edit would break the history, while an explicit rename rewrites the history too,
+   * in one move. Without that a record "written with template studio_pitch" would point nowhere.
    */
   if (input.slug !== undefined) {
     const slug = await uniqueSlug(input.slug || existing.name, id);
@@ -155,7 +154,7 @@ export async function updateTemplate(id: number, input: Partial<TemplateInput>):
         .where(eq(outreach.templateUsed, existing.slug))
         .returning({ id: outreach.id });
       if (moved.length > 0) {
-        log.info({ from: existing.slug, to: slug, moved: moved.length }, 'ключ шаблона перейменовано');
+        log.info({ from: existing.slug, to: slug, moved: moved.length }, 'template key renamed');
       }
     }
   }
@@ -176,8 +175,8 @@ export async function updateTemplate(id: number, input: Partial<TemplateInput>):
 }
 
 /**
- * Архів це "прибрати з очей": шаблон зникає зі списків вибору, але лишається
- * і його можна повернути. Для чернетки і для тексту, який колись знадобиться.
+ * Archiving means "out of sight": the template leaves the selection lists but stays and can be
+ * restored. For drafts, and for text that may be needed some day.
  */
 export async function archiveTemplate(id: number): Promise<Template> {
   return updateTemplate(id, { archived: true });
@@ -190,23 +189,22 @@ export async function restoreTemplate(id: number): Promise<Template> {
 export interface DeleteResult {
   deleted: true;
   slug: string;
-  /** Скільки записів історії згадують цей ключ. Вони лишаються, це знімок. */
+  /** How many history records mention this key. They stay, they are a snapshot. */
   keptInHistory: number;
 }
 
 /**
- * Видалення стирає шаблон назовсім.
+ * Deletion erases the template for good.
  *
- * Історія листування при цьому не страждає: `outreach.template_used` це знімок
- * ключа на момент листа, а не звʼязок із таблицею. Тобто запис "писали шаблоном
- * studio_pitch" лишається читабельним і через рік після того, як сам шаблон
- * видалили. Скільки таких записів, повертається окремим числом, щоб інтерфейс
- * міг попередити перед видаленням, а не після.
+ * The correspondence history does not suffer: `outreach.template_used` is a snapshot of the key
+ * at send time, not a link to the table. So a record "written with template studio_pitch" stays
+ * readable a year after the template itself was deleted. The number of such records is returned
+ * separately, so the interface can warn before deletion rather than after.
  */
 export async function deleteTemplate(id: number): Promise<DeleteResult> {
   const db = getDb();
   const [existing] = await db.select().from(templates).where(eq(templates.id, id));
-  if (!existing) throw new Error(`шаблону ${id} немає`);
+  if (!existing) throw new Error(`no template ${id}`);
 
   const used = await db
     .select({ id: outreach.id })
@@ -214,20 +212,20 @@ export async function deleteTemplate(id: number): Promise<DeleteResult> {
     .where(eq(outreach.templateUsed, existing.slug));
 
   await db.delete(templates).where(eq(templates.id, id));
-  log.info({ slug: existing.slug, keptInHistory: used.length }, 'шаблон видалено');
+  log.info({ slug: existing.slug, keptInHistory: used.length }, 'template deleted');
 
   return { deleted: true, slug: existing.slug, keptInHistory: used.length };
 }
 
-/** Копія шаблона з власним ключем. Найшвидший спосіб зробити варіант тексту. */
+/** A copy of a template with its own key. The fastest way to make a variant of the text. */
 export async function duplicateTemplate(id: number): Promise<Template> {
   const db = getDb();
   const [existing] = await db.select().from(templates).where(eq(templates.id, id));
-  if (!existing) throw new Error(`шаблону ${id} немає`);
+  if (!existing) throw new Error(`no template ${id}`);
 
   return createTemplate({
     slug: `${existing.slug}_copy`,
-    name: `${existing.name} (копія)`,
+    name: `${existing.name} (copy)`,
     kind: existing.kind,
     forKind: existing.forKind,
     subject: existing.subject,
@@ -236,19 +234,19 @@ export async function duplicateTemplate(id: number): Promise<Template> {
     note: existing.note,
     language: existing.language,
     /*
-     * Роль у розсилці копії не дістається: два активні шаблони на ту саму пару
-     * випадок-мова означали б, що вибір стає випадковим. Копія робиться, щоб
-     * спробувати інший текст, і роль їй призначає людина свідомо.
+     * The copy does not inherit the sending role: two active templates for the same case and
+     * language pair would make the choice arbitrary. A copy is made to try another text, and a
+     * person assigns it a role deliberately.
      */
     targetType: null,
   });
 }
 
 /**
- * Заливає стартовий набір рівно один раз, коли таблиця порожня.
+ * Seeds the starter set exactly once, when the table is empty.
  *
- * Саме порожня, а не "яких немає". Раніше сюди доливались усі відсутні зі списку,
- * і видалений шаблон повертався сам собою на наступному ж відкритті сторінки.
+ * Empty, not "whichever are missing". All missing ones from the list used to be added here, and a
+ * deleted template came back by itself the next time the page opened.
  */
 export async function seedTemplates(): Promise<number> {
   const db = getDb();
@@ -257,6 +255,6 @@ export async function seedTemplates(): Promise<number> {
 
   const missing = SEED;
   await db.insert(templates).values(missing);
-  log.info({ added: missing.length }, 'стартові шаблони додано');
+  log.info({ added: missing.length }, 'starter templates added');
   return missing.length;
 }

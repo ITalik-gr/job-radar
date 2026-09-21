@@ -19,33 +19,33 @@ import {
 import { scoreCompany } from './company-score.js';
 
 /**
- * Вердикт по компанії: яким шаблоном до неї заходити і за що зачепитись.
+ * The company verdict: which template to approach it with and what to hook onto.
  *
- * Це порадник, а не частина розсилки. Вибір шаблону в `outreach.ts` лишається
- * детермінованим, і саме він вирішує, що піде в чернетку: модель на однакових
- * даних дає різні відповіді, і питання "чому цій студії пішов саме цей текст"
- * після цього не має відповіді. Тут інше завдання і інша ціна помилки: власник
- * дивиться картку, тисне кнопку і читає думку про конкретну контору разом з
- * детермінованим вибором поруч. Розходження між ними це сигнал подумати, а не
- * помилка, і вирішує все одно людина.
+ * This is an adviser, not part of sending. Template choice in `outreach.ts` stays deterministic,
+ * and that is what decides what goes into a draft: a model gives different answers on the same
+ * data, and "why did this studio get this text" would then have no answer. Here the task and the
+ * cost of a mistake are different: the owner looks at the card, presses a button and reads an
+ * opinion about a specific company with the deterministic choice next to it. A disagreement
+ * between them is a signal to think, not an error, and a person decides either way.
  *
- * Текстів листів тут не генерується, розділ 11 CLAUDE.md. Модель бачить шаблони,
- * щоб обрати серед них, і повертає ключ, а не текст.
+ * No letter text is generated here, section 11 of CLAUDE.md. The model sees the templates in
+ * order to choose among them, and returns a key, not text.
  */
 
-export const VERDICT_PROMPT_VERSION = 'verdict-v1';
+/** v2 moved the prompt to English and asks for English prose in the answer. */
+export const VERDICT_PROMPT_VERSION = 'verdict-v2';
 
 export const verdictSchema = z.object({
-  /** Ключ обраного шаблона. null означає, що жоден не підходить. */
+  /** Key of the chosen template. null means none fits. */
   template_slug: z.string().nullable(),
   alternative_slug: z.string().nullable().default(null),
   language: z.enum(['uk', 'en']),
   confidence: z.number().min(0).max(100),
-  /** За що зачепитись у листі, одне речення. Матеріал для власника, не текст листа. */
+  /** What to hook onto in the letter, one sentence. Material for the owner, not letter text. */
   angle: z.string(),
   why: z.string(),
   risks: z.array(z.string()).default([]),
-  /** Кому з контактів писати. Ім'я зі списку або null. */
+  /** Which contact to write to. A name from the list, or null. */
   contact: z.string().nullable().default(null),
   skip: z.boolean().default(false),
   skip_reason: z.string().nullable().default(null),
@@ -56,12 +56,12 @@ export type Verdict = z.infer<typeof verdictSchema>;
 export interface VerdictReport {
   companyId: number;
   domain: string;
-  /** cache | llm | budget | invalid. Порожній вердикт завжди має причину. */
+  /** cache | llm | budget | invalid. An empty verdict always has a reason. */
   source: 'cache' | 'llm' | 'budget' | 'invalid';
   verdict: Verdict | null;
   /**
-   * Що обрала б розсилка без моделі. Показується поруч навмисно: без цієї пари
-   * незрозуміло, чи модель щось побачила, чи просто повторила очевидне.
+   * What sending would pick without the model. Shown alongside on purpose: without this pair
+   * there is no telling whether the model saw something or just repeated the obvious.
    */
   fallbackSlug: string | null;
   fallbackTarget: OutreachTarget;
@@ -69,7 +69,7 @@ export interface VerdictReport {
   error: string | null;
 }
 
-/** Компанія очима моделі. Тільки те, що вже лежить у базі. */
+/** The company as the model sees it. Only what the database already holds. */
 interface CompanyBlock {
   name: string;
   domain: string;
@@ -83,7 +83,7 @@ interface CompanyBlock {
   min_project: string | null;
   hourly_rate: string | null;
   tech_hints: string[];
-  /** Ознаки живості: рік у копірайті і дата останнього поста. */
+  /** Signs of life: the copyright year and the date of the latest post. */
   copyright_year: number | null;
   last_post_at: string | null;
   careers_url: string | null;
@@ -99,8 +99,8 @@ interface CompanyBlock {
 }
 
 /**
- * Опис шаблона для моделі. Тіло обрізається: обирають за тоном і призначенням,
- * а тон видно з перших рядків. Цілі листи в промпті це просто дорожчий запит.
+ * A template description for the model. The body is truncated: the choice is about tone and
+ * purpose, and tone shows in the first lines. Whole letters in the prompt just make a pricier request.
  */
 const TEMPLATE_BODY_CHARS = 600;
 
@@ -119,7 +119,7 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
   const db = getDb();
 
   const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-  if (!company) throw new Error(`компанії ${companyId} немає`);
+  if (!company) throw new Error(`no company ${companyId}`);
 
   const [state] = await db.select().from(companyState).where(eq(companyState.companyId, companyId));
   const people = await db.select().from(contacts).where(eq(contacts.companyId, companyId));
@@ -174,13 +174,13 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
       .slice(0, 8)
       .map((row) => ({ name: row.name, role: row.role, email: row.email })),
     open_vacancies: open.map((row) => ({
-      title: row.title ?? 'без назви',
+      title: row.title ?? 'untitled',
       stack: row.stack,
       seniority: row.seniority,
       remote: row.remote,
     })),
     previous_outreach: history.map((row) => ({
-      sent_at: day(row.sentAt) ?? 'невідомо',
+      sent_at: day(row.sentAt) ?? 'unknown',
       template: row.templateUsed,
       reply: row.replyType,
     })),
@@ -188,40 +188,41 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
 }
 
 /**
- * Системний блок: правила, шаблони і дозволені факти про власника.
+ * The system block: rules, templates and the allowed facts about the owner.
  *
- * Він стабільний між компаніями, і саме тому шаблони лежать тут, а не в
- * користувацькій частині: при перегляді студій поспіль Anthropic віддає його з
- * кешу за десяту частину ціни. Порядок теж не випадковий: кеш це збіг початку
- * запиту байт у байт, тому все змінне мусить бути після цього блоку.
+ * It is stable across companies, which is exactly why the templates live here rather than in the
+ * user part: when going through studios in a row Anthropic serves it from cache at a tenth of the
+ * price. The order is deliberate too: the cache is a byte-for-byte match of the request start, so
+ * everything that varies must come after this block.
  */
 export function buildSystem(list: TemplateBlock[], ownerFacts: string[]): string {
   return [
-    'Ти радиш розробнику, яким шаблоном холодного листа заходити до конкретної компанії.',
-    'Відповідай СТРОГО одним JSON-обʼєктом, без преамбули і без markdown-огорожі.',
+    'You advise a developer on which cold letter template to use for a specific company.',
+    'Reply STRICTLY with a single JSON object, no preamble and no markdown fence.',
     '',
-    'Правила:',
-    '1. Обирай ТІЛЬКИ серед шаблонів нижче і повертай їх `slug` дослівно. Не вигадуй ключів.',
-    '2. Текст листа НЕ пиши. Твоя робота це вибір шаблона і одне речення про зачіпку.',
-    '3. Спирайся тільки на блок COMPANY. Чого там немає, того не існує: не додумуй',
-    '   проєктів, клієнтів, новин і технологій.',
-    '4. `angle` це причина писати саме цій компанії: їхній стек, тип роботи, ринок,',
-    '   відкрита вакансія. Без компліментів і без оцінок їхньої роботи.',
-    '5. `language`: uk для компаній з України, en для решти.',
-    '6. `contact` це імʼя зі списку контактів компанії або null. Іменна людина краща',
-    '   за загальну скриньку, технічна роль краща за менеджерську.',
-    '7. `risks` це те, через що лист може не спрацювати: мертвий сайт, чужий стек,',
-    '   недавній контакт без відповіді. Порожній масив, якщо ризиків не видно.',
-    '8. `skip` true, якщо писати не варто взагалі. Тоді `skip_reason` пояснює чому.',
-    '9. `confidence` ціле від 0 до 100: наскільки ти впевнений у виборі.',
+    'Rules:',
+    '1. Choose ONLY among the templates below and return their `slug` verbatim. Do not invent keys.',
+    '2. Do NOT write letter text. Your job is choosing a template and one sentence about the hook.',
+    '3. Rely only on the COMPANY block. What is not there does not exist: do not assume',
+    '   projects, clients, news or technologies.',
+    '4. `angle` is the reason to write to this particular company: their stack, type of work, market,',
+    '   an open vacancy. No compliments and no judgement of their work.',
+    '5. `language`: uk for companies in Ukraine, en for everyone else.',
+    '6. `contact` is a name from the company contact list, or null. A named person beats',
+    '   a generic mailbox, a technical role beats a managerial one.',
+    '7. `risks` are what may make the letter fail: a dead site, a foreign stack,',
+    '   a recent contact without a reply. An empty array if no risks are visible.',
+    '8. `skip` is true if writing is not worth it at all. Then `skip_reason` explains why.',
+    '9. `confidence` is an integer from 0 to 100: how sure you are about the choice.',
+    '10. Write `angle`, `why`, `risks` and `skip_reason` in English.',
     '',
     ...(ownerFacts.length > 0
-      ? ['Про відправника дозволено враховувати тільки це:', ...ownerFacts.map((item) => `- ${item}`), '']
+      ? ['About the sender you may take into account only this:', ...ownerFacts.map((item) => `- ${item}`), '']
       : []),
-    'Шаблони:',
+    'Templates:',
     JSON.stringify(list, null, 1),
     '',
-    'Формат відповіді:',
+    'Response format:',
     '{"template_slug":"...","alternative_slug":null,"language":"en","confidence":0,',
     '"angle":"...","why":"...","risks":[],"contact":null,"skip":false,"skip_reason":null}',
   ].join('\n');
@@ -231,9 +232,9 @@ async function templateBlocks(): Promise<TemplateBlock[]> {
   const rows = await outreachTemplates();
 
   /*
-   * Порядок фіксований за ключем, а не за тим, як їх віддала база. Кеш промпта
-   * це збіг байт у байт, і перестановка двох шаблонів місцями коштувала б повний
-   * запит замість кешованого, причому мовчки.
+   * The order is fixed by key rather than by how the database returned them. The prompt cache is
+   * a byte-for-byte match, and swapping two templates would silently cost a full request instead
+   * of a cached one.
    */
   return rows
     .map((row) => ({
@@ -250,7 +251,7 @@ async function templateBlocks(): Promise<TemplateBlock[]> {
 }
 
 export interface VerdictOptions {
-  /** Підміна виклику моделі у тестах. */
+  /** Replaces the model call in tests. */
   caller?: (system: string, user: string) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
   skipCache?: boolean;
 }
@@ -264,9 +265,9 @@ export async function companyVerdict(
   const list = await templateBlocks();
 
   /*
-   * Детермінований вибір рахується завжди, навіть коли модель відповість. Він же
-   * і запасний варіант: жоден шлях у цій функції не має права лишити власника без
-   * відповіді на питання "яким шаблоном писати".
+   * The deterministic choice is always computed, even when the model answers. It is also the
+   * fallback: no path in this function may leave the owner without an answer to "which template
+   * to write with".
    */
   const language = pickLanguage(company.country);
   const people = await db.select().from(contacts).where(eq(contacts.companyId, companyId));
@@ -291,7 +292,7 @@ export async function companyVerdict(
   };
 
   if (list.length === 0) {
-    return { ...base, error: 'немає жодного шаблона розсилки: нема з чого обирати' };
+    return { ...base, error: 'there are no sending templates at all: nothing to choose from' };
   }
 
   const facts = await listFacts();
@@ -304,9 +305,9 @@ export async function companyVerdict(
   const user = `COMPANY:\n${JSON.stringify(company, null, 1)}`;
 
   /*
-   * Ключ кешу це модель, версія промпта, шаблони і сама компанія. Тобто повторне
-   * натискання кнопки нічого не коштує, а правка шаблона або нова знайдена пошта
-   * дають новий вердикт самі, без кнопки "перерахувати".
+   * The cache key is the model, the prompt version, the templates and the company itself. So
+   * pressing the button again costs nothing, while a template edit or a newly found email gives a
+   * new verdict by itself, with no "recompute" button.
    */
   const key = hash(`${config.llm.verdictModel}|${VERDICT_PROMPT_VERSION}|${system}|${user}`);
 
@@ -320,8 +321,8 @@ export async function companyVerdict(
   }
 
   if ((await remainingBudget()) <= 0) {
-    log.warn({ companyId, limit: config.llm.dailyCallLimit }, 'денний ліміт викликів моделі вичерпано');
-    return { ...base, source: 'budget', error: 'денний ліміт викликів моделі вичерпано' };
+    log.warn({ companyId, limit: config.llm.dailyCallLimit }, 'daily model call limit reached');
+    return { ...base, source: 'budget', error: 'daily model call limit reached' };
   }
 
   const known = new Set(list.map((item) => item.slug));
@@ -331,7 +332,7 @@ export async function companyVerdict(
 
   let lastError = '';
 
-  // Один ретрай, як і в класифікації: невалідна відповідь не привід ганяти модель по колу.
+  // One retry, as in classification: an invalid answer is no reason to run the model in circles.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     let raw: { text: string; inputTokens: number; outputTokens: number };
     try {
@@ -339,7 +340,7 @@ export async function companyVerdict(
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       await noteLlmCall(0, 0, true);
-      log.warn({ companyId, attempt, err: lastError }, 'виклик моделі за вердиктом впав');
+      log.warn({ companyId, attempt, err: lastError }, 'verdict model call failed');
       continue;
     }
 
@@ -349,12 +350,12 @@ export async function companyVerdict(
       const parsed = verdictSchema.parse(extractJson(raw.text));
 
       /*
-       * Ключ перевіряється кодом, а не довірою. Модель регулярно повертає схожий,
-       * але неіснуючий slug, і мовчки прийнятий вердикт вів би в шаблон, якого
-       * немає: у цей момент кнопка виглядає робочою і не працює.
+       * The key is checked by code, not trusted. The model regularly returns a similar but
+       * non-existent slug, and a silently accepted verdict would lead to a template that does not
+       * exist: at that moment the button looks like it works and does not.
        */
       if (parsed.template_slug && !known.has(parsed.template_slug)) {
-        lastError = `модель назвала неіснуючий шаблон ${parsed.template_slug}`;
+        lastError = `the model named a non-existent template ${parsed.template_slug}`;
         log.warn({ companyId, attempt, slug: parsed.template_slug }, lastError);
         continue;
       }
@@ -372,19 +373,19 @@ export async function companyVerdict(
 
       log.info(
         { companyId, domain: company.domain, slug: parsed.template_slug, fallbackSlug },
-        'вердикт по компанії готовий',
+        'company verdict ready',
       );
       return { ...base, source: 'llm', verdict: parsed };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
-      log.warn({ companyId, attempt, err: lastError }, 'вердикт не пройшов валідацію');
+      log.warn({ companyId, attempt, err: lastError }, 'verdict failed validation');
     }
   }
 
   /*
-   * Правило 3 CLAUDE.md: порожній результат це помилка, не успіх. Кнопка мусить
-   * сказати, що саме не вийшло, і лишити детермінований вибір як робочу відповідь.
+   * Rule 3 of CLAUDE.md: an empty result is an error, not a success. The button has to say what
+   * exactly went wrong and keep the deterministic choice as a working answer.
    */
-  log.warn({ companyId, err: lastError }, 'вердикт не вдався, лишається детермінований вибір');
-  return { ...base, source: 'invalid', error: lastError || 'модель не відповіла' };
+  log.warn({ companyId, err: lastError }, 'verdict failed, the deterministic choice stands');
+  return { ...base, source: 'invalid', error: lastError || 'the model did not answer' };
 }
