@@ -1,44 +1,164 @@
 # Job Radar
 
-A local job search tool. Rules and boundaries of the project: `CLAUDE.md`.
+A personal job search radar. Every day it gives you a short list of relevant vacancies
+and companies worth writing to, and it remembers who you already wrote to and who you
+turned down.
 
-Built for a single owner: your own database, your own mailbox, your own model key. If
-you cloned this repo for yourself, start with [FORK.md](FORK.md): it lists what needs
-to be rewritten for you, and what happens if you skip that.
+It is built for one person: your own database, your own model key, your own mailbox.
+There is no sign up and no shared server. You clone it, fill in your own values, and run
+it on your laptop or on your own free Cloudflare account. Why it is a fork and not a
+service: [FORK.md](FORK.md).
 
-## Two modes
+## What it does
 
-**Deployed worker.** Address is different for everyone. First entry with a token:
-`https://<your-worker>/?token=<RADAR_TOKEN>`, after that the token lives in the browser.
+- **Collects vacancies** from ATS boards (Greenhouse, Lever, Ashby), RemoteOK and RSS
+  feeds, DOU and Djinni, Getro networks, HN "Who is hiring", and plain career pages of
+  companies that have no ATS.
+- **Collects companies** from catalogs: DOU and YC automatically, Clutch, GoodFirms,
+  DesignRush, Sortlist and others through a Chrome extension in your own browser (they
+  sit behind Cloudflare, and the radar does not bypass that).
+- **Filters and scores** deterministically: stop words, role check, geography,
+  experience, technology weights. A cheap model (Claude Haiku, or Workers AI) only
+  classifies what survives the free filters.
+- **Shows a daily queue** of at most 10 cards, because a list of 40 paralyzes. Every
+  decision (interesting, not interesting, contacted, block, snooze) is remembered, and
+  seen companies do not come back.
+- **Separate queues for studios and startups**: agencies you can pitch your services to
+  need no vacancy, just a good fit.
+- **Outreach**: your own templates, drafts, sending through Gmail or Resend with daily
+  limits and warmup, follow-ups, reply detection. The radar never writes letters for you,
+  apart from an optional AI first paragraph built from facts you entered yourself.
+- **Statistics**: top technologies, median salaries, vacancy lifetime and suspected ghost
+  jobs, the funnel from found to replied.
+- **Telegram**: one summary on Monday and Thursday, and nothing in between.
 
-| mode | when | how |
-| --- | --- | --- |
-| local | development, debugging adapters | `pnpm start` plus `pnpm dev:web` |
-| Cloudflare | daily use, access from the phone, cron without a laptop | `pnpm deploy`, details in `DEPLOY.md` |
+## How it runs
 
-Same code either way: Hono works both in Node and on Workers, the Drizzle schema is the
-same for SQLite and D1. The native driver `better-sqlite3` lives separately in
-`db/client.node.ts`, so it does not end up in the worker bundle.
+| mode | good for | database | schedule |
+| --- | --- | --- | --- |
+| local | trying it out, development | SQLite file in `data/` | `node-cron` inside `pnpm start` |
+| Cloudflare | daily use, from the phone, no laptop needed | D1 | Cron Triggers |
 
-## Quick start
+The code is the same in both. Hono runs in Node and on Workers, and the Drizzle schema is
+shared by SQLite and D1. The author runs it on the Workers Paid plan: the free plan's
+much lower CPU limit per invocation is tight for the scheduled crawls. The model bill is
+the other cost, see [COSTS.md](COSTS.md).
+
+## Quick start, local
+
+Needs Node 22 and pnpm.
 
 ```bash
+git clone <this repo> job-radar && cd job-radar
 pnpm install
-cp .env.example .env        # fill in ANTHROPIC_API_KEY and USER_AGENT_CONTACT
-pnpm start                  # migrations, API on :3000, scheduler
-pnpm dev:web                # interface on :5173, in another terminal
+cp .env.example .env     # at least ANTHROPIC_API_KEY and USER_AGENT_CONTACT
+pnpm start               # migrations, API on :3000, scheduler
+pnpm dev:web             # interface on http://localhost:5173, in another terminal
 ```
 
-Then open `http://localhost:5173`. If the database is empty, you can fill it like this:
+Without `ANTHROPIC_API_KEY` everything works except classification. `USER_AGENT_CONTACT`
+is your email: it goes into the User-Agent of every request, so site owners can see who is
+visiting. `pnpm cli doctor` tells you what is still missing.
+
+To fill an empty database, open **Operations** in the interface and run the sources, or
+from the terminal:
 
 ```bash
-pnpm cli import:csv imports/seed-companies.csv   # 10 companies with known ATS
-pnpm cli source:sync greenhouse                  # fetch vacancies and classify
-pnpm cli source:sync ashby
-pnpm cli catalog:dou -n 40 --business "Tech Product,Startup"
+pnpm cli import:csv imports/seed-companies.csv   # 10 companies with a known ATS
+pnpm cli source:sync greenhouse                  # fetch vacancies and classify them
+pnpm cli catalog:dou -n 40                       # companies from DOU
 pnpm cli discover -n 25                          # career pages for the rest
-pnpm cli queue                                   # the same thing the web sees
 ```
+
+## Deploy to Cloudflare
+
+One command does the whole thing. It is safe to run again, and it reuses whatever
+already exists.
+
+```bash
+pnpm wrangler login
+pnpm cf:setup            # add --dry-run to see what it would do first
+```
+
+It finds or creates the D1 database `job-radar`, stores its id in `wrangler.local.jsonc`,
+applies migrations, builds the frontend and deploys. On the first deploy it generates
+`RADAR_TOKEN` (the interface password, printed once) and uploads `ANTHROPIC_API_KEY`,
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `RESEND_API_KEY` and `GMAIL_FROM_EMAIL` from your
+`.env` if they are there.
+
+Then open `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`. The browser remembers
+the token after the first visit.
+
+**Your values stay out of git.** `wrangler.jsonc` is the same for everyone. Anything
+personal (database id, the name letters are signed with, AI Gateway, the Gmail callback
+URL) goes into `wrangler.local.jsonc`, which is gitignored; `wrangler.local.example.jsonc`
+shows what can go there. `pnpm deploy` merges the two into `wrangler.deploy.json` and
+deploys that.
+
+**Deploying on every push** (optional): `.github/workflows/deploy.yml` deploys `main`.
+Add these in the repository settings, under Secrets and variables, Actions:
+
+| name | kind | value |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | secret | a token with the "Edit Cloudflare Workers" template |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | `pnpm wrangler whoami` |
+| `WRANGLER_LOCAL_JSONC` | secret | the whole content of your `wrangler.local.jsonc` |
+| `WEB_URL` | variable | your worker URL, for the post-deploy schema check |
+
+CI does not run migrations on purpose. After a schema change run `pnpm cf:migrate` from
+your laptop. Everything else about the worker (AI Gateway, Workers AI, mail on the worker,
+common errors): [DEPLOY.md](DEPLOY.md).
+
+**What stays on the laptop:** sending through Gmail and reply detection need a token file,
+and Workers has no disk. The usual setup is hybrid: the worker collects and serves the
+interface, the laptop sends and reads replies against the same D1 database. Or use Resend,
+which sends from the worker (without reply detection). Details in [OUTREACH.md](OUTREACH.md).
+
+## Make it yours
+
+Out of the box the scoring describes the author: a TypeScript and React developer in Kyiv
+looking for remote work. Change it before trusting the queue.
+
+1. **Rules** page: threshold, stop words, technology weights, the role check. Saved in the
+   database, so it works on the worker too. The file defaults live in
+   `config/scoring.json` (geography, experience, company size); after editing it run
+   `pnpm cli score:recalc`.
+2. **Templates** page: your own letters for vacancies, studios and startups, your
+   signature, and the facts about you (what you have done, in your own words) that the
+   optional AI first paragraph of a letter is built from.
+3. `.env` (local) or `wrangler.local.jsonc` (worker): `GMAIL_FROM_NAME`,
+   `USER_AGENT_CONTACT` and the rest of your identity.
+
+## Daily use
+
+1. **Queue**: today's vacancies. Decide each card: Interesting, Not interesting,
+   Contacted (pick the template), Block the company, Snooze for 30 days.
+2. **Studios** and **Startups**: companies to pitch to, with a "why this score" breakdown.
+3. **Sending**: drafts ready to go, follow-ups that are due, and the daily limit.
+4. **Outreach**: who you wrote to, when, and whether they replied.
+5. **Sources** and **Operations**: the state of every adapter (red when it returned zero
+   where it used to find more) and buttons for running anything by hand.
+6. **Stats**: the market picture from what the radar has seen.
+
+## Chrome extension
+
+`extension/` collects companies from catalogs you browse yourself. Load it through
+`chrome://extensions`, developer mode, "Load unpacked", the `extension` folder. The popup
+asks for your radar address (`http://localhost:3000` or your worker) and the token before
+it collects anything. It can also walk pagination on its own, at a human pace: 4 to 9 seconds
+between pages and 25 pages per pass by default, never faster than 3 seconds or more than
+50 pages. Details: [extension/README.md](extension/README.md).
+
+## Documentation
+
+| file | what is in it |
+| --- | --- |
+| [DEPLOY.md](DEPLOY.md) | the worker in depth: secrets, AI Gateway, migrations, errors |
+| [OUTREACH.md](OUTREACH.md) | sending: providers, limits, warmup, follow-ups, replies |
+| [COSTS.md](COSTS.md) | what the model costs and how the spend is kept down |
+| [FORK.md](FORK.md) | why fork rather than host, and what is still open |
+| [STATUS.md](STATUS.md) | development log and decisions |
+| [CLAUDE.md](CLAUDE.md) | project rules, used by Claude Code when working on the repo |
 
 ## Commands
 
@@ -47,12 +167,18 @@ pnpm cli queue                                   # the same thing the web sees
 | `pnpm start` | API and scheduler in one process |
 | `pnpm dev` | the same, restarting on changes |
 | `pnpm dev:web` | interface on `localhost:5173`, `/api` proxies to 3000 |
+| `pnpm cf:setup` | create or reuse everything on Cloudflare and deploy |
+| `pnpm deploy` | build and deploy the worker |
+| `pnpm cf:migrate` | apply migrations to D1 |
+| `pnpm cf:tail` | live worker logs |
 | `pnpm test` | tests |
 | `pnpm typecheck` | type checking |
 | `pnpm db:generate` | generate a migration after changing `src/db/schema.ts` |
-| `pnpm db:migrate` | apply migrations |
+| `pnpm db:migrate` | apply migrations locally |
 
 ### CLI
+
+Most of these are also buttons on the Operations page.
 
 | Command | What it does |
 | --- | --- |
@@ -75,7 +201,7 @@ pnpm cli queue                                   # the same thing the web sees
 | `pnpm cli page:normalize <file or URL>` | what remains of a page after cleanup |
 | `pnpm cli page:check <domain> [url]` | snapshot of a career page and a diff against the previous one |
 | `pnpm cli notify:check` | check the Telegram connection and show the chat_id |
-| `pnpm cli notify <kind>` | `digest`, `highscore`, `followups`, `broken`, `test` (`--dry`) |
+| `pnpm cli notify <kind>` | `summary`, `digest`, `highscore`, `followups`, `broken`, `test` (`--dry`) |
 | `pnpm cli llm:budget` | how many model calls are left for today |
 | `pnpm cli runs:last` | latest adapter runs |
 
@@ -91,37 +217,6 @@ pnpm cli queue                                   # the same thing the web sees
 | `rss:himalayas` | general vacancy feed | no |
 | `rss:remotive` | general vacancy feed | no |
 
-## Catalog collector: Chrome extension
-
-No need to download pages by hand. `extension/` is an extension: `chrome://extensions`,
-developer mode, "Load unpacked", pick the `extension` folder from this project. Then just
-browse the catalog, every opened page collects itself. Details: `extension/README.md`.
-
-**Right after installing, open the popup and fill in your API address**, for example
-`http://localhost:3000`, and if `RADAR_TOKEN` is set, that too. The defaults currently
-point at the author's own worker address, and until you change it the companies you
-collect go to someone else, silently: the popup will show "connected" and growing
-counters, because the other server really does respond. This is a known problem,
-described in [FORK.md](FORK.md).
-
-Supported catalogs: Clutch, GoodFirms, DesignRush, Sortlist, The Manifest, UpCity,
-TechBehemoths, DOU. An unrecognized catalog is parsed through JSON-LD.
-
-Alternative without installing anything: `pnpm cli bookmarklet` prints bookmarklet code
-with the same logic.
-
-```
-Job Radar: 80 on the page, 79 with a domain
-12 new, 67 updated, 1 without a domain
-```
-
-Why a collector rather than a scraper: Clutch, GoodFirms, DesignRush, Sortlist and
-TechBehemoths sit behind Cloudflare and serve a challenge even on `robots.txt`.
-Bypassing that is forbidden by rule 4 in `CLAUDE.md`. But a page you already opened
-in your own browser is parsed by the browser itself, and there is nothing to bypass.
-The collector knows the card markup of Clutch and similar sites, and if it does not
-recognize one, it falls back to the JSON-LD `ItemList` that most catalogs emit.
-
 ## Company catalogs
 
 | source | mode | why |
@@ -130,7 +225,8 @@ recognize one, it falls back to the JSON-LD `ItemList` that most catalogs emit.
 | Clutch | manual import of saved pages | Cloudflare with bot detection |
 | TechBehemoths | browser collector | serves a Cloudflare challenge even on `robots.txt` |
 | GoodFirms, DesignRush, Sortlist, The Manifest, UpCity | browser collector | same thing, 403 on any request |
-| Wadline, Awwwards | not yet | data is rendered client-side, no company domain in the HTML |
+| Awwwards | automatic, `catalog:run awwwards` | only the directory and profiles, which `robots.txt` allows |
+| Wadline | not yet | data is rendered client-side, no company domain in the HTML |
 
 DOU shows 20 companies per page, and the "more" button is a POST with a CSRF token.
 Instead of simulating a session, we go around it via combinations of filters
@@ -152,7 +248,7 @@ Fixtures for the diff: `fixtures/careers/acme-v1.html`, `acme-v1-noise.html` (th
 set of vacancies, different dates, counters, build hashes), `acme-v2.html` (minus one,
 plus one). The test requires that the noisy version produce the same hash.
 
-## Selection settings
+## Scoring configuration
 
 All lists and weights live in `config/scoring.json`, no need to touch the code. The
 file is re-read on the fly (no more often than every 5 seconds), and after editing it
@@ -175,12 +271,6 @@ What is configurable there:
 | `weights` | weights for technologies. The title weighs three times as much, points from the text are capped at `bodyCap` |
 | `companies` | scoring for studios: size, services, site stack, country, rate |
 
-## How much the model costs
-
-Classification runs on Haiku. Deterministic filters (stop words, role, geo, company
-size) run BEFORE the model call, so we only pay for what has a chance of making it
-into the queue. Numbers, causes and what can still be squeezed: `COSTS.md`.
-
 ## Classification and scoring
 
 1. Stop words on the block's short text, before any network call
@@ -193,22 +283,6 @@ Cache in `llm_cache` keyed by the hash of the text that went into the model. Dai
 ceiling in `LLM_DAILY_CALL_LIMIT`, counter in `llm_usage`. Everything below
 `SCORE_THRESHOLD` stays in the database, it just is not shown in the queue.
 Vacancies are never deleted, closed ones get `closed_at`.
-
-## Interface
-
-Pages: **Queue** (vacancies), **Studios** (who to pitch services to), **Companies**,
-**Contacts**, **Statistics**, **Sources**.
-
-**Studios** is a separate queue from vacancies: a small agency does not need a
-vacancy, it needs a contractor. The score is computed from size (10 to 49 is best),
-service profile (web development and design are a plus, SEO and advertising are a
-minus), site stack (React and Next.js are a plus, WordPress is a minus), country and
-rate. The "Why this score" button shows the breakdown by points.
-
-The queue is a fixed daily snapshot in `queue_items`, not a live query: without
-fixing it, a new vacancy with a higher score would push out one you have not gotten
-to yet. A decision removes the card, and the slot is not reassigned until the next
-day. What was shown in the last 30 days does not return to the snapshot.
 
 ## Telegram and schedule
 
@@ -251,12 +325,6 @@ pages will fail at the first new column. Fixed by `pnpm db:migrate` locally or
 `pnpm cf:migrate` on the worker. `pnpm start` and `pnpm dev:api` apply migrations
 themselves, so falling behind mostly happens on the deployed instance.
 
-## Stage status
+## License
 
-- [x] Stage 1: scaffolding, database, schema, `lib/http`, `lib/log`, CLI, tests
-- [x] Stage 2: ATS adapters (Greenhouse, Lever, Ashby), RemoteOK, RSS feeds
-- [x] Stage 3: normalization, block diff, snapshots
-- [x] Stage 4: LLM classification, Zod validation, scoring, dedup
-- [x] Stage 5: Hono API, frontend (Queue, Companies, Contacts)
-- [x] Stage 6: company catalogs (DOU, manual Clutch import)
-- [x] Stage 7: Statistics, Sources, discovery, Telegram, cron
+MIT, see [LICENSE](LICENSE).

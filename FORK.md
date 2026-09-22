@@ -125,6 +125,9 @@ leave the UI Ukrainian, switch it to English, or add i18n. Not decided.
 
 ### 3.3. First run is a dead end
 
+Deploying is no longer part of it: `pnpm cf:setup` goes from a fresh clone to a
+running worker in one command. The local first run still is:
+
 `pnpm start` comes up with an empty `.env` and says nothing. It would be more
 useful to say out loud, once: no model key, classification is off; no
 `USER_AGENT_CONTACT`, other people's sites will see "unknown"; empty
@@ -135,13 +138,13 @@ After `db:migrate` the interface shows empty lists with no hint about what to do
 next. `imports/seed-companies.csv` is the intended first import and the README
 mentions it, but the empty state in the app does not.
 
-### 3.4. No license
+### 3.4. License
 
-There is no LICENSE file, so formally nobody may fork this.
+Done: MIT, see `LICENSE`.
 
-### 3.5. The author's data is still in git history
+### 3.5. The author's data in git history
 
-Removing it means rewriting history. See section 6.
+Done, see section 6.
 
 ---
 
@@ -192,32 +195,20 @@ existing mailbox and no wish to sign up anywhere. It does not run on a worker.
 
 ## 6. Getting the author's data out of git history
 
-Short version: you cannot remove content from history without rewriting it. Every
-commit after the touched one gets a new hash. The question is not whether history
-changes but who is inconvenienced when it does, and with a single author and no
-open pull requests the answer is nobody.
+Done, with a mix of both usual routes: the history was rewritten, but into a new
+repository rather than over the old one.
 
-`DEV_CONTEXT.md` is the problem: a full personal dossier with a phone number, and
-it has been in the repo since the first commit.
+`git filter-repo` dropped `DEV_CONTEXT.md` (a personal dossier with a phone number,
+there since the first commit), the committed miniflare state under `.wrangler/`
+(local SQLite databases) and the saved Clutch pages under `imports/clutch/` from
+every commit. It replaced the name, email, personal domain, worker URL, Cloudflare
+account id and D1 database id in every old version of every file, and mapped the
+commit author to a GitHub noreply address.
 
-Two workable routes:
+Every commit kept its message, date and order; only the hashes changed. The code of
+each commit is the same apart from the replaced strings: the tests of an old commit
+pass identically before and after.
 
-**A. Rewrite the existing repo.** `git filter-repo` drops the file from every
-commit, then a force push. Cheap, keeps the commit-by-commit history, and works
-because there are no collaborators. What it does not do is erase anything already
-mirrored: GitHub keeps unreferenced objects reachable by hash for a while, forks
-and caches keep their own copies. For a repo that has always been private this is
-fine; treat anything that was ever public as leaked.
-
-**B. Publish a fresh repo.** Keep the private repo exactly as it is, history and
-all, and create a separate public one from the cleaned tree with a single initial
-commit. Nothing to rewrite, nothing to force push, and no chance of a stray blob
-surviving, because the new repo never contained one. The cost is losing the
-commit history in public.
-
-**B is the safer choice** and the usual one for opening up a personal project.
-The history is valuable to exactly one person, who keeps it either way.
-
-Whichever route: personal files (`DEV_CONTEXT.md` and friends) move out of the
-working tree or into `.gitignore` first, and the phone number and addresses get
-rotated out of anything that stays.
+Why a new repository instead of a force push: GitHub keeps a ref for every pull
+request, so the old commits would have stayed reachable through a merged PR. The old
+repository stays private as the author's archive and must never be made public.

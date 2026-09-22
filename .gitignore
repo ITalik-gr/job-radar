@@ -17,6 +17,7 @@ imports/statrups
 # The owner's personal notes. They hold a name, a phone number and an email, so they stay
 # on disk and out of git. A pattern rather than file names, so the names leak nothing either.
 *_CONTEXT*.md
+CLAUDE.local.md
 
 # Personal deploy settings (database id, From name, gateway) and the config generated from them.
 # See wrangler.local.example.jsonc.
@@ -28,3 +29,7 @@ wrangler.deploy.json
 
 # Temporary tracker for the translation pass, delete when it is done
 TRANSLATION_PROGRESS.md
+
+# Pages saved from the browser for import. The HTML is already ignored above; the
+# "_files" folders next to them carry third-party trackers and session-bound assets.
+imports/**/*_files/

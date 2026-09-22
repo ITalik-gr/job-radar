@@ -25,6 +25,7 @@
     "cf:migrate:local": "pnpm cf:config && wrangler d1 migrations apply job-radar --local --config wrangler.deploy.json",
     "cf:build": "pnpm build:web",
     "cf:config": "node scripts/wrangler-config.mjs",
+    "cf:setup": "node scripts/setup-cloudflare.mjs",
     "cf:deploy": "pnpm cf:config && wrangler deploy --config wrangler.deploy.json",
     "cf:tail": "wrangler tail job-radar --format pretty",
     "cf:doctor": "tsx src/cli/index.ts doctor"

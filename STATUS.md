@@ -483,22 +483,6 @@ Left:
 - The rest of the config (geo, experience, company size, weights for studios) can only
   be edited in the file
 
-Overnight session:
-- Have it also parse actual vacancies from sites like dou, djinni, etc
-- Fix bugs and improve the web app according to the COSTS.md file. Also check that the
-  same vacancies and studios/agencies aren't parsed twice from different sites.
-- What matters most to me is writing cold emails to studios and so on, offering help, my
-  services, etc, writing to design studios for example that I could become a developer,
-  or join them, so they can expand their own services, and so on for various other
-  niches. Also need to look for startups, add search and parsing functionality for
-  startups, and show them on a separate page. This is fairly important, it would be
-  great if you did it well. Parsing needs to cover more sites too, find more of them.
-  If there's a filter for who they need, and if they need a developer, that would be
-  perfect. If a proper filter can't be made, I'll just write cold emails to most of
-  them, I have startup experience.
-- Go through the project, look for bugs, do an audit
-- Read the status.md file, start developing features, fix all the problems described here
-
 
 ---
 

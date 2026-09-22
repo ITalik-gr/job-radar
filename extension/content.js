@@ -9,6 +9,21 @@
 (() => {
   const DEFAULTS = { autoCollect: true, minDelay: 4000, maxDelay: 9000, maxPages: 25 };
 
+  /**
+   * The hard limits from the header comment. The popup inputs carry min and max too, but a
+   * number input accepts anything typed into it, so the limits are enforced here.
+   */
+  function withLimits(settings) {
+    const number = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+    const minDelay = Math.max(3000, number(settings.minDelay, DEFAULTS.minDelay));
+    return {
+      ...settings,
+      minDelay,
+      maxDelay: Math.max(minDelay, number(settings.maxDelay, DEFAULTS.maxDelay)),
+      maxPages: Math.min(50, Math.max(1, Math.round(number(settings.maxPages, DEFAULTS.maxPages)))),
+    };
+  }
+
   const STATE = {
     lastSignature: '',
     busy: false,
@@ -358,7 +373,7 @@
 
   (async () => {
     const settings = await chrome.storage.local.get(DEFAULTS);
-    STATE.settings = { ...DEFAULTS, ...settings };
+    STATE.settings = withLimits({ ...DEFAULTS, ...settings });
 
     STATE.walk = await readWalk();
     const walk = STATE.walk;
@@ -396,7 +411,7 @@
       return true;
     }
     if (message.type === 'radar:settings') {
-      STATE.settings = { ...STATE.settings, ...message.settings };
+      STATE.settings = withLimits({ ...STATE.settings, ...message.settings });
       sendResponse({ ok: true });
       return true;
     }

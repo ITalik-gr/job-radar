@@ -43,7 +43,15 @@ pnpm wrangler d1 execute job-radar --remote --command "select name from sqlite_m
 There should be 10 tables: companies, company_state, contacts, llm_cache, llm_usage,
 outreach, queue_items, runs, snapshots, vacancies.
 
-## One time only
+## First deploy
+
+`pnpm cf:setup` does everything below in one go: finds or creates the database, writes
+its id into `wrangler.local.jsonc`, applies migrations, and deploys with `RADAR_TOKEN`
+generated and the keys from `.env` uploaded as secrets. It reuses anything that already
+exists, and `--dry-run` shows what it would do without changing anything. The manual
+steps stay here for when something needs doing by hand.
+
+## One time only, by hand
 
 ```bash
 pnpm wrangler login
