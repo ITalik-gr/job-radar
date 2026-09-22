@@ -1,2 +1,10 @@
-onlyBuiltDependencies:
-  - better-sqlite3
+# pnpm 11 runs no dependency install scripts unless they are allowed here. The old
+# `onlyBuiltDependencies` list is not read any more, and install fails with
+# ERR_PNPM_IGNORED_BUILDS.
+#   better-sqlite3  native driver for the local SQLite database
+#   esbuild         bundler used by vite, tsx and wrangler
+#   workerd         the Workers runtime behind `wrangler dev`
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  workerd: true

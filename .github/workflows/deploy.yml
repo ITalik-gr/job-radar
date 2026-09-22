@@ -61,6 +61,29 @@ jobs:
         env:
           WRANGLER_LOCAL_JSONC: ${{ secrets.WRANGLER_LOCAL_JSONC }}
 
+      # Fails early with a readable message instead of wrangler's "Authentication error
+      # [code: 10000]". The usual cause is pasting the Workers AI token from .env
+      # (CF_AI_API_TOKEN) here: it can run models but cannot deploy.
+      - name: Check the Cloudflare credentials
+        run: |
+          missing=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::repository secrets not set:$missing (Settings, Secrets and variables, Actions)"
+            exit 1
+          fi
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts")
+          if [ "$status" != "200" ]; then
+            echo "::error::the token cannot list Workers on this account (HTTP $status). Create one from the \"Edit Cloudflare Workers\" template and check CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # D1 migrations are intentionally not here: deploying the worker does not run them,
       # and applying the schema automatically on every push is dangerous. After pnpm
       # db:generate, run this once from your laptop: pnpm cf:migrate

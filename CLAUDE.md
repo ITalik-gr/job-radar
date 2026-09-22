@@ -1,106 +1,115 @@
 # CLAUDE.md: Job Radar
 
-Внутрішній інструмент для пошуку роботи. Не продукт, не портфоліо.
-Мета: щодня давати короткий список релевантних вакансій і компаній, яким варто написати,
-з памʼяттю про те, кому вже писали і кого відкинули.
+An internal tool for job hunting. Not a product, not a portfolio.
+Goal: every day, give a short list of relevant vacancies and companies worth writing to,
+with memory of who has already been contacted and who was turned down.
 
-Спілкування з власником українською. **Код і документація англійською:**
-коментарі, імена, `.md` файли. Правило 8 нижче.
+Talk to the owner in Ukrainian in chat. Code and documentation are in English:
+comments, names, `.md` files. Rule 8 below.
 
-Проєкт готується до публікації, гілка `oss`. План і список того, що ще заважає: `FORK.md`.
-
----
-
-## 0. ЖОРСТКІ ПРАВИЛА
-
-1. **ЖОДНИХ em dash у будь-яких текстах, коментарях, README, UI-копії.** Тільки коми, двокрапки, дужки.
-2. **Кожен адаптер джерела має smoke-тест на збереженому HTML/JSON фікстурі.** Без тесту адаптер не вважається готовим. Причина: скрейпери ламаються тихо, повертають нуль результатів і виглядають робочими.
-3. **Порожній результат це помилка, не успіх.** Якщо адаптер повернув 0 записів, а раніше повертав більше нуля, це `WARN` у лог і помітка в UI. Ніколи не мовчати.
-4. **Каталоги збираються розширенням у власному браузері власника.** Сторінки відкриває
-   справжній профіль Chrome, розбирає їх content script, дані йдуть у базу. Автоматичний
-   перехід між сторінками пагінації дозволений з паузами і лімітом сторінок за прохід.
-   Що лишається забороненим: розвʼязувати CAPTCHA, підробляти сесії і токени, ходити
-   під чужими обліковками, тиснути на сайт частіше ніж людина гортає (пауза не менша
-   за 3 секунди, не більше 50 сторінок за прохід).
-5. Дотримуватись `robots.txt`, свій User-Agent з контактом, не більше 1 запиту на домен на секунду.
-6. Не вигадувати дані. Якщо поле не спарсилось, воно `null`, а не здогадка.
-7. Секрети тільки в `.env`, ніколи в коді і ніколи в комітах.
-8. **Англійська в коді і в документації.** Коментарі, імена змінних і функцій, тексти
-   помилок у логах, `.md` файли. Причина: репозиторій буде публічним, і код,
-   коментований мовою, якої читач не знає, це код без коментарів. Українською
-   лишається розмова з власником у чаті і особисті файли, які не комітяться.
-   Мова інтерфейсу це окреме питання, воно в `FORK.md`, і поки не вирішене.
-9. **Нічого особистого про власника в репозиторії.** Ні імені, ні пошти, ні телефона,
-   ні підпису в дефолтах коду, ні адреси його воркера. Усе це конфіг і `.env`.
-   Особисті файли (`DEV_CONTEXT.md` і подібні) лежать поза git.
+The project is getting ready for publication, branch `oss`. The plan and the list of what
+still gets in the way: `FORK.md`.
 
 ---
 
-## 1. СТЕК
+## 0. HARD RULES
 
-Обраний під те, що вже знайоме власнику, щоб він міг швидко читати і правити код.
-
-- **Мова:** TypeScript, Node 22, ESM
-- **БД:** SQLite через Drizzle ORM (файл `data/radar.db`). Схема пишеться так, щоб потім переїхати в Postgres без переробки
-- **HTTP:** `undici` fetch, `p-limit` для конкурентності, `p-retry` для ретраїв
-- **Парсинг:** `cheerio` за замовчуванням. `playwright` тільки там, де без JS сторінка порожня, і це має бути явно позначено в конфізі адаптера
-- **LLM:** Anthropic API, модель `claude-haiku-4-5-20251001`, тільки для класифікації тексту.
-  Альтернатива, вмикається `LLM_PROVIDER=workers-ai`: Cloudflare Workers AI
-  (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`). Той самий промпт і та сама Zod-схема,
-  але рахунок іде нейронами вже оплаченого плану, а не токенами. Кеш ключується
-  моделлю, тому відповіді двох провайдерів не змішуються.
-  Вектори компаній для пошуку схожих завжди на Workers AI (`@cf/baai/bge-m3`)
-- **Бекенд API:** Hono (той самий, що у власника в інших проєктах)
-- **Фронт:** React + Vite + TypeScript, компоненти з **Mantine** (`@mantine/core`, `hooks`,
-  `notifications`), графіки `recharts`, іконки `lucide-react`, TanStack Query.
-  Tailwind підключений без preflight і використовується лише для верстки сторінок:
-  скидання стилів і всі елементи інтерфейсу дає Mantine. Свої компоненти-обгортки
-  не писати, поки в Mantine немає потрібного
-- **Сповіщення:** Telegram через `grammY`, тільки нагадування і алерти, не основний інтерфейс
-- **Планувальник:** `node-cron` всередині процесу. Ніякого Docker, ніякого Redis, ніяких черг на цьому етапі
-- **Логи:** `pino`, у файл і в консоль
-
-Запуск: `pnpm dev:api`, `pnpm dev:web`, `pnpm cli <command>`.
+1. **NO em dashes in any text, comments, README, UI copy.** Only commas, colons, parentheses.
+2. **Every source adapter has a smoke test on a saved HTML/JSON fixture.** Without a test, an
+   adapter is not considered done. Reason: scrapers break silently, return zero results and
+   still look like they are working.
+3. **An empty result is a failure, not a success.** If an adapter returned 0 records where it
+   used to return more than zero, that is a `WARN` in the log and a marker in the UI. Never
+   stay silent about it.
+4. **Catalogs are collected by an extension in the owner's own browser.** Pages are opened by
+   a real Chrome profile, parsed by its content script, and the data goes into the database.
+   Automatic pagination is allowed, with pauses and a page limit per run. What stays
+   forbidden: solving CAPTCHAs, forging sessions and tokens, going in under someone else's
+   account, hitting the site faster than a human scrolls (pause no shorter than 3 seconds, no
+   more than 50 pages per run).
+5. Respect `robots.txt`, use your own User-Agent with a contact, no more than 1 request per
+   domain per second.
+6. Do not make up data. If a field did not parse, it is `null`, not a guess.
+7. Secrets only in `.env`, never in code and never in commits.
+8. **English in code and documentation.** Comments, variable and function names, error
+   messages in logs, `.md` files. Reason: the repository will be public, and code commented
+   in a language the reader does not know is code with no comments at all. Ukrainian stays
+   for the conversation with the owner in chat and for personal files that are not committed.
+   Interface language is a separate question, it is in `FORK.md`, and it is not resolved yet.
+9. **Nothing personal about the owner in the repository.** No name, no email, no phone, no
+   signature in code defaults, no address of their worker. All of that is config and `.env`.
+   Personal files (`DEV_CONTEXT.md` and the like) live outside git.
 
 ---
 
-## 2. СТРУКТУРА
+## 1. STACK
+
+Chosen for what the owner already knows, so they can read and fix the code quickly.
+
+- **Language:** TypeScript, Node 22, ESM
+- **DB:** SQLite through Drizzle ORM (file `data/radar.db`). The schema is written so it can
+  later move to Postgres without a rewrite
+- **HTTP:** `undici` fetch, `p-limit` for concurrency, `p-retry` for retries
+- **Parsing:** `cheerio` by default. `playwright` only where the page is empty without JS,
+  and that has to be explicitly marked in the adapter's config
+- **LLM:** Anthropic API, model `claude-haiku-4-5-20251001`, only for text classification.
+  Alternative, turned on with `LLM_PROVIDER=workers-ai`: Cloudflare Workers AI
+  (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`). Same prompt, same Zod schema, but the cost
+  comes out of neurons on an already paid plan, not tokens. The cache is keyed by the model,
+  so the two providers' answers do not mix. Company vectors for similarity search always run
+  on Workers AI (`@cf/baai/bge-m3`)
+- **Backend API:** Hono (the same one the owner uses in other projects)
+- **Frontend:** React + Vite + TypeScript, components from **Mantine** (`@mantine/core`,
+  `hooks`, `notifications`), charts with `recharts`, icons `lucide-react`, TanStack Query.
+  Tailwind is wired in without preflight and used only for page layout: style reset and all
+  interface elements come from Mantine. Do not write your own wrapper components while
+  Mantine already has what is needed
+- **Notifications:** Telegram through `grammY`, only reminders and alerts, not the main
+  interface
+- **Scheduler:** `node-cron` inside the process. No Docker, no Redis, no queues at this stage
+- **Logs:** `pino`, to a file and to the console
+
+Run with: `pnpm dev:api`, `pnpm dev:web`, `pnpm cli <command>`.
+
+---
+
+## 2. STRUCTURE
 
 ```
 /src
   /db          schema.ts, migrations, client
-  /sources     адаптери, по файлу на джерело
-    /catalogs  джерела компаній
-    /boards    джерела вакансій
+  /sources     adapters, one file per source
+    /catalogs  company sources
+    /boards    vacancy sources
     registry.ts
   /pipeline    discover.ts, crawl.ts, diff.ts, classify.ts, score.ts, dedupe.ts
-  /api         Hono роути
+  /api         Hono routes
   /notify      telegram.ts
-  /cli         команди
+  /cli         commands
   /lib         normalize.ts, http.ts, log.ts
-/web           React застосунок
-/fixtures      збережені HTML/JSON для тестів адаптерів
-/imports       ручні дампи (Clutch тощо)
+/web           React application
+/fixtures      saved HTML/JSON for adapter tests
+/imports       manual dumps (Clutch, etc.)
 /data          radar.db
 ```
 
 ---
 
-## 3. СХЕМА ДАНИХ
+## 3. DATA SCHEMA
 
-Дві швидкості життя: компанія живе роками, вакансія днями. Не змішувати.
+Two speeds of life: a company lives for years, a vacancy for days. Do not mix them.
 
 ```ts
 companies
   id, name, domain (unique), country, city, size_hint,
   rating, reviews_count, min_project, hourly_rate, founded_year,
-  extra,                      // блок "Інше": пари підпис-значення з каталогу,
-                              // під які немає колонки. Скоринг їх не читає
+  extra,                      // "Other" block: label-value pairs from the catalog
+                              // that have no column of their own. Scoring does not read it
   kind,                       // studio | design | startup | product | outstaff | unknown
-  copyright_year, last_post_at, // ознаки живості сайту, збирає enrichment
-  sources: string[],          // з яких каталогів прийшла
+  copyright_year, last_post_at, // signs of a site being alive, collected by enrichment
+  sources: string[],          // which catalogs it came from
   careers_url, careers_kind,  // html | greenhouse | lever | rss | none
-  tech_hints: string[],       // з евристики по HTML сайту
+  tech_hints: string[],       // from heuristics over the site's HTML
   first_seen, last_checked, last_change_at
 
 company_state
@@ -113,7 +122,7 @@ contacts
 
 snapshots
   id, company_id, url, fetched_at, content_hash, text_normalized
-  // тільки останні 5 на компанію, старіші чистяться
+  // only the last 5 per company, older ones are cleaned up
 
 vacancies
   id, company_id, source, external_id, url, title, raw_text,
@@ -125,124 +134,128 @@ vacancies
 outreach
   id, company_id, vacancy_id, channel, sent_at,
   template_used, contact_name, contact_email, reply_at, reply_type, note
-  // contact_* це знімок на момент листа, а не звʼязок із contacts:
-  // контакт може зникнути з сайту, а історія має лишитись читабельною
+  // contact_* is a snapshot at the moment of the letter, not a link to contacts:
+  // a contact can disappear from the site, but the history has to stay readable
 
 runs
   id, started_at, finished_at, source, items_found, items_new, errors, status
 
 settings
   key (unique), value (json), updated_at
-  // правки правил з інтерфейсу. Перекривають config/scoring.json.
-  // Потрібні тому, що на Workers файлової системи немає і конфіг вшитий у бандл
+  // rule edits from the interface. Override config/scoring.json.
+  // Needed because Workers has no filesystem and the config is baked into the bundle
 
 templates
   id, slug (unique), name, kind, for_kind, subject, body, note, archived,
   created_at, updated_at
-  // kind: vacancy | studio | resume, визначає де шаблон пропонується
-  // for_kind: під який тип компанії заточений текст. Порожнє означає універсальний
-  // slug лягає в outreach.template_used знімком на момент листа. Сам собою при
-  // перейменуванні назви він не міняється, а явна правка ключа переписує і
-  // історію теж, тому вона не починає посилатись у нікуди.
-  // Видалення шаблона стирає рядок, історія лишається читабельною з тим же знімком
+  // kind: vacancy | studio | resume, decides where the template is offered
+  // for_kind: which company type the text is aimed at. Empty means universal
+  // slug lands in outreach.template_used as a snapshot at the moment of the letter. It does
+  // not change by itself when the name is renamed, but an explicit edit of the key rewrites
+  // the history too, so it never ends up pointing at nothing
+  // Deleting a template erases the row, the history stays readable with the same snapshot
 ```
 
-**Чому `last_seen` і `closed_at` критичні:** різниця з `first_seen` дає час життя вакансії.
-Вакансія, що висить понад 120 днів і не закривається, з високою ймовірністю ghost job.
-Це майбутній датасет для окремого продукту власника, тому дані не видаляти ніколи, навіть відхилені.
+**Why `last_seen` and `closed_at` are critical:** the difference from `first_seen` gives the
+vacancy's lifetime. A vacancy that hangs around for more than 120 days without closing is
+likely a ghost job. This is a future dataset for a separate product of the owner's, so the
+data is never deleted, not even rejected records.
 
 ---
 
-## 4. ДЖЕРЕЛА
+## 4. SOURCES
 
-Реалізовувати строго в цьому порядку. Кожен наступний тільки після того, як попередній має тест і працює.
+Implement strictly in this order. Each next one only after the previous one has a test and
+works.
 
-### Пріоритет 1: структуровані, не ламаються
-- **Greenhouse:** `https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true`, чистий JSON
-- **Lever:** `https://api.lever.co/v0/postings/{slug}?mode=json`, чистий JSON
-- **Ashby:** публічний GraphQL/JSON ендпоінт по slug
-- **Workable, Recruitee, Personio:** мають передбачувані JSON-роути
-- **RSS фіди:** RemoteOK, WeWorkRemotely, Remotive, Himalayas
+### Priority 1: structured, do not break
+- **Greenhouse:** `https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true`, clean
+  JSON
+- **Lever:** `https://api.lever.co/v0/postings/{slug}?mode=json`, clean JSON
+- **Ashby:** public GraphQL/JSON endpoint by slug
+- **Workable, Recruitee, Personio:** have predictable JSON routes
+- **RSS feeds:** RemoteOK, WeWorkRemotely, Remotive, Himalayas
 
-Це дає найбільше покриття за найменших зусиль. Якщо в компанії career-сторінка це редірект на
-один з цих ATS, витягуємо slug і далі працюємо тільки через API, HTML не чіпаємо.
+This gives the most coverage for the least effort. If a company's career page is a redirect
+to one of these ATSes, we extract the slug and from then on work only through the API, the
+HTML is left alone.
 
-### Пріоритет 2: каталоги компаній
-- `dou.ua/companies`, найлегший і найрелевантніший
+### Priority 2: company catalogs
+- `dou.ua/companies`, the lightest and most relevant
 - TechBehemoths, GoodFirms, DesignRush, Sortlist
-- YC companies (публічний JSON)
+- YC companies (public JSON)
 - Wellfound
-- **Awwwards** підключений як каталог `awwwards`. robots дозволяє `/directory/`,
-  але забороняє пошук і `/websites/?`, тому ходимо тільки на каталог і на профілі.
-  Домен студії лежить на третьому рівні: каталог, профіль, сайт
-- Dribbble teams (дизайн-студії, часто шукають фронт)
+- **Awwwards** is wired in as the `awwwards` catalog. robots allows `/directory/`, but
+  disallows search and `/websites/?`, so we only go to the catalog and to profiles. The
+  studio's domain sits three levels down: catalog, profile, site
+- Dribbble teams (design studios, often hiring frontend)
 
-### Пріоритет 3: борди вакансій
-- Djinni, DOU (стабільний HTML). Обидва підключені як **борди вакансій**:
-  `djinni` і `dou:vacancies`. Каталог компаній DOU лишається окремим джерелом `dou`
-- **Getro**, рушій дошок акселераторів і фондів. Один адаптер відкриває вісім мереж
-  (Techstars, Accel, Lerer Hippeau, Craft Ventures, Uncork, Greycroft, Primary,
-  Underscore). Список рендериться на клієнті, але **пошук працює на сервері**,
-  тому беремо вузькими запитами `?q=frontend`. Домен компанії доважується
-  зі сторінки компанії окремим запитом
+### Priority 3: vacancy boards
+- Djinni, DOU (stable HTML). Both are wired in as **vacancy boards**: `djinni` and
+  `dou:vacancies`. DOU's company catalog stays a separate source, `dou`
+- **Getro**, the engine behind accelerator and fund boards. One adapter opens eight networks
+  (Techstars, Accel, Lerer Hippeau, Craft Ventures, Uncork, Greycroft, Primary, Underscore).
+  The list renders client side, but **search runs server side**, so we use narrow queries like
+  `?q=frontend`. The company's domain is fetched with a separate request to the company page
 - Otta
 
-### Пріоритет 4: власні career-сторінки
-Для компаній без ATS. Discovery пробує по черзі:
-`/careers`, `/career`, `/jobs`, `/vacancies`, `/join-us`, `/join`, `/work-with-us`, `/team/careers`
-плюс парсинг футера і хедера на посилання, де текст або href містить career/job/vacanc/join.
-Знайдений робочий URL зберігається в `careers_url`, далі пробувати заново не треба.
+### Priority 4: companies' own career pages
+For companies without an ATS. Discovery tries, in order: `/careers`, `/career`, `/jobs`,
+`/vacancies`, `/join-us`, `/join`, `/work-with-us`, `/team/careers`, plus parsing the footer
+and header for links whose text or href contains career/job/vacanc/join. Once a working URL is
+found, it is saved in `careers_url`, no need to try again after that.
 
-### Clutch і решта каталогів під Cloudflare
-Clutch, GoodFirms, DesignRush, Sortlist, The Manifest, UpCity і TechBehemoths блокують
-серверні запити. Робочий режим: розширення `extension/` у браузері власника.
+### Clutch and the rest of the catalogs behind Cloudflare
+Clutch, GoodFirms, DesignRush, Sortlist, The Manifest, UpCity and TechBehemoths block server
+requests. The working mode: the `extension/` extension in the owner's browser.
 
-1. Власник відкриває каталог у своєму Chrome
-2. Content script розбирає видиму сторінку і шле компанії в API
-3. Автообхід сам гортає пагінацію з паузами, поки не закінчаться сторінки або ліміт
-4. Дублікати по домену зливаються з наявними компаніями, а не створюють нові
+1. The owner opens the catalog in their own Chrome
+2. The content script parses the visible page and sends companies to the API
+3. Auto-crawl walks pagination on its own with pauses, until the pages or the limit run out
+4. Duplicates by domain are merged into existing companies instead of creating new ones
 
-Запасні шляхи лишаються: `pnpm cli import:clutch ./imports/clutch/*.html` для збережених
-сторінок і `pnpm cli import:csv` для будь-якого списку.
+Fallback paths still exist: `pnpm cli import:clutch ./imports/clutch/*.html` for saved pages
+and `pnpm cli import:csv` for any list.
 
-Той самий імпортер має вміти CSV зі стовпцями `name,domain,country,note`, щоб можна було
-закинути будь-який список руками.
+The same importer has to handle CSV with the columns `name,domain,country,note`, so any list
+can be dropped in by hand.
 
 ---
 
-## 5. ПАЙПЛАЙН
+## 5. PIPELINE
 
-### 5.1 Нормалізація (найважливіше місце в проєкті)
+### 5.1 Normalization (the most important place in the project)
 
-Перед хешуванням текст сторінки чиститься. Якщо це зробити слабо, хеш мінятиметься щодня
-і система потоне у фальшивих сповіщеннях. Це головна причина, чому такі проєкти вмирають.
+Before hashing, the page text is cleaned. If this is done poorly, the hash will change every
+day and the system will drown in false notifications. This is the main reason such projects
+die.
 
-Прибирати:
-- `<script>`, `<style>`, `<svg>`, `<noscript>`, коментарі
-- дати і час у будь-якому форматі, відносний час ("2 days ago", "щойно")
-- лічильники переглядів, кандидатів, "N people applied"
-- CSRF-токени, nonce, рандомні хеші в атрибутах і класах
-- cookie-банери, чат-віджети, футер з копірайтом і роком
-- query-параметри в посиланнях (utm, ref, gh_src)
+To strip:
+- `<script>`, `<style>`, `<svg>`, `<noscript>`, comments
+- dates and times in any format, relative time ("2 days ago", "just now")
+- view counters, applicant counters, "N people applied"
+- CSRF tokens, nonces, random hashes in attributes and classes
+- cookie banners, chat widgets, footer with copyright and year
+- query parameters in links (utm, ref, gh_src)
 
-Далі: `toLowerCase`, схлопнути пробіли, прибрати порожні рядки, відсортувати нічого не треба.
+Then: `toLowerCase`, collapse whitespace, drop empty lines, no need to sort anything.
 
-### 5.2 Блочний діф
+### 5.2 Block diff
 
-Хеш усієї сторінки каже "щось змінилось", але не каже що. Тому:
+A hash of the whole page says "something changed" but not what. So:
 
-1. Виділити кандидати-блоки: елементи списків, картки, посилання з job-подібним href
-2. Хешувати кожен блок окремо
-3. Порівняти множину хешів з попереднім снапшотом
-4. Нові хеші означають нові вакансії, зниклі означають закриті (`closed_at = now`)
+1. Pick out candidate blocks: list items, cards, links with a job-like href
+2. Hash each block separately
+3. Compare the set of hashes to the previous snapshot
+4. New hashes mean new vacancies, missing ones mean closed ones (`closed_at = now`)
 
-Це дає появу і закриття вакансій без окремої логіки.
+This gives vacancies appearing and closing with no separate logic needed.
 
-### 5.3 Класифікація
+### 5.3 Classification
 
-LLM викликається **тільки на нові або змінені блоки**. Ніколи на всю сторінку, ніколи повторно.
+The LLM is called **only on new or changed blocks**. Never on the whole page, never twice.
 
-Промпт вимагає строгий JSON без преамбули і без markdown-огорожі:
+The prompt requires strict JSON, no preamble and no markdown fence:
 
 ```json
 {
@@ -257,22 +270,23 @@ LLM викликається **тільки на нові або змінені 
   "currency": null,
   "english_level_required": "B2",
   "relevance": 0,
-  "why": "одне речення українською"
+  "why": "one sentence in English"
 }
 ```
 
-Правила:
-- Модель класифікує тільки той текст, який їй дали. Нічого не додумує
-- Чого немає в тексті, те `null`. Не вгадувати вилку, не вгадувати локацію
-- Відповідь парситься через Zod. Невалідний JSON означає один ретрай, потім запис із `is_vacancy: null` і поміткою для ручного перегляду
-- `relevance` це думка моделі, вона **не є** фінальним рахунком
+Rules:
+- The model classifies only the text it was given. It does not make anything up
+- What is not in the text is `null`. Do not guess the pay range, do not guess the location
+- The response is parsed with Zod. An invalid JSON means one retry, then a record with
+  `is_vacancy: null` and a mark for manual review
+- `relevance` is the model's opinion, it is **not** the final score
 
-### 5.4 Скоринг (детермінований, у коді, не в LLM)
+### 5.4 Scoring (deterministic, in code, not in the LLM)
 
-Три шари, кожен дешевший за попередній.
+Three layers, each cheaper than the one before.
 
-**Шар 1, жорсткі стоп-слова.** Відсікають ще до LLM, безкоштовно.
-Вакансія з ними не класифікується взагалі, зберігається зі `score = -100`.
+**Layer 1, hard stop words.** Cut off before the LLM, for free. A vacancy with these is not
+classified at all, and is stored with `score = -100`.
 
 ```
 angular, .net, c#, java developer, python developer, php developer,
@@ -281,7 +295,7 @@ qa engineer, manual qa, devops engineer, sre, ml engineer, data scientist,
 blockchain, web3, solidity, gambling, betting, casino, adult, forex
 ```
 
-**Шар 2, позитивні ваги:**
+**Layer 2, positive weights:**
 ```
 ai integration +5, llm +5, anthropic +5, claude +5, openai +4,
 react +3, next.js +3, typescript +3, nestjs +3, cloudflare +3,
@@ -289,156 +303,170 @@ node +2, full-stack +2, stripe +2, postgresql +2, astro +2,
 remote +2, prisma +1, tailwind +1
 ```
 
-**Шар 3, контекстні мінуси:**
+**Layer 3, contextual penalties:**
 ```
 senior lead / 5+ years           -2
-on-site only, місто не Київ     -10
+on-site only, city other than Kyiv -10
 equity only, unpaid              -10
 C1 English + video interview     -3
-відсутня вилка і "competitive"   -1
-компанія вже в blacklist         виключити повністю
+no pay range and "competitive"   -1
+company already in blacklist     exclude entirely
 ```
 
-Причина мінуса за C1 і відеозвінки описана в профілі власника, `CLAUDE.local.md`.
-Це фактичний фільтр, а не самокритика, і він має впливати на пріоритет, а не блокувати подачу.
+The reason for the penalty on C1 and video calls is described in the owner's profile,
+`CLAUDE.local.md`. This is an actual filter, not self-criticism, and it should affect
+priority, not block submission.
 
-`score = сума ваг + llm_relevance / 20`
+`score = sum of weights + llm_relevance / 20`
 
-Поріг показу за замовчуванням `score >= 6`, налаштовується в конфізі.
-Все, що нижче порогу, **зберігається в БД** для статистики, просто не показується у черзі.
+Default threshold for showing: `score >= 6`, configurable in the config. Everything below the
+threshold **is still stored in the database** for statistics, it just is not shown in the
+queue.
 
-### 5.5 Дедуп
+### 5.5 Dedup
 
-Одна вакансія буде на сайті компанії, на Djinni і на DOU одночасно.
+The same vacancy will be on the company's site, on Djinni and on DOU at the same time.
 
-`dedupe_key = normalize(domain) + "|" + slugify(title) + "|" + тиждень від first_seen`
+`dedupe_key = normalize(domain) + "|" + slugify(title) + "|" + week of first_seen`
 
-При збігу запис не дублюється, а до наявного дописується джерело.
+On a match, the record is not duplicated, the source is just appended to the existing one.
 
-### 5.6 Виключення побаченого
+### 5.6 Excluding what has already been seen
 
-Перед показом джойн з `company_state`. Не показувати ніколи:
+Before showing, a join with `company_state`. Never show:
 `contacted`, `rejected_by_me`, `rejected_by_them`, `blacklist`, `snoozed_until > now`.
 
-Єдиний виняток: статус `contacted` старший за 90 днів і зʼявилась нова вакансія.
-Тоді показувати з явною плашкою "писали 12.03, шаблон fullstack_ai, відповіді не було".
-Повторний контакт через квартал нормальний, через тиждень ні.
+The one exception: status `contacted` older than 90 days and a new vacancy has appeared. Then
+show it with an explicit badge, "wrote on 12.03, template fullstack_ai, no reply". Contacting
+again after a quarter is fine, after a week is not.
 
 ---
 
-## 6. ФРОНТ
+## 6. FRONTEND
 
-Головний інтерфейс. Локальний, `localhost:5173`, без авторизації, без деплою.
+The main interface. Local, `localhost:5173`, no authorization, no deployment.
 
-### Сторінка "Черга" (головна, дефолт)
-- Ліміт **10 карток на день**, не більше. Причина: список із 40 позицій паралізує, ніхто не пише нікому
-- Картка: назва компанії, роль, стек тегами, score, локація, вилка, лінк на вакансію, лінк на сайт
-- Розкриття картки показує `why` від моделі і уривок сирого тексту
-- Кнопки прямо на картці: `Цікаво`, `Не цікаво`, `Написав`, `Блок компанії`, `Відкласти на 30 днів`
-- Натискання одразу пише в `company_state` і прибирає картку зі списку
+### "Queue" page (main, default)
+- Limit **10 cards a day**, no more. Reason: a list of 40 positions paralyzes, nobody writes
+  to anyone
+- Card: company name, role, stack as tags, score, location, pay range, link to the vacancy,
+  link to the site
+- Expanding the card shows the model's `why` and an excerpt of the raw text
+- Buttons right on the card: `Interesting`, `Not interesting`, `Contacted`, `Block company`,
+  `Snooze for 30 days`
+- Clicking immediately writes to `company_state` and removes the card from the list
 
-### Сторінка "Компанії"
-- Таблиця з фільтрами по статусу, країні, стеку, наявності ATS
-- Пошук по назві і домену
-- Масові дії: змінити статус, поставити тег
-- Клік на компанію відкриває картку з історією: всі її вакансії, всі снапшоти, вся історія контактів
+### "Companies" page
+- Table with filters by status, country, stack, presence of an ATS
+- Search by name and domain
+- Bulk actions: change status, set a tag
+- Clicking a company opens a card with history: all its vacancies, all snapshots, the whole
+  contact history
 
-### Сторінка "Контакти"
-- Список `outreach` з датами
-- Підсвічування тих, кому написали понад 7 днів тому і немає відповіді
-- Кнопка "позначити відповідь" з типом: позитивна, відмова, автовідповідь
+### "Contacts" page
+- List of `outreach` with dates
+- Highlighting those contacted more than 7 days ago with no reply
+- "Mark reply" button with a type: positive, rejection, autoresponder
 
-### Сторінка "Статистика"
-- Топ-30 технологій за частотою у вакансіях за період
-- Медіанна вилка по грейдах і країнах
-- Медіанний час життя вакансії, окремо список підозр на ghost jobs
-- Воронка: знайдено, показано, написано, відповіли
-- Графік нових вакансій по днях
+### "Statistics" page
+- Top 30 technologies by frequency in vacancies over the period
+- Median pay range by seniority and country
+- Median vacancy lifetime, a separate list of suspected ghost jobs
+- Funnel: found, shown, contacted, replied
+- Chart of new vacancies by day
 
-### Сторінка "Джерела"
-- Стан кожного адаптера: коли востаннє запускався, скільки знайшов, помилки
-- Червоним ті, що повернули нуль при непорожній історії
-- Кнопка "запустити зараз"
+### "Sources" page
+- State of every adapter: when it last ran, how much it found, errors
+- Red for the ones that returned zero when the history is not empty
+- "Run now" button
 
-Стиль: щільний, темний, без анімацій, без порожніх станів на пів екрана.
-Це робочий інструмент на щодня, не лендінг.
+Style: dense, dark, no animations, no half-screen empty states. This is a daily work tool, not
+a landing page.
 
 ---
 
 ## 7. TELEGRAM
 
-Допоміжний канал, не інтерфейс. Тільки:
-- Алерт при знахідці зі `score >= 12` (рідкісна дуже релевантна вакансія)
-- Нагадування о 10:00: скільки нових у черзі, посилання на localhost
-- Нагадування про фолоу-апи: кому писали 7 днів тому без відповіді
-- Алерт про поламаний адаптер
+A supporting channel, not an interface. Only:
+- Alert on a find with `score >= 12` (a rare, highly relevant vacancy)
+- Reminder at 10:00: how many new items are in the queue, a link to localhost
+- Follow-up reminders: who was contacted 7 days ago with no reply
+- Alert about a broken adapter
 
-Ніяких інлайн-кнопок і керування станом через бота. Всі дії робляться у вебі.
+No inline buttons and no state control through the bot. All actions happen in the web app.
 
 ---
 
-## 8. РОЗКЛАД
+## 8. SCHEDULE
 
 ```
-кожні 6 годин   ATS API (greenhouse, lever, ashby) + RSS
-раз на добу     career-сторінки компаній зі статусом interesting/new
-раз на 3 дні    career-сторінки решти
-раз на тиждень  каталоги компаній, пошук нових
-раз на тиждень  enrichment: tech_hints, контакти з /team
-щодня 10:00     телеграм-дайджест
-щодня 18:00     перевірка фолоу-апів
+every 6 hours       ATS API (greenhouse, lever, ashby) + RSS
+once a day          career pages of companies with status interesting/new
+every 3 days        career pages of the rest
+once a week          company catalogs, searching for new ones
+once a week          enrichment: tech_hints, contacts from /team
+daily 10:00          telegram digest
+daily 18:00          follow-up check
 ```
 
 ---
 
 ## 9. ENRICHMENT
 
-При першому обробленні компанії витягти з головної сторінки:
-- Ознаки стеку: `_next` в HTML означає Next.js, `__NUXT__` означає Nuxt, `wp-content` означає WordPress, `data-astro` означає Astro
-- Наявність блогу і дата останнього поста
-- Зі сторінки `/team`, `/about`, `/people`: імена з титулами CTO, Tech Lead, Head of Engineering, Engineering Manager, у `contacts`
+On first processing a company, extract from its home page:
+- Stack signs: `_next` in the HTML means Next.js, `__NUXT__` means Nuxt, `wp-content` means
+  WordPress, `data-astro` means Astro
+- Whether there is a blog and the date of the last post
+- From the `/team`, `/about`, `/people` pages: names with titles CTO, Tech Lead, Head of
+  Engineering, Engineering Manager, into `contacts`
 
-Навіщо: агенція з сайтом на WordPress і мертвим блогом за 2019 рік не наймає React-розробника.
-Це відсіює порожні контакти до того, як власник витратить час на лист.
+Why: an agency with a site on WordPress and a blog dead since 2019 is not hiring a React
+developer. This filters out empty contacts before the owner spends time on a letter.
 
-Пошта на сайті майже завжди `hello@` або `info@`, її читає менеджер, не техлід.
-Тому іменні контакти цінніші за пошту, і UI має показувати їх першими.
-
----
-
-## 10. ПОРЯДОК РОБОТИ
-
-Робити етапами, після кожного показувати результат, не братись за наступний без підтвердження.
-
-**Етап 1.** Каркас: репо, БД, схема Drizzle, `lib/http`, `lib/log`, CLI-скелет, фікстури.
-**Етап 2.** ATS-адаптери (Greenhouse, Lever, Ashby) + RSS. Тести на фікстурах. Вивід у консоль.
-**Етап 3.** Нормалізація, блочний діф, снапшоти. Тести на двох версіях однієї збереженої сторінки.
-**Етап 4.** LLM-класифікація, Zod-валідація, скоринг, дедуп.
-**Етап 5.** Hono API + фронт: сторінки Черга і Компанії.
-**Етап 6.** Каталоги компаній: DOU, Clutch-імпорт, TechBehemoths.
-**Етап 7.** Сторінки Контакти, Статистика, Джерела. Telegram. Cron.
-
-Після Етапу 5 інструмент уже придатний до щоденного використання. Далі все є покращенням,
-і власник може почати писати листи, не чекаючи решти.
+The email on the site is almost always `hello@` or `info@`, read by a manager, not a tech
+lead. That is why named contacts are worth more than an email, and the UI should show them
+first.
 
 ---
 
-## 11. ЩО НЕ РОБИТИ
+## 10. WORK ORDER
 
-- Не будувати авторизацію, мультикористувацькість, ролі. Інструмент на одну людину на одному ноуті
-- Не робити Docker, Redis, черги, мікросервіси
-- Не генерувати тексти листів. Це окремий процес, він живе в чаті, не тут.
-  Зберігати і редагувати шаблони, які власник написав сам, можна і потрібно:
-  сторінка Шаблони саме для цього, звернень до моделі в ній немає
-- Не робити красивий лендінг і онбординг
-- Не додавати джерело, поки попередні не мають тестів
-- Не витрачати час на LinkedIn: джерело недоступне, причина в `CLAUDE.local.md`
-- Не будувати аналітику складнішу за описану. Повноцінний продукт власник робитиме окремо
+Work in stages, show the result after each one, do not start the next one without
+confirmation.
+
+**Stage 1.** Scaffolding: repo, DB, Drizzle schema, `lib/http`, `lib/log`, CLI skeleton,
+fixtures.
+**Stage 2.** ATS adapters (Greenhouse, Lever, Ashby) + RSS. Tests on fixtures. Console output.
+**Stage 3.** Normalization, block diff, snapshots. Tests on two versions of one saved page.
+**Stage 4.** LLM classification, Zod validation, scoring, dedup.
+**Stage 5.** Hono API + frontend: Queue and Companies pages.
+**Stage 6.** Company catalogs: DOU, Clutch import, TechBehemoths.
+**Stage 7.** Contacts, Statistics, Sources pages. Telegram. Cron.
+
+After Stage 5 the tool is already fit for daily use. Everything after that is an improvement,
+and the owner can start writing letters without waiting for the rest.
 
 ---
 
-## 12. ПРО ВЛАСНИКА
+## 11. WHAT NOT TO DO
 
-Профіль власника (стек, прогалини, місто, рівень англійської) лежить у `CLAUDE.local.md`,
-який не комітиться. Claude Code читає його разом із цим файлом. У форку там твій профіль,
-а ваги в `config/scoring.json` або на сторінці Rules налаштовуються під нього.
+- Do not build authorization, multi-user support, roles. The tool is for one person on one
+  laptop
+- Do not add Docker, Redis, queues, microservices
+- Do not generate letter texts. That is a separate process, it lives in chat, not here. Storing
+  and editing templates the owner wrote themselves is fine and needed: the Templates page is
+  exactly for that, there are no calls to the model in it
+- Do not build a pretty landing page and onboarding
+- Do not add a source until the previous ones have tests
+- Do not spend time on LinkedIn: the source is unavailable, the reason is in
+  `CLAUDE.local.md`
+- Do not build analytics more complex than described. The owner will build a full product
+  separately
+
+---
+
+## 12. ABOUT THE OWNER
+
+The owner's profile (stack, gaps, city, English level) lives in `CLAUDE.local.md`, which is
+not committed. Claude Code reads it together with this file. In a fork, that is your own
+profile, and the weights in `config/scoring.json` or on the Rules page get tuned to it.

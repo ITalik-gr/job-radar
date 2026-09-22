@@ -14,6 +14,10 @@
 	// Plain vars, merged key by key over the ones in wrangler.jsonc. Real secrets
 	// (API keys, tokens) still go through `wrangler secret put`.
 	"vars": {
+		// Your worker URL, links in Telegram point here
+		"WEB_URL": "https://job-radar.<your-subdomain>.workers.dev",
+		// gmail (default, also detects replies) or resend (sends only)
+		"MAIL_PROVIDER": "gmail",
 		// The name letters are signed with
 		"GMAIL_FROM_NAME": "",
 		// https://<your-worker>/api/gmail/callback, must match the Google console

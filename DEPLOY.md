@@ -1,311 +1,229 @@
 # Deploying to Cloudflare
 
-Goal: the radar works without a laptop running, is reachable from a phone, and cron
-does not depend on anyone being awake.
-
-One worker serves both the API and the frontend. The database is D1. The scheduler
-is Cron Triggers.
-
-## If the build hangs
-
-Where it got stuck matters, these are different ailments.
-
-**Hangs on `Installing`** is `better-sqlite3` compiling through node-gyp. Fixed by
-the `--ignore-scripts` flag, already in place in the workflow and in the build
-command.
-
-**Hangs on `Initializing`** (before `Cloning`, logs show only
-`Initializing build environment...`) is not about the repo: the code has not even
-been downloaded at that point, so there is nothing to change in it. On Cloudflare
-this means a broken build token, see the "Workers Builds" section below. This is
-exactly why deployment moved to GitHub Actions.
-
-## The most common error in production
-
-`Failed query: select ... params:` on any query means **the remote database has no
-tables**. Migrations have to be applied separately, deploying the worker does not
-run them.
-
-```bash
-pnpm wrangler d1 migrations apply job-radar --remote
-pnpm cf:doctor https://<your-worker>.workers.dev/ --token <RADAR_TOKEN>
-```
-
-`doctor` shows which tables exist, which are missing, and what to do. `GET /api/health?deep=1`
-gives the same thing, and it is available without a token.
-
-Checking directly:
-
-```bash
-pnpm wrangler d1 execute job-radar --remote --command "select name from sqlite_master where type='table'"
-```
-
-There should be 10 tables: companies, company_state, contacts, llm_cache, llm_usage,
-outreach, queue_items, runs, snapshots, vacancies.
+The radar runs as one Cloudflare Worker: it serves the API and the interface, keeps
+its data in D1, runs the schedule on Cron Triggers, and computes company vectors with
+the Workers AI binding. Once deployed it needs no laptop: it collects, scores, sends,
+reads replies and messages you in Telegram on its own.
 
 ## First deploy
 
-`pnpm cf:setup` does everything below in one go: finds or creates the database, writes
-its id into `wrangler.local.jsonc`, applies migrations, and deploys with `RADAR_TOKEN`
-generated and the keys from `.env` uploaded as secrets. It reuses anything that already
-exists, and `--dry-run` shows what it would do without changing anything. The manual
-steps stay here for when something needs doing by hand.
-
-## One time only, by hand
-
 ```bash
+pnpm install
+cp .env.example .env        # fill in what you have, see "Secrets" below
 pnpm wrangler login
+pnpm cf:setup --dry-run     # optional: see what it would do
+pnpm cf:setup
+```
 
-# 1. Database
-pnpm wrangler d1 create job-radar
-# the response will contain database_id, put it into wrangler.local.jsonc
-# (copy from wrangler.local.example.jsonc, it is gitignored)
+`cf:setup` is safe to run again, it reuses whatever already exists:
 
-# 2. Secrets
-pnpm wrangler secret put RADAR_TOKEN          # make up a long string, this is the radar's password
-pnpm wrangler secret put ANTHROPIC_API_KEY
-pnpm wrangler secret put TELEGRAM_BOT_TOKEN
-pnpm wrangler secret put TELEGRAM_CHAT_ID
+1. checks the wrangler login
+2. finds the D1 database `job-radar` or creates it, and writes its id into
+   `wrangler.local.jsonc`
+3. applies migrations
+4. builds the frontend and deploys, uploading in the same step every secret the worker
+   does not have yet: a generated `RADAR_TOKEN`, and from `.env` the model key, Telegram,
+   mail provider keys
+5. prints the worker URL and, on the first run, the `RADAR_TOKEN`
 
-# 3. Database schema
+Then:
+
+1. Open `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`. The browser keeps the
+   token, the phone too after the same link once.
+2. Add your worker URL to `wrangler.local.jsonc` as `WEB_URL` (links in Telegram point
+   there) and run `pnpm deploy`.
+3. Optional pieces below: GitHub Actions, mail, Telegram commands, AI Gateway.
+
+The workers.dev subdomain is asked for once per Cloudflare account, the first time
+anything is deployed on it. Pick any.
+
+## What goes where
+
+| where | what | committed |
+| --- | --- | --- |
+| `wrangler.jsonc` | worker name, bindings, cron, model names | yes, same for everyone |
+| `wrangler.local.jsonc` | your database id and plain values that identify you | no, gitignored |
+| worker secrets | keys and tokens | no, only on Cloudflare |
+
+`pnpm deploy` merges the two config files into `wrangler.deploy.json` and deploys that
+(`scripts/wrangler-config.mjs`). `wrangler.local.example.jsonc` shows every field.
+
+Plain values in `wrangler.local.jsonc`, under `vars`:
+
+| var | what for |
+| --- | --- |
+| `WEB_URL` | your worker URL, used in Telegram links |
+| `GMAIL_FROM_NAME` | the name letters are signed with |
+| `GMAIL_REDIRECT_URI` | `https://<your-worker>/api/gmail/callback`, only for Gmail |
+| `MAIL_PROVIDER` | `gmail` (default) or `resend` |
+| `CF_AI_ACCOUNT_ID`, `AI_GATEWAY_ID` | only for AI Gateway, see below |
+
+Why these are vars in a local file rather than secrets: a deploy deletes every var that
+is missing from the config, and a secret cannot take the name of an existing var. Keeping
+them in a file only you have avoids both traps. Why the database id is there at all:
+without it wrangler resolves the database through the D1 API on every deploy, which the
+deploy token then needs permissions for.
+
+### Secrets
+
+Set once, survive every deploy. `cf:setup` uploads the ones it finds in `.env`; any of
+them can also be set by hand with `pnpm wrangler secret put NAME`.
+
+| secret | needed for |
+| --- | --- |
+| `RADAR_TOKEN` | the interface password. Without it the worker, and your contacts database, is open to anyone |
+| `ANTHROPIC_API_KEY` | vacancy classification. Not needed with `LLM_PROVIDER=workers-ai` |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | the twice-weekly summary |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GMAIL_FROM_EMAIL` | sending through Gmail |
+| `GMAIL_REFRESH_TOKEN` | Gmail, obtained after connecting the mailbox, see below |
+| `RESEND_API_KEY` | sending through Resend instead |
+| `ANTHROPIC_BASE_URL` | only for AI Gateway |
+
+## Deploy on push with GitHub Actions
+
+`.github/workflows/deploy.yml` deploys every push to `main`: install without scripts,
+type check, build the frontend, build the deploy config, check the Cloudflare
+credentials, deploy, then check the production schema.
+
+Set in GitHub, Settings, Secrets and variables, Actions:
+
+| name | kind | value |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | secret | dash.cloudflare.com, My Profile, API Tokens, Create Token, template **Edit Cloudflare Workers** |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | `pnpm wrangler whoami` |
+| `WRANGLER_LOCAL_JSONC` | secret | the whole content of your `wrangler.local.jsonc` |
+| `WEB_URL` | variable | your worker URL, for the schema check after deploy |
+
+Update `WRANGLER_LOCAL_JSONC` every time you change the local file.
+
+Not the Workers AI token from `.env` (`CF_AI_API_TOKEN`): it can run models but cannot
+deploy, and wrangler answers it with `Authentication error [code: 10000]`. The workflow
+checks the token before deploying and says so plainly.
+
+**Migrations are not part of CI**, on purpose: applying a schema automatically on every
+push is how production data gets damaged. After a schema change (`pnpm db:generate`),
+run once from your laptop:
+
+```bash
 pnpm cf:migrate
-
-# 4. Deploy
-pnpm deploy
 ```
 
-After deploying, the worker lives at `https://<your-worker>.workers.dev`.
+If you forget, the schema check at the end of the workflow fails and says so.
 
-## Deploy on push, GitHub Actions
+## Mail on the worker
 
-The main path. File `.github/workflows/deploy.yml`, triggers on push to `main` and
-with the Run workflow button. Steps: install dependencies without scripts, check
-types (backend and frontend), build the frontend, `wrangler deploy`.
+**Resend** is the simple option: an API key and a verified domain. Put `RESEND_API_KEY`
+and `GMAIL_FROM_EMAIL` (an address on that domain) in secrets, `MAIL_PROVIDER: "resend"`
+and `GMAIL_FROM_NAME` in `wrangler.local.jsonc`. Resend only sends, so replies are not
+detected: mark them on the Outreach page by hand.
 
-Types are checked before deploying on purpose: there is one worker and it is
-production, cheaper to stop a broken build in CI.
+**Gmail** threads properly and lets the radar notice replies and bounces. One time:
 
-**What needs to be set once** in GitHub, Settings, Secrets and variables, Actions:
+1. Google Cloud console: a project, the Gmail API enabled, an OAuth client of type
+   "Web application" with the redirect URI `https://<your-worker>/api/gmail/callback`
+2. Secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GMAIL_FROM_EMAIL`; in
+   `wrangler.local.jsonc` the same `GMAIL_REDIRECT_URI` and `GMAIL_FROM_NAME`; deploy
+3. In the interface, the "mail" status row in the sidebar has a "connect" link. Google
+   sends you back to a page that shows the refresh token once
+4. `pnpm wrangler secret put GMAIL_REFRESH_TOKEN` and paste it
 
-| secret | where to get it |
-| --- | --- |
-| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com, My Profile, API Tokens, **Edit Cloudflare Workers** template |
-| `CLOUDFLARE_ACCOUNT_ID` | `pnpm wrangler whoami`, Account ID column |
+The token is never stored in the database: a backup with it inside would be access to
+your mailbox. Limits, warmup and the rest: [OUTREACH.md](OUTREACH.md).
 
-The token needs to cover Workers Scripts (edit), Workers KV (edit), D1 (edit) and
-Account Settings (read). The Edit Cloudflare Workers template gives all of that.
+## Telegram commands
 
-**Why `--ignore-scripts`:** among the dependencies is `better-sqlite3`, a native
-driver for local work. In CI it compiles through node-gyp, taking several minutes or
-hanging outright, and the worker does not need it: there the database is D1. With
-this flag the build takes seconds.
-
-Important: **D1 migrations are not part of this chain**, and that is deliberate.
-Applying the schema automatically on every push is dangerous. After a schema change
-(that is, after `pnpm db:generate`), run this once from your laptop:
+The summary on Monday and Thursday needs only the two Telegram secrets. The read-only
+bot commands (`/status`, `/queue`) need a webhook, since a worker cannot poll:
 
 ```bash
-pnpm wrangler d1 migrations apply job-radar --remote
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-worker>/api/telegram/webhook"
 ```
 
-For personal values that must not sit in the repo (database id, From name, AI
-Gateway settings), see the "Personal values" section below.
+The bot cannot write first: open the chat with it and press Start once.
 
-## After the overnight session on 09/04: mandatory migration
+## Extension
 
-New tables and columns appeared. **Without the migration, production will break**,
-and not partially either, on any request touching companies: the code reads
-`companies.kind`, `copyright_year` and `last_post_at`, and they are not there yet.
-
-| migration | what it adds |
-| --- | --- |
-| `0005` | tables `settings` (rules from the interface) and `templates` (letter templates) |
-| `0006` | `companies.kind`: studio, design, startup, product, outstaff |
-| `0007` | `companies.copyright_year`, `last_post_at`: signs of the site being alive |
-| `0008` | `templates.for_kind`: which company type a template is tailored to |
-| `0009` | `outreach.contact_name`, `contact_email`: who exactly was written to |
-
-```bash
-pnpm wrangler d1 migrations apply job-radar --remote
-pnpm cf:doctor https://<your-worker>.workers.dev/ --token <RADAR_TOKEN>
-```
-
-`doctor` must show 12 tables.
-
-After the migration, existing companies need their kind set once, this cannot be
-done through the interface, only via CLI against the local database:
-`pnpm cli kinds`. On production the kinds get set on their own the next time the
-sources run, because `upsertCompany` computes them every time.
-
-## Workers Builds, Cloudflare's built-in builder
-
-The second path, not used right now. It used to hang on
-`Initializing build environment...` and never got further. The `Initializing` stage
-is issuing a build runner, the repo has not been cloned yet at that point, so the
-cause is always on Cloudflare's side, not in the code. Per the docs, this happens
-when the **build token has been deleted or reissued**: the build settings still
-reference a token that no longer exists.
-
-If you ever go back to it:
-
-1. Dashboard, Workers and Pages, worker `job-radar`, Settings, Build
-2. Check that the worker's name in the dashboard matches `name` in `wrangler.jsonc`, that is `job-radar`
-3. In the Build token field, create a **new** token and select it, do not reselect the old one
-4. If that does not help, remove and set up the GitHub integration again
-
-| field | value |
-| --- | --- |
-| Build command | `pnpm install --frozen-lockfile --ignore-scripts && pnpm build:web` |
-| Deploy command | `npx wrangler deploy` |
-| Root directory | `/` |
-| Build variables | not needed, secrets live separately |
-
-Not worth keeping both paths enabled: every push would trigger two deploys, and the
-later one is not necessarily newer by commit.
-
-Secrets (`RADAR_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
-are set once through `wrangler secret put` or in the dashboard, Settings, Variables
-and Secrets. They are not in the repository and are not overwritten by a deploy.
-
-## Personal values: wrangler.local.jsonc
-
-Everything that identifies you or your Cloudflare account (database id, From name,
-Gmail redirect URI, AI Gateway account and gateway name, your worker's URL) stays
-out of `wrangler.jsonc`, which is committed and generic.
-
-1. Copy `wrangler.local.example.jsonc` to `wrangler.local.jsonc` (gitignored) and fill it in
-2. `pnpm deploy` builds `wrangler.deploy.json` from `wrangler.jsonc` plus `wrangler.local.jsonc`
-   (`scripts/wrangler-config.mjs`) and deploys with it
-3. For GitHub Actions, store the whole file as the `WRANGLER_LOCAL_JSONC` repository secret:
-   ```bash
-   gh secret set WRANGLER_LOCAL_JSONC < wrangler.local.jsonc
-   ```
-   CI writes it to `wrangler.local.jsonc` before building the deploy config. Without
-   the secret, the generic config deploys as is, which is what a fresh fork gets by default.
-
-Real secrets (API keys, tokens) still go through `wrangler secret put` as described
-above, never through `wrangler.local.jsonc`.
+In the extension popup set the radar address to `https://<your-worker>.workers.dev` and
+the token to your `RADAR_TOKEN`. Companies then go straight to the worker.
 
 ## AI Gateway in front of Anthropic
 
-Model calls can go through Cloudflare's gateway. This is free and gives three things
-that are missing right now: a cache on top of the existing `llm_cache`, a hard spend
-limit, and a log of every request with its response. Right now `llm_usage` only
-shows a counter, that is, how many calls, but not what exactly went into the model
-and why.
+Optional and free: a cache, a hard spend limit, and a log of every model call.
 
-Classification quality does not change, it is the same model, only the address changes.
+1. Cloudflare dashboard, AI, AI Gateway, Create Gateway, name it `job-radar`
+2. Secret `ANTHROPIC_BASE_URL` = `https://gateway.ai.cloudflare.com/v1/<account-id>/job-radar/anthropic`
+3. In `wrangler.local.jsonc`: `CF_AI_ACCOUNT_ID` and `AI_GATEWAY_ID`
 
-1. Cloudflare dashboard, AI section, AI Gateway, Create Gateway, name `job-radar`
-2. Locally in `.env`:
-   ```
-   ANTHROPIC_BASE_URL=https://gateway.ai.cloudflare.com/v1/<CF_ACCOUNT_ID>/job-radar/anthropic
-   ```
-3. In production, the same thing as a worker variable:
-   ```bash
-   pnpm wrangler secret put ANTHROPIC_BASE_URL
-   ```
+An empty `ANTHROPIC_BASE_URL` means direct calls, so nothing breaks without a gateway.
 
-An empty variable means a direct call, so nothing breaks if the gateway is not created.
+## Workers AI
 
-## Finding similar companies through Workers AI
+The `AI` binding in `wrangler.jsonc` needs no setup on the worker. It computes company
+vectors for "find similar", and with `LLM_PROVIDER=workers-ai` it also classifies
+vacancies, paid from the plan's neuron quota instead of a per-token bill.
 
-Company description vectors are computed by the `@cf/baai/bge-m3` model. It is
-multilingual, and that matters here: the database has English studio descriptions
-sitting next to Ukrainian vacancies from DOU.
-
-Nothing to configure in production: `wrangler.jsonc` has the `AI` binding, no token
-or outbound access needed. The "Compute similarity" button is in the Run menu.
-
-Locally a token is needed, since there is no binding outside Workers:
+Locally there is no binding, so it needs a token in `.env`:
 
 ```
-CF_AI_ACCOUNT_ID=<CF_ACCOUNT_ID>
-CF_AI_API_TOKEN=<token with Workers AI Read and Run permissions>
-
-# The names are exactly CF_AI_*, not CLOUDFLARE_*. Wrangler reads .env and takes
-# CLOUDFLARE_API_TOKEN from it as its own auth key, so a token issued only for
-# Workers AI replaced the login and broke pnpm cf:migrate with 7403
-# "account is not authorized to access this service".
+CF_AI_ACCOUNT_ID=<account id>
+CF_AI_API_TOKEN=<token with Workers AI Read and Run>
 ```
 
-Then `pnpm cli embed --limit 200` and `pnpm cli similar <id>`.
+The names are `CF_AI_*` on purpose: wrangler reads `.env` too, and a variable named
+`CLOUDFLARE_API_TOKEN` there would replace your wrangler login with a token that can
+only run models.
 
-Cost: the free Workers AI quota is 10 thousand neurons a day, and the whole database
-of four hundred companies fits into it with room to spare. Vacancy classification
-stays on Anthropic: it needs strict JSON and the "whatever is not in the text is
-null" behavior, and swapping out a proven model to save two dollars a month is not
-worth it.
+## Moving a local database to D1
+
+```bash
+pnpm cli export:sql /tmp/data.sql --tables companies,company_state,contacts,outreach
+pnpm wrangler d1 execute job-radar --remote --file=/tmp/data.sql
+```
+
+Only data, no `CREATE TABLE`, so it does not collide with migrations. Vacancies and
+snapshots are left out on purpose: they are large, and the worker collects them again
+within a day.
+
+## When something breaks
+
+**Any query fails with `Failed query: select ...`**: the remote database has no tables,
+or is behind the code. `pnpm cf:migrate`, then check:
+
+```bash
+pnpm cf:doctor https://<your-worker>.workers.dev --token <RADAR_TOKEN>
+```
+
+`GET /api/health?deep=1` answers the same without a token: `migrations.behind` above zero
+means the schema lags behind the code.
+
+**`Authentication error [code: 10000]` in CI**: the wrong token in `CLOUDFLARE_API_TOKEN`,
+see the Actions section.
+
+**Build hangs on install**: `better-sqlite3` compiling. The workflow passes
+`--ignore-scripts`; the worker does not need the native driver, its database is D1.
+
+**`/api/...` shows the interface instead of JSON in the browser**: `run_worker_first`
+was removed from `assets` in `wrangler.jsonc`. Without it the static fallback answers
+every browser navigation, the Google callback included.
 
 ## Useful commands
 
 | command | what it does |
 | --- | --- |
-| `pnpm deploy` | build the frontend and deploy (from a laptop) |
-| `pnpm cf:migrate` | apply migrations to the remote database |
-| `pnpm cf:migrate:local` | the same for the local D1 (`wrangler dev`) |
-| `pnpm cf:dev` | worker locally against real D1, port 8787 |
+| `pnpm cf:setup` | create or reuse everything and deploy |
+| `pnpm deploy` | build the frontend and deploy |
+| `pnpm cf:migrate` | apply migrations to D1 |
+| `pnpm cf:migrate:local` | the same for the local D1 of `wrangler dev` |
+| `pnpm cf:dev` | the worker locally, port 8787 |
 | `pnpm cf:tail` | live production logs |
 | `pnpm cf:doctor <url> --token <token>` | check the database and routes in production |
 
-## First login
+## Limits and cost
 
-Open `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`.
-The token gets saved in the browser, after that you can log in without it. Same on the phone.
-
-Without the token, the API returns 401. This is the only protection, and it is
-enough for a tool meant for one person, but the token must not be put anywhere
-public.
-
-## Extension
-
-In the extension popup, fill in:
-
-- **radar address**: `https://<your-worker>.workers.dev`
-- **token**: the same `RADAR_TOKEN`
-
-After that the collector sends companies straight to the cloud, the local server is no longer needed.
-
-## Telegram
-
-Bot commands on Workers work through a webhook, there is no polling there:
-
-```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-worker>.workers.dev/api/telegram/webhook"
-```
-
-Scheduled notifications (digest, follow-ups, alerts) work fine without the webhook too.
-
-## Moving the local database to D1
-
-`sqlite3 .dump` does not work: it contains `CREATE TABLE` statements that conflict
-with already applied migrations. So there is a separate command that outputs only
-the data:
-
-```bash
-# just companies and correspondence, the most important part, about 400 KB
-pnpm cli export:sql /tmp/data.sql --tables companies,company_state,contacts,outreach
-pnpm wrangler d1 execute job-radar --remote --file=/tmp/data.sql
-```
-
-A full export together with vacancies and snapshots weighs about 13 MB, which
-already runs into the limits of a single `d1 execute`. It is simpler to collect
-vacancies again with the "Refresh vacancies" button, they get refreshed every 6
-hours anyway.
-
-Or start with a clean database: the extension, the "Collect DOU" and "Find career
-pages" buttons will fill it up over an evening.
-
-## What stayed local
-
-- `pnpm cli` only works with the local database. For the cloud version, actions are
-  available through buttons in the interface
-- Playwright, if it is ever needed, will not run on Workers. That would be a
-  separate local workaround
-- CPU limit per request: heavy runs (`source:sync` across hundreds of companies)
-  are better left to cron, which splits the work into separate runs
-
-## What this costs
-
-Free plan: 100 thousand requests a day, 5 million D1 row reads a day, cron every few
-hours. Free for one user. Only the Anthropic API for classification costs money.
+- `pnpm cli` works with the local SQLite database only. On the worker every action is a
+  button on the Operations page.
+- Heavy runs are split by cron into separate invocations, because every invocation has a
+  CPU limit. The free plan's limit is much lower than the paid one's; the author runs the
+  radar on Workers Paid.
+- Money goes to the model: Anthropic per token, or Workers AI from the plan's quota.
+  Numbers in [COSTS.md](COSTS.md).

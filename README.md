@@ -1,12 +1,21 @@
 # Job Radar
 
-A personal job search radar. Every day it gives you a short list of relevant vacancies
-and companies worth writing to, and it remembers who you already wrote to and who you
-turned down.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-Node%2022-3178c6)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20D1-f38020)
+
+**A personal job search radar.** Every day it gives you a short list of relevant
+vacancies and companies worth writing to, and it remembers who you already wrote to and
+who you turned down.
+
+Most job hunting tools optimize for volume. This one does the opposite: at most 10 cards
+a day, scored by rules you can read, and letters you write yourself.
+
+![The Queue page: today's cards on the left, the selected vacancy with its score, stack and letter on the right](docs/screenshot.jpg)
 
 It is built for one person: your own database, your own model key, your own mailbox.
 There is no sign up and no shared server. You clone it, fill in your own values, and run
-it on your laptop or on your own free Cloudflare account. Why it is a fork and not a
+it on your laptop or on your own Cloudflare account. Why it is a fork and not a
 service: [FORK.md](FORK.md).
 
 ## What it does
@@ -32,6 +41,27 @@ service: [FORK.md](FORK.md).
   jobs, the funnel from found to replied.
 - **Telegram**: one summary on Monday and Thursday, and nothing in between.
 
+## How it works
+
+```mermaid
+flowchart LR
+  A[ATS APIs, RSS,<br/>job boards] --> N[normalize<br/>and diff]
+  B[catalogs, via the<br/>Chrome extension] --> C[(companies)]
+  C --> D[career pages] --> N
+  N --> F{stop words,<br/>role, geo}
+  F -- rejected --> S[(kept for stats)]
+  F -- passes --> L[LLM classifies<br/>new blocks only]
+  L --> R[deterministic score]
+  R --> Q[daily queue,<br/>10 cards]
+  Q --> O[templates, drafts,<br/>send, follow-up]
+  O --> M[replies detected]
+```
+
+The expensive step runs last and only on text that changed: pages are normalized (dates,
+counters, tokens stripped) and diffed block by block, so a vacancy is classified once.
+The model extracts facts as strict JSON; the score itself is plain code you can read and
+tune. Vacancies are never deleted, only closed, so they turn into lifetime and ghost job stats.
+
 ## How it runs
 
 | mode | good for | database | schedule |
@@ -40,9 +70,10 @@ service: [FORK.md](FORK.md).
 | Cloudflare | daily use, from the phone, no laptop needed | D1 | Cron Triggers |
 
 The code is the same in both. Hono runs in Node and on Workers, and the Drizzle schema is
-shared by SQLite and D1. The author runs it on the Workers Paid plan: the free plan's
-much lower CPU limit per invocation is tight for the scheduled crawls. The model bill is
-the other cost, see [COSTS.md](COSTS.md).
+shared by SQLite and D1. Deployed, the worker does everything on its own: collects,
+scores, sends, reads replies, and messages you. The free Workers plan has a much lower CPU
+limit per invocation, which is tight for the scheduled crawls, so Workers Paid is the
+safer choice. The model bill is the other cost, see [COSTS.md](COSTS.md).
 
 ## Quick start, local
 
@@ -76,18 +107,23 @@ One command does the whole thing. It is safe to run again, and it reuses whateve
 already exists.
 
 ```bash
+pnpm install
+cp .env.example .env     # the keys you have: model, Telegram, mail
 pnpm wrangler login
 pnpm cf:setup            # add --dry-run to see what it would do first
 ```
 
 It finds or creates the D1 database `job-radar`, stores its id in `wrangler.local.jsonc`,
-applies migrations, builds the frontend and deploys. On the first deploy it generates
-`RADAR_TOKEN` (the interface password, printed once) and uploads `ANTHROPIC_API_KEY`,
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `RESEND_API_KEY` and `GMAIL_FROM_EMAIL` from your
-`.env` if they are there.
+applies migrations, builds the frontend and deploys. In the same deploy it uploads as
+secrets a generated `RADAR_TOKEN` (the interface password, printed once) and whatever keys
+it finds in `.env`, so the worker is never live without a password.
 
-Then open `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`. The browser remembers
-the token after the first visit.
+Then:
+
+1. open `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`, the browser remembers
+   the token after the first visit
+2. put the worker URL into `wrangler.local.jsonc` as `WEB_URL` and run `pnpm deploy`, so
+   links in Telegram point at it
 
 **Your values stay out of git.** `wrangler.jsonc` is the same for everyone. Anything
 personal (database id, the name letters are signed with, AI Gateway, the Gmail callback
@@ -105,19 +141,17 @@ Add these in the repository settings, under Secrets and variables, Actions:
 | `WRANGLER_LOCAL_JSONC` | secret | the whole content of your `wrangler.local.jsonc` |
 | `WEB_URL` | variable | your worker URL, for the post-deploy schema check |
 
-CI does not run migrations on purpose. After a schema change run `pnpm cf:migrate` from
-your laptop. Everything else about the worker (AI Gateway, Workers AI, mail on the worker,
-common errors): [DEPLOY.md](DEPLOY.md).
+The Cloudflare token is a new one from the dashboard, not the Workers AI token in `.env`:
+that one cannot deploy. CI does not run migrations on purpose; after a schema change run
+`pnpm cf:migrate` from your laptop.
 
-**What stays on the laptop:** sending through Gmail and reply detection need a token file,
-and Workers has no disk. The usual setup is hybrid: the worker collects and serves the
-interface, the laptop sends and reads replies against the same D1 database. Or use Resend,
-which sends from the worker (without reply detection). Details in [OUTREACH.md](OUTREACH.md).
+Mail on the worker (Gmail or Resend), Telegram commands, AI Gateway, Workers AI and common
+errors: [DEPLOY.md](DEPLOY.md).
 
 ## Make it yours
 
-Out of the box the scoring describes the author: a TypeScript and React developer in Kyiv
-looking for remote work. Change it before trusting the queue.
+The default rules target remote TypeScript and React roles, with Kyiv as the home city
+for the location check. Change them before trusting the queue.
 
 1. **Rules** page: threshold, stop words, technology weights, the role check. Saved in the
    database, so it works on the worker too. The file defaults live in

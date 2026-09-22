@@ -150,17 +150,17 @@ Done, see section 6.
 
 ## 4. What will never work on a worker
 
-Deliberate limits, not bugs. They need naming in the docs so nobody hunts for a
-fault that is not there.
+Deliberate limits, not bugs. Named here so nobody hunts for a fault that is not there.
 
-- **sending from Gmail**: the token is a file on disk, and Workers has no disk.
-  Sending through Resend does work there, see section 5
-- **the scheduler**: `node-cron` lives inside a process, and a worker is not one
-- **reply detection**: it reads a mailbox, which only the Gmail provider does
+- **`pnpm cli`**: the CLI talks to the local SQLite database only. On the worker every
+  action is a button on the Operations page
+- **Playwright**, if a source ever needs a real browser: it does not run on Workers
+- **long runs in one go**: every invocation has a CPU limit, so heavy syncs are split
+  across cron runs
 
-So the worker is the interface, the collector, and now a sender too. The laptop is
-still needed for the schedule and for noticing answers. The hybrid works well: one
-D1 database, the worker reads, the laptop writes.
+Everything else runs on the worker on its own: the schedule on Cron Triggers, sending
+through Gmail (the refresh token is a worker secret) or Resend, reply detection, and the
+Telegram summary. The laptop is optional.
 
 ---
 

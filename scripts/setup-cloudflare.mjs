@@ -28,9 +28,12 @@ const DEPLOY_CONFIG = 'wrangler.deploy.json';
 /** Taken from .env when present and not yet set on the worker. RADAR_TOKEN is generated. */
 const SECRETS_FROM_ENV = [
   'ANTHROPIC_API_KEY',
+  'ANTHROPIC_BASE_URL',
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_CHAT_ID',
   'RESEND_API_KEY',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
   'GMAIL_FROM_EMAIL',
 ];
 
@@ -179,6 +182,7 @@ if (DRY) {
   console.log('\nDry run finished, nothing was changed.');
 } else {
   console.log('\nDone. The worker URL is printed above.');
+  console.log('Put it into wrangler.local.jsonc as WEB_URL (links in Telegram point there) and run pnpm deploy.');
   if (generatedToken) {
     console.log(`\nRADAR_TOKEN (the interface password, shown once, keep it):\n  ${generatedToken}`);
     console.log('First visit: https://<your-worker>/?token=<RADAR_TOKEN>, after that the browser remembers it.');
