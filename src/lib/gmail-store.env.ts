@@ -2,15 +2,15 @@ import { config } from '../config.js';
 import { setTokenStore, type StoredToken } from './gmail.js';
 
 /**
- * Сховище токена для середовищ без файлової системи: Cloudflare Workers.
+ * Token store for environments without a filesystem: Cloudflare Workers.
  *
- * Рефреш-токен приходить секретом (`wrangler secret put GMAIL_REFRESH_TOKEN`) і
- * не змінюється місяцями, тому писати його нікуди не треба. Короткоживучий
- * access token тримається в памʼяті ізоляту: він живе годину, ізолят зазвичай
- * менше, і в найгіршому випадку буде на один зайвий запит до Google більше.
+ * The refresh token arrives as a secret (`wrangler secret put GMAIL_REFRESH_TOKEN`) and does not
+ * change for months, so there is nowhere it needs writing. The short-lived access token is kept
+ * in isolate memory: it lives an hour, an isolate usually lives less, and at worst that means
+ * one extra request to Google.
  *
- * У базу токен не кладеться свідомо, розділ 0 OUTREACH.md: секрети окремо від
- * даних, інакше кожен бекап бази стає доступом до пошти.
+ * The token deliberately never goes into the database, section 0 of OUTREACH.md: secrets stay
+ * apart from data, otherwise every database backup becomes mailbox access.
  */
 let cached: { accessToken: string; expiresAt?: number; email?: string } | null = null;
 
@@ -26,7 +26,7 @@ setTokenStore({
     };
   },
   save(token: StoredToken): void {
-    // Секрет воркера ззовні не переписати, тому зберігається лише те, що коротке.
+    // A worker secret cannot be rewritten from outside, so only the short-lived part is kept.
     if (token.accessToken) {
       cached = {
         accessToken: token.accessToken,

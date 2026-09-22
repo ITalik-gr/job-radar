@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 
 /**
- * Дві панелі: список ліворуч, одна відкрита картка праворуч.
- * Причина такої розмітки замість довгого списку карток: рішення ухвалюється
- * по одному елементу, і кнопки мусять лежати завжди в одному місці екрана,
- * а не мандрувати разом із висотою картки.
+ * Two panes: the list on the left, one open card on the right.
+ * The reason for this layout rather than a long column of cards: decisions are made
+ * one item at a time, and the buttons have to sit in the same place on the screen
+ * every time instead of travelling with the height of the card.
  */
 export function SplitView({
   list,
@@ -29,8 +29,8 @@ export function SplitView({
 }
 
 /**
- * Заголовок панелі. Один рядок центрується по висоті, багаторядковий вміст
- * отримує однакові відступи згори і знизу: раніше він тулився до нижньої межі.
+ * The pane header. A single line is centred vertically, multi-line content gets equal
+ * padding above and below: before this it was pressed against the bottom edge.
  */
 export function PaneHeader({ children, stacked = false }: { children: ReactNode; stacked?: boolean }) {
   return (
@@ -48,9 +48,9 @@ export function PaneHeader({ children, stacked = false }: { children: ReactNode;
 }
 
 /**
- * Смуга дій під карткою. Липне до низу панелі, тому кнопки завжди видно.
- * Відступи по вертикалі навмисно великі: це найчастіше клікана зона застосунку,
- * і кнопки не мусять тулитись до краю екрана.
+ * The action bar under the card. It sticks to the bottom of the pane, so the buttons
+ * are always visible. The vertical padding is deliberately generous: this is the most
+ * clicked area of the application, and the buttons should not hug the screen edge.
  */
 export function PaneFooter({ children }: { children: ReactNode }) {
   return (

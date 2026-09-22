@@ -18,15 +18,15 @@ import { generateParagraph } from './ai-paragraph.js';
 import { enrich } from './enrich.js';
 
 /**
- * Підготовка чернеток розсилки. Модуль описаний в OUTREACH.md.
+ * Preparing sending drafts. The module is described in OUTREACH.md.
  *
- * Тут немає ні відправки, ні звернень до моделі: чернетка збирається з шаблону,
- * який написав власник, і з фактів, які вже лежать у базі. Відправка це окремий
- * крок, і між нею і цим файлом завжди стоїть людина з кнопкою.
+ * There is neither sending nor model calls here: a draft is built from a template the owner
+ * wrote and from facts already in the database. Sending is a separate step, and between it
+ * and this file there is always a person with a button.
  *
- * Вибір шаблону детермінований навмисно. Модель, яка вибирає тон листа, дає
- * різний результат на однакових даних, і зрозуміти, чому конкретній студії пішов
- * саме такий текст, стає неможливо.
+ * Template choice is deterministic on purpose. A model that picks the tone of a letter gives
+ * different results on the same data, and understanding why a particular studio got this
+ * particular text becomes impossible.
  */
 
 export const OUTREACH_TARGETS = ['vacancy', 'studio_named', 'studio_generic', 'followup'] as const;
@@ -34,15 +34,15 @@ export type OutreachTarget = (typeof OUTREACH_TARGETS)[number];
 
 export type Language = 'uk' | 'en';
 
-/** Компанії з цими станами не пишемо взагалі, розділ 9 OUTREACH.md. */
+/** Companies in these states are never written to, section 9 of OUTREACH.md. */
 export const BLOCKED_STATUSES = ['blacklist', 'rejected_by_me', 'rejected_by_them'];
 
-/** Повторний контакт дозволений через квартал, не через тиждень. */
+/** Contacting again is allowed after a quarter, not after a week. */
 export const RECONTACT_DAYS = 90;
 
 /**
- * Пошта, яку читає менеджер, а не техлід. Різниця не косметична: під іменний
- * контакт іде інший текст, тому це рішення, а не оформлення.
+ * Mailboxes read by a manager rather than a tech lead. The difference is not cosmetic: a
+ * named contact gets a different text, so this is a decision, not decoration.
  */
 const GENERIC_MAILBOXES = new Set([
   'hello',
@@ -71,9 +71,9 @@ const GENERIC_MAILBOXES = new Set([
 ]);
 
 /**
- * Мітка `[отак]` у шаблоні означає місце, куди власник ще не вписав свій текст.
- * Стартові шаблони приходять саме такими: структура від інструмента, слова від
- * людини. Лист із міткою в тілі не відправляється, він лежить у "Потребують уваги".
+ * A `[like this]` marker in a template is a spot where the owner has not written their text
+ * yet. Starter templates come exactly like that: structure from the tool, words from the
+ * person. A letter with a marker in the body is not sent, it sits in "Need attention".
  */
 const UNFILLED_MARKER = /\[[^\]\n]{3,}\]/g;
 
@@ -84,11 +84,11 @@ export function isGenericEmail(email: string | null | undefined): boolean {
 }
 
 /**
- * Мова листа. Країна UA означає українську, решта англійську.
+ * Letter language. Country UA means Ukrainian, everything else English.
  *
- * Мову сайту навмисно не вгадуємо: студія з польським сайтом і англомовним
- * відділом продажів звичайна річ, а лист польською від людини, яка польської
- * не знає, закриває розмову на першому ж рядку.
+ * The site language is deliberately not guessed: a studio with a Polish site and an
+ * English-speaking sales team is common, and a letter in Polish from someone who does not
+ * know Polish ends the conversation on the first line.
  */
 export function pickLanguage(country: string | null | undefined): Language {
   const value = (country ?? '').trim().toLowerCase();
@@ -101,7 +101,7 @@ export interface TargetInput {
   contactEmail?: string | null;
 }
 
-/** Три випадки, три шаблони. Ніяких проміжних станів і ніякої моделі в рішенні. */
+/** Three cases, three templates. No in-between states and no model in the decision. */
 export function pickTargetType(input: TargetInput): OutreachTarget {
   if (input.hasVacancy) return 'vacancy';
   const named = Boolean(input.contactName?.trim()) && !isGenericEmail(input.contactEmail);
@@ -109,11 +109,11 @@ export function pickTargetType(input: TargetInput): OutreachTarget {
 }
 
 /**
- * Іменний контакт цінніший за загальну пошту, розділ 9 CLAUDE.md, тому сортуємо
- * так: іменний з поштою, потім будь-який з поштою, потім будь-який.
+ * A named contact is worth more than a generic mailbox, section 9 of CLAUDE.md, so the order
+ * is: named with an email, then anyone with an email, then anyone.
  */
 export function pickContact(list: Contact[]): Contact | null {
-  // Адреса після hard bounce мертва: писати на неї означає псувати репутацію.
+  // An address after a hard bounce is dead: writing to it hurts the sender reputation.
   const withEmail = list.filter((row) => row.email && row.emailValid);
   const named = withEmail.filter((row) => row.name && !isGenericEmail(row.email));
   return named[0] ?? withEmail[0] ?? null;
@@ -148,26 +148,26 @@ export interface PreparedDraft {
   body: string;
   contactName: string | null;
   contactEmail: string | null;
-  /** Чи перший абзац написала модель. Зберігається окремо, це матеріал для порівняння. */
+  /** Whether the model wrote the first paragraph. Stored separately as material for comparison. */
   aiUsed: boolean;
   aiParagraph: string | null;
   aiFallbackReason: string | null;
-  /** Чому чернетка не готова до відправки. null означає готова. */
+  /** Why the draft is not ready to send. null means ready. */
   error: string | null;
 }
 
 /**
- * Складання одного листа з шаблону. Винесено окремо від запису в базу, щоб
- * прев'ю на сторінці Шаблони і реальна чернетка йшли одним кодом: інакше власник
- * бачить у прев'ю один текст, а в пошту йде інший.
+ * Building one letter from a template. Kept apart from writing to the database so that the
+ * preview on the Templates page and a real draft run the same code: otherwise the owner sees
+ * one text in the preview while another goes into the mail.
  */
 export function buildDraft(
   candidate: DraftCandidate,
   template: Template,
   language: Language,
-  /** Готовий перший абзац. Порожнє означає статичний текст із шаблона. */
+  /** A ready first paragraph. Empty means the static text from the template. */
   intro?: string | null,
-  /** Спільний підпис. Порожнє означає, що листи йдуть без нього. */
+  /** The shared signature. Empty means letters go out without one. */
   signature?: string | null,
 ): Omit<
   PreparedDraft,
@@ -182,6 +182,7 @@ export function buildDraft(
     vacancyTitle: candidate.vacancyTitle,
     city: candidate.city,
     country: candidate.country,
+    language: template.language,
     intro: intro ?? template.intro ?? '',
     signature: signature ?? '',
   };
@@ -189,10 +190,10 @@ export function buildDraft(
   const subject = renderLetter(template.subject ?? '', context);
 
   /*
-   * Підпис дописується в кінець, якщо шаблон не ставить його сам міткою і якщо
-   * його там ще немає. Мітка це правильний спосіб, але старі шаблони писались до
-   * її появи, і лишати їх без підпису означало б мовчки відправляти листи, які
-   * закінчуються на півслові.
+   * The signature is appended if the template does not place it with a placeholder and it is
+   * not already there. The placeholder is the right way, but older templates were written
+   * before it existed, and leaving them unsigned would mean silently sending letters that
+   * stop mid-sentence.
    */
   const hasToken = /\{\{\s*signature\s*\}\}/i.test(template.body);
   const firstLine = (signature ?? '').split('\n')[0]?.trim() ?? '';
@@ -205,20 +206,19 @@ export function buildDraft(
   const unknown = [...new Set([...subject.unknown, ...body.unknown])];
 
   /*
-   * Порядок перевірок від найгрубішої до найтоншої. Лист із текстом "Hi ," не має
-   * існувати навіть як чернетка, тому порожній плейсхолдер це помилка, а не
-   * попередження: інакше він доживе до відправки, бо на швидкому перегляді
-   * порожнє місце в тексті непомітне.
+   * Checks go from coarsest to finest. A letter reading "Hi ," must not exist even as a
+   * draft, so an empty placeholder is an error, not a warning: otherwise it survives until
+   * sending, because a blank in the text is easy to miss at a glance.
    */
   const unfilled = body.text.match(UNFILLED_MARKER) ?? [];
 
   let error: string | null = null;
-  if (!template.body.trim()) error = 'шаблон порожній, текст листа пише власник';
-  else if (unfilled.length > 0) error = `у шаблоні лишились мітки: ${unfilled.join(' ')}`;
-  else if (!candidate.contact?.email) error = 'немає адреси, куди писати';
-  else if (missing.length > 0) error = `порожні плейсхолдери: ${missing.join(', ')}`;
-  else if (unknown.length > 0) error = `невідомі плейсхолдери: ${unknown.join(', ')}`;
-  else if (!subject.text.trim()) error = 'порожня тема листа';
+  if (!template.body.trim()) error = 'the template is empty, the owner writes the letter text';
+  else if (unfilled.length > 0) error = `the template still has markers: ${unfilled.join(' ')}`;
+  else if (!candidate.contact?.email) error = 'no address to write to';
+  else if (missing.length > 0) error = `empty placeholders: ${missing.join(', ')}`;
+  else if (unknown.length > 0) error = `unknown placeholders: ${unknown.join(', ')}`;
+  else if (!subject.text.trim()) error = 'empty letter subject';
 
   return {
     templateId: template.id,
@@ -234,19 +234,27 @@ export function buildDraft(
 }
 
 /**
- * Стартові шаблони розсилки: чотири випадки на двох мовах.
+ * Starter sending templates: four cases in two languages.
  *
- * Тексту листа тут немає навмисно. Інструмент дає каркас: привітання, підпис,
- * плейсхолдери і місця в квадратних дужках, а слова пише власник. Причина в
- * розділі 11 CLAUDE.md і в тому, що другий абзац холодного листа це факти про
- * людину, і згенерований він означав би вигаданий досвід у листі незнайомцю.
+ * There is no letter text here on purpose. The tool gives a skeleton: greeting, signature,
+ * placeholders and spots in square brackets, and the owner writes the words. The reason is
+ * section 11 of CLAUDE.md, and the fact that the second paragraph of a cold letter is facts
+ * about a person: generated, it would mean made-up experience in a letter to a stranger.
+ *
+ * The Ukrainian seeds keep Ukrainian greetings, subjects and bracket notes: that is the
+ * letter language, not interface copy.
  */
 export const SIGNATURE_KEY = 'outreach.signature';
 
-/** Типовий підпис. Правиться на сторінці Шаблони і лягає в `settings`. */
-export const DEFAULT_SIGNATURE = ['Alex Example', 'Front-end / Full-stack developer', 'example.dev'].join(
-  '\n',
-);
+/**
+ * Default signature: empty on purpose.
+ *
+ * It used to carry the author's own name, title and site. In a fork that meant
+ * a stranger installs the radar, writes a letter and sends it signed by someone
+ * else, silently, because nothing in the flow asks about it. Empty is the only
+ * safe default: the letter is signed by whoever fills it in on the Templates page.
+ */
+export const DEFAULT_SIGNATURE = '';
 
 const SIGNATURE = DEFAULT_SIGNATURE;
 
@@ -272,7 +280,7 @@ interface OutreachSeed {
 const OUTREACH_SEEDS: OutreachSeed[] = [
   {
     slug: 'send_vacancy_uk',
-    name: 'Вакансія, українською',
+    name: 'Vacancy, Ukrainian',
     targetType: 'vacancy',
     language: 'uk',
     subject: '{{vacancy_title}}, {{company}}',
@@ -290,7 +298,7 @@ const OUTREACH_SEEDS: OutreachSeed[] = [
   },
   {
     slug: 'send_studio_named_uk',
-    name: 'Студія, іменний контакт, українською',
+    name: 'Studio, named contact, Ukrainian',
     targetType: 'studio_named',
     language: 'uk',
     subject: 'Фронтенд для {{company}}',
@@ -308,7 +316,7 @@ const OUTREACH_SEEDS: OutreachSeed[] = [
   },
   {
     slug: 'send_studio_generic_uk',
-    name: 'Студія, загальна пошта, українською',
+    name: 'Studio, shared inbox, Ukrainian',
     targetType: 'studio_generic',
     language: 'uk',
     subject: 'Фронтенд для {{company}}',
@@ -326,10 +334,10 @@ const OUTREACH_SEEDS: OutreachSeed[] = [
   },
   {
     slug: 'send_followup_uk',
-    name: 'Фолоу-ап, українською',
+    name: 'Follow-up, Ukrainian',
     targetType: 'followup',
     language: 'uk',
-    // Тема порожня навмисно: фолоу-ап іде тим самим тредом і темою оригіналу.
+    // The subject is empty on purpose: a follow-up goes in the same thread under the original subject.
     subject: '',
     greeting: 'Вітаю ще раз.',
     hint: 'два речення, не більше',
@@ -360,9 +368,9 @@ function seedBody(seed: OutreachSeed): { intro: string; body: string } {
       : '[third paragraph: one link and one question]';
 
   /*
-   * Перший абзац стоїть у тілі плейсхолдером, а не текстом. Саме його і тільки
-   * його переписує модель на Етапі 4, тому підміняти доводиться одне значення,
-   * а не шматок рядка пошуком за збігом.
+   * The first paragraph sits in the body as a placeholder, not as text. That paragraph and
+   * only that one is what the model rewrites, so a single value gets substituted rather than
+   * a piece of a string found by matching.
    */
   const parts =
     seed.targetType === 'followup'
@@ -373,12 +381,12 @@ function seedBody(seed: OutreachSeed): { intro: string; body: string } {
 }
 
 /**
- * Доливає відсутні шаблони розсилки за ключем.
+ * Adds the missing sending templates by key.
  *
- * На відміну від `seedTemplates`, тут саме "яких немає", а не "коли таблиця
- * порожня": шаблони листів власник уже завів руками, і набір розсилки має лягти
- * поруч. Видалений шаблон повернеться, і це свідомий компроміс: без хоча б
- * одного шаблона на випадок чернетки просто не створюються.
+ * Unlike `seedTemplates`, this is "whichever are missing" rather than "when the table is
+ * empty": the owner already has hand-made letter templates, and the sending set has to sit
+ * next to them. A deleted template will come back, and that is a deliberate trade-off:
+ * without at least one template per case, drafts simply are not created.
  */
 export async function seedOutreachTemplates(): Promise<number> {
   const db = getDb();
@@ -396,15 +404,15 @@ export async function seedOutreachTemplates(): Promise<number> {
       language: seed.language,
       subject: seed.subject,
       ...seedBody(seed),
-      note: 'Стартовий каркас. Текст в квадратних дужках замінити своїм.',
+      note: 'Starter skeleton. Replace the text in square brackets with your own.',
     })),
   );
 
-  log.info({ added: missing.length }, 'шаблони розсилки додано');
+  log.info({ added: missing.length }, 'sending templates added');
   return missing.length;
 }
 
-/** Активні шаблони розсилки, згруповані за випадком і мовою. */
+/** Active sending templates, grouped by case and language. */
 export async function outreachTemplates(): Promise<Template[]> {
   const db = getDb();
   return db
@@ -423,11 +431,11 @@ export function matchTemplate(
 }
 
 /**
- * Кандидати на лист: компанія, якій ще не писали і яку не відхилили.
+ * Letter candidates: a company not yet written to and not rejected.
  *
- * Вакансія береться найкраща відкрита і вище порогу. Якщо такої немає, це не
- * привід пропускати компанію: студії пишуть і без вакансії, для цього і є
- * окремі шаблони.
+ * The best open vacancy above the threshold is taken. If there is none, that is no reason to
+ * skip the company: studios get letters without a vacancy too, which is what the separate
+ * templates are for.
  */
 export async function draftCandidates(limit = 20): Promise<DraftCandidate[]> {
   const db = getDb();
@@ -450,16 +458,16 @@ export async function draftCandidates(limit = 20): Promise<DraftCandidate[]> {
             ),
           ),
         ),
-        // Ні свіжого листа, ні чернетки, що вже лежить і чекає натискання.
+        // Neither a recent letter nor a draft already waiting for a press.
         sql`not exists (
           select 1 from ${outreach}
           where ${outreach.companyId} = ${companies.id}
             and (${outreach.status} = 'draft' or coalesce(${outreach.sentAt}, 0) > ${since})
         )`,
         /*
-         * Компанія без жодної адреси відсіюється тут, а не позначкою на чернетці.
-         * Такий лист нікуди слати, і сотня нечитабельних заготовок у вкладці
-         * "Потребують уваги" ховає в собі ті кілька, які справді треба дописати.
+         * A company without any address is filtered out here rather than marked on a draft.
+         * There is nowhere to send such a letter, and a hundred unreadable stubs in the "Need
+         * attention" tab hide the few that really need finishing.
          */
         sql`exists (
           select 1 from ${contacts}
@@ -467,7 +475,7 @@ export async function draftCandidates(limit = 20): Promise<DraftCandidate[]> {
         )`,
       ),
     )
-    // Компанія з відкритою вакансією вище порогу цікавіша за холодну студію.
+    // A company with an open vacancy above the threshold beats a cold studio.
     .orderBy(
       sql`exists (
         select 1 from ${vacancies}
@@ -487,7 +495,7 @@ export async function draftCandidates(limit = 20): Promise<DraftCandidate[]> {
         and(
           eq(vacancies.companyId, company.id),
           isNull(vacancies.closedAt),
-          // null означає, що класифікація не дійшла: така вакансія ще кандидат.
+          // null means classification has not happened yet: such a vacancy is still a candidate.
           sql`coalesce(${vacancies.isVacancy}, 1) = 1`,
           sql`coalesce(${vacancies.score}, -100) >= ${threshold}`,
         ),
@@ -527,11 +535,11 @@ export interface PrepareReport {
 }
 
 /**
- * Готує чернетки і кладе їх у `outreach` зі `status = draft`.
+ * Prepares drafts and stores them in `outreach` with `status = draft`.
  *
- * `dryRun` потрібен не для тестів, а для роботи: перед першим прогоном власник
- * хоче побачити, що саме піде людям, і не отримати сотню рядків у базі, якщо
- * шаблон виявився не тим.
+ * `dryRun` is not for tests but for real use: before the first run the owner wants to see
+ * what exactly will go to people, without getting a hundred rows in the database if the
+ * template turned out wrong.
  */
 export async function prepareDrafts(
   options: { limit?: number; dryRun?: boolean; ai?: boolean; enrichLimit?: number } = {},
@@ -542,15 +550,15 @@ export async function prepareDrafts(
   const candidates = await draftCandidates(limit);
 
   /*
-   * Скільки сайтів дозволено обійти за цей прохід. Обхід іде до складання листа,
-   * а не після: чернетка без адреси лягала в чергу з позначкою "немає адреси, куди
-   * писати", і власник бачив лист, який нікуди не піде, доки не запустить збір
-   * контактів окремо. Тепер порядок зворотний, а бюджет не дає проходу впертись
-   * у ліміт часу воркера на сотні компаній.
+   * How many sites this pass may crawl. The crawl happens before the letter is built, not
+   * after: a draft without an address used to land in the queue marked "no address to write
+   * to", and the owner saw a letter that would go nowhere until they ran contact collection
+   * separately. Now the order is reversed, and the budget keeps the pass from hitting the
+   * worker time limit on hundreds of companies.
    */
   let enrichBudget = options.dryRun ? 0 : (options.enrichLimit ?? 5);
 
-  // Один читач на весь прохід: підпис однаковий у всіх листах цієї партії.
+  // One read for the whole pass: the signature is the same in every letter of this batch.
   const signature = await readSignature();
 
   const report: PrepareReport = {
@@ -563,9 +571,9 @@ export async function prepareDrafts(
 
   for (let candidate of candidates) {
     /*
-     * Адреси немає означає, що сайт компанії ще не обходили, а не що писати нікуди.
-     * Один сайт це кілька сторінок, тому дешевше сходити зараз, ніж класти в чергу
-     * зіпсовану чернетку.
+     * No address means the company site has not been crawled yet, not that there is nowhere
+     * to write. One site is a few pages, so going there now is cheaper than queueing a
+     * broken draft.
      */
     let walked = false;
     if (!candidate.contact?.email && enrichBudget > 0) {
@@ -576,20 +584,20 @@ export async function prepareDrafts(
         const [refreshed] = await draftCandidatesFor([candidate.companyId]);
         if (refreshed) candidate = { ...refreshed, vacancyId: candidate.vacancyId, vacancyTitle: candidate.vacancyTitle, vacancyStack: candidate.vacancyStack };
       } catch (error) {
-        log.warn({ domain: candidate.domain, err: String(error) }, 'обхід сайту перед листом не вдався');
+        log.warn({ domain: candidate.domain, err: String(error) }, 'crawling the site before the letter failed');
       }
     }
 
     /*
-     * Без адреси чернетка не створюється зовсім. Раніше вона лягала в чергу з
-     * помилкою, і черга наповнювалась листами, які нікуди не підуть.
+     * Without an address no draft is created at all. It used to land in the queue with an
+     * error, and the queue filled up with letters that would go nowhere.
      */
     if (!candidate.contact?.email) {
       report.skipped.push({
         company: candidate.company,
         reason: walked
-          ? 'обійшов сайт, адреси на ньому немає'
-          : 'адреси немає, а обхід сайту не влазить у цей прохід',
+          ? 'crawled the site, no address on it'
+          : 'no address, and a site crawl does not fit into this pass',
       });
       continue;
     }
@@ -605,15 +613,15 @@ export async function prepareDrafts(
     if (!template) {
       report.skipped.push({
         company: candidate.company,
-        reason: `немає шаблона ${target} мовою ${language}`,
+        reason: `no ${target} template in ${language}`,
       });
       continue;
     }
 
     /*
-     * Абзац від моделі береться до складання листа, і рівно один раз на компанію.
-     * Відкат не блокує нічого: у шаблоні лежить статичний перший абзац, і лист
-     * піде з ним.
+     * The model paragraph is fetched before the letter is built, and exactly once per company.
+     * A fallback blocks nothing: the template holds a static first paragraph, and the letter
+     * goes out with it.
      */
     const ai = options.ai
       ? await generateParagraph(candidate, language, { letter: template.body, subject: template.subject })
@@ -659,7 +667,7 @@ export async function prepareDrafts(
 
   log.info(
     { candidates: report.candidates, created: report.created, attention: report.needsAttention },
-    'чернетки підготовлено',
+    'drafts prepared',
   );
   return report;
 }
@@ -681,17 +689,16 @@ export interface DraftRow {
   error: string | null;
   queuedAt: number | null;
   /**
-   * Усі адреси, які радар знайшов у цієї компанії.
+   * Every address the radar found for this company.
    *
-   * Їдуть разом з чернеткою навмисно: без них єдиним способом поставити іншу
-   * адресу було вписати її руками, тобто згадати напамʼять те, що вже лежить у
-   * базі. Мертві адреси теж тут, але позначені: список має пояснювати, чому
-   * саме ця не годиться, а не мовчки її ховати.
+   * They travel with the draft on purpose: without them the only way to set another address
+   * was to type it in, recalling what is already in the database. Dead addresses are here
+   * too, but marked: the list has to explain why that one will not do rather than hide it.
    */
   companyContacts: { name: string | null; role: string | null; email: string; emailValid: boolean }[];
 }
 
-/** Чернетки для сторінки "До відправки". Готові і проблемні разом, розділяє UI. */
+/** Drafts for the Outbox page. Ready and problematic together, the UI splits them. */
 export async function listDrafts(): Promise<DraftRow[]> {
   const db = getDb();
   const rows = await db
@@ -703,9 +710,9 @@ export async function listDrafts(): Promise<DraftRow[]> {
     .orderBy(desc(outreach.queuedAt));
 
   /*
-   * Контакти беруться одним запитом на всі чернетки, а не по одному на картку:
-   * карток на екрані десятки, і запит на кожну перетворив би відкриття сторінки
-   * на чергу з півсотні звернень до бази.
+   * Contacts come in one query for all drafts rather than one per card: there are dozens of
+   * cards on the screen, and a query each would turn opening the page into a queue of fifty
+   * database calls.
    */
   const companyIds = [...new Set(rows.map(({ row }) => row.companyId))];
   const people =
@@ -726,7 +733,7 @@ export async function listDrafts(): Promise<DraftRow[]> {
     byCompany.set(person.companyId, list);
   }
 
-  // Іменні адреси першими: лист на hello@ читає менеджер, розділ 9 CLAUDE.md.
+  // Named addresses first: a letter to hello@ is read by a manager, section 9 of CLAUDE.md.
   for (const list of byCompany.values()) {
     list.sort((a, b) => Number(Boolean(b.name)) - Number(Boolean(a.name)));
   }
@@ -751,24 +758,24 @@ export async function listDrafts(): Promise<DraftRow[]> {
   }));
 }
 
-/** Правка тексту людиною. Те, що збережено тут, і піде в пошту без змін. */
+/** A human edit of the text. Whatever is saved here goes into the mail unchanged. */
 export async function updateDraft(
   id: number,
   patch: { subject?: string; body?: string; contactEmail?: string | null; contactName?: string | null },
 ): Promise<DraftRow | null> {
   const db = getDb();
   const [existing] = await db.select().from(outreach).where(eq(outreach.id, id));
-  if (!existing) throw new Error(`чернетки ${id} немає`);
-  if (existing.status !== 'draft') throw new Error('правити можна тільки чернетку');
+  if (!existing) throw new Error(`no draft ${id}`);
+  if (existing.status !== 'draft') throw new Error('only a draft can be edited');
 
   let subject = patch.subject ?? existing.subjectFinal ?? '';
   let body = patch.body ?? existing.bodyFinal ?? '';
 
   /*
-   * Адресу можна вписати руками просто в чернетці, і вона не лишається всередині
-   * листа: той самий контакт заводиться компанії. Інакше пошту, знайдену очима на
-   * їхньому сайті, довелось би вписувати вдруге на сторінці студії, а наступного
-   * разу радар знову вважав би, що адреси немає.
+   * An address can be typed right into the draft, and it does not stay inside the letter:
+   * the same contact is added to the company. Otherwise an address spotted on their site would
+   * have to be entered a second time on the studio page, and next time the radar would again
+   * think there is no address.
    */
   const email = patch.contactEmail === undefined ? existing.contactEmail : normalizeEmail(patch.contactEmail);
   const name = patch.contactName === undefined ? existing.contactName : patch.contactName?.trim() || null;
@@ -778,13 +785,13 @@ export async function updateDraft(
   }
 
   /*
-   * Зміна адреси це зміна людини, а імʼя вже вшите в готовий текст.
+   * Changing the address changes the person, and the name is already baked into the text.
    *
-   * Лист складається один раз, і `{{first_name}}` у ньому давно перетворився на
-   * конкретне "Hi Anna". Перевести чернетку на іншу адресу і лишити текст як є
-   * означає привітатись з Анною в листі до Ігоря, причому мовчки: у тексті все
-   * гаразд, помилки немає, лист іде. Тому імʼя міняється разом з адресою, і це
-   * саме заміна слова на слово, а не переписування листа моделлю.
+   * A letter is built once, and `{{first_name}}` in it has long since become a specific
+   * "Hi Anna". Moving the draft to another address and leaving the text as is means greeting
+   * Anna in a letter to Ihor, silently: the text looks fine, there is no error, the letter
+   * goes. So the name changes together with the address, and it is a word for word swap,
+   * not a model rewriting the letter.
    */
   const wasCalled = firstName(existing.contactName);
   const nowCalled = firstName(name);
@@ -798,25 +805,25 @@ export async function updateDraft(
       body = body.replace(new RegExp(pattern, 'g'), nowCalled);
     } else if (new RegExp(pattern).test(`${subject}\n${body}`)) {
       /*
-       * Нового імені немає, а старе в тексті лишилось. Мовчки залишити його не
-       * можна, а вигадати звертання нема з чого, тому чернетка чесно стає
-       * проблемною: власник або впише імʼя, або перебере лист іншим шаблоном.
+       * There is no new name, and the old one is still in the text. It cannot be left there
+       * silently, and there is nothing to build a greeting from, so the draft honestly becomes
+       * problematic: the owner either types the name or rebuilds the letter with another template.
        */
-      renamed = `у тексті лишилось імʼя ${wasCalled}, а адреса тепер інша`;
+      renamed = `the text still has the name ${wasCalled}, but the address changed`;
     }
   }
 
   /*
-   * Після ручної правки помилка перераховується заново: власник міг дописати
-   * імʼя руками, і тоді чернетка вже готова. Тримати стару позначку означало б
-   * лишити готовий лист у вкладці "Потребують уваги" назавжди.
+   * After a manual edit the error is recomputed: the owner may have typed the name in, and
+   * then the draft is ready. Keeping the old flag would leave a ready letter in the "Need
+   * attention" tab forever.
    */
   const leftover = [...`${subject}\n${body}`.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/gi)].map((m) => m[1]);
   let error: string | null = null;
-  if (!body.trim()) error = 'порожнє тіло листа';
-  else if (!subject.trim()) error = 'порожня тема листа';
-  else if (leftover.length > 0) error = `незаповнені плейсхолдери: ${leftover.join(', ')}`;
-  else if (!email) error = 'немає адреси, куди писати';
+  if (!body.trim()) error = 'empty letter body';
+  else if (!subject.trim()) error = 'empty letter subject';
+  else if (leftover.length > 0) error = `unfilled placeholders: ${leftover.join(', ')}`;
+  else if (!email) error = 'no address to write to';
   else if (renamed) error = renamed;
 
   await db
@@ -829,22 +836,22 @@ export async function updateDraft(
 }
 
 /**
- * Перегенерувати перший абзац для наявної чернетки. Тільки по явній кнопці:
- * фонових перегенерацій немає, бо кожна це виклик моделі за гроші і жодного
- * способу побачити, що новий текст кращий за старий.
+ * Regenerate the first paragraph of an existing draft. Only on an explicit button: there are
+ * no background regenerations, because each is a paid model call with no way to tell whether
+ * the new text is better than the old.
  */
 export async function regenerateIntro(id: number): Promise<DraftRow | null> {
   const db = getDb();
   const [draft] = await db.select().from(outreach).where(eq(outreach.id, id));
-  if (!draft) throw new Error(`чернетки ${id} немає`);
-  if (draft.status !== 'draft') throw new Error('перегенерувати можна тільки чернетку');
-  if (!draft.templateId) throw new Error('чернетка не памʼятає шаблона');
+  if (!draft) throw new Error(`no draft ${id}`);
+  if (draft.status !== 'draft') throw new Error('only a draft can be regenerated');
+  if (!draft.templateId) throw new Error('the draft does not remember its template');
 
   const [template] = await db.select().from(templates).where(eq(templates.id, draft.templateId));
-  if (!template) throw new Error('шаблон видалено, чернетку треба зібрати заново');
+  if (!template) throw new Error('the template was deleted, the draft has to be rebuilt');
 
   const [candidate] = (await draftCandidatesFor([draft.companyId])) ?? [];
-  if (!candidate) throw new Error('компанію не знайдено');
+  if (!candidate) throw new Error('company not found');
 
   const language = (draft.language as Language) ?? pickLanguage(candidate.country);
   const ai = await generateParagraph(candidate, language, {
@@ -876,26 +883,26 @@ export async function regenerateIntro(id: number): Promise<DraftRow | null> {
 }
 
 /**
- * Інший шаблон для вже готової чернетки.
+ * A different template for an existing draft.
  *
- * Вибір шаблона в розсилці робить код, за парою роль плюс мова, і це правильно
- * за замовчуванням. Але людина бачить конкретну компанію і знає про неї те, чого
- * немає в базі, тому мусить мати змогу перекласти лист на інший текст, не збираючи
- * чернетку заново і не втрачаючи вже написаний першим абзац.
+ * Code picks the sending template by role and language, and that is the right default. But a
+ * person sees the specific company and knows things the database does not, so they must be
+ * able to move the letter onto another text without rebuilding the draft or losing the
+ * first paragraph already written.
  *
- * До моделі тут звернень немає: абзац, якщо він від неї, переноситься як є.
+ * No model calls here: the paragraph, if it came from the model, carries over as is.
  */
 export async function retemplateDraft(id: number, slug: string): Promise<DraftRow | null> {
   const db = getDb();
   const [draft] = await db.select().from(outreach).where(eq(outreach.id, id));
-  if (!draft) throw new Error(`чернетки ${id} немає`);
-  if (draft.status !== 'draft') throw new Error('міняти шаблон можна тільки в чернетці');
+  if (!draft) throw new Error(`no draft ${id}`);
+  if (draft.status !== 'draft') throw new Error('the template can only be changed on a draft');
 
   const [template] = await db.select().from(templates).where(eq(templates.slug, slug));
-  if (!template) throw new Error(`шаблона ${slug} немає`);
+  if (!template) throw new Error(`no template ${slug}`);
 
   const [candidate] = await draftCandidatesFor([draft.companyId]);
-  if (!candidate) throw new Error('компанію не знайдено');
+  if (!candidate) throw new Error('company not found');
 
   const language = (template.language as Language) ?? (draft.language as Language);
   const built = buildDraft(
@@ -922,7 +929,7 @@ export async function retemplateDraft(id: number, slug: string): Promise<DraftRo
   return list.find((row) => row.id === id) ?? null;
 }
 
-/** Ті самі дані кандидата, але для вже відомих компаній: потрібно перегенерації. */
+/** The same candidate data, but for known companies: regeneration needs it. */
 export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCandidate[]> {
   const db = getDb();
   const result: DraftCandidate[] = [];
@@ -962,11 +969,11 @@ export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCan
 }
 
 /**
- * Чернетка для конкретної компанії, по кнопці з Черги або зі Студій.
+ * A draft for a specific company, from the button on Queue or Studios.
  *
- * Це той самий шлях, що й нічна підготовка: ті самі шаблони, той самий вибір
- * мови і контакту, ті самі перевірки. Окрема логіка "швидкого листа" тут була б
- * другим набором правил, який з часом розійдеться з першим.
+ * This is the same path as the nightly preparation: the same templates, the same choice of
+ * language and contact, the same checks. Separate "quick letter" logic would be a second set
+ * of rules that drifts away from the first over time.
  */
 export async function draftForCompany(
   companyId: number,
@@ -980,36 +987,36 @@ export async function draftForCompany(
     .from(outreach)
     .where(and(eq(outreach.companyId, companyId), eq(outreach.status, 'draft')));
   if (existing) {
-    return { draft: null, id: existing.id, reason: 'чернетка цій компанії вже лежить у черзі' };
+    return { draft: null, id: existing.id, reason: 'a draft for this company is already queued' };
   }
 
   let [candidate] = await draftCandidatesFor([companyId]);
-  if (!candidate) return { draft: null, id: null, reason: 'компанію не знайдено' };
+  if (!candidate) return { draft: null, id: null, reason: 'company not found' };
 
   /*
-   * Немає адреси це ще не відмова: сайт компанії просто ще не обходили. Замість
-   * того, щоб відправити людину запускати enrichment руками і повертатись, ходимо
-   * на сайт прямо зараз. Одна компанія це кілька сторінок, не хвилини.
+   * No address is not a refusal yet: the company site simply has not been crawled. Instead of
+   * sending the person off to run enrichment by hand and come back, we go to the site right
+   * now. One company is a few pages, not minutes.
    *
-   * Іменного контакту може і не знайтись, і це нормально: загальна скринька з
-   * сайту теж адреса, під неї є окремий шаблон. Вигадувати hello@домен ми не
-   * будемо, або воно є на сайті, або листа не буде.
+   * A named contact may not turn up, and that is fine: a generic mailbox from the site is an
+   * address too, with its own template. We will not invent hello@domain: either it is on the
+   * site, or there is no letter.
    */
   let enriched = false;
   if (!candidate.contact?.email && options.enrich !== false) {
     await enrich({ domain: candidate.domain, limit: 1 });
     enriched = true;
     [candidate] = await draftCandidatesFor([companyId]);
-    if (!candidate) return { draft: null, id: null, reason: 'компанію не знайдено' };
+    if (!candidate) return { draft: null, id: null, reason: 'company not found' };
   }
 
   /*
-   * Адреси немає навіть після обходу сайту. Чернетка все одно створюється, з порожнім
-   * полем адреси: лист збирається, текст видно, і лишається вписати пошту руками на
-   * сторінці До відправки. Раніше тут була відмова, і компанія просто зникала з поля
-   * зору, хоча знайти адресу очима на їхньому сайті часто справа хвилини.
+   * Still no address even after crawling the site. The draft is created anyway, with an empty
+   * address field: the letter is built, the text is visible, and what remains is typing the
+   * email on the Outbox page. This used to be a refusal, and the company simply dropped out
+   * of sight, although finding the address on their site by eye often takes a minute.
    *
-   * Відправку це не відкриває: `checkSend` без адреси не дає натиснути кнопку.
+   * This does not open sending: `checkSend` without an address keeps the button disabled.
    */
   const missingEmail = !candidate.contact?.email;
 
@@ -1030,25 +1037,25 @@ export async function draftForCompany(
   });
 
   /*
-   * Шаблон, вибраний руками на картці, важливіший за підбір за роллю і мовою.
-   * Раніше цей вибір нікуди не йшов: власник ставив шаблон у селекті, тиснув
-   * "У чергу листів" і отримував чернетку зовсім іншим текстом, бо код підбирав
-   * свій. Автоматичний підбір лишається тим, чим і був: значенням за замовчуванням.
+   * A template picked by hand on the card beats choosing by role and language. That choice
+   * used to go nowhere: the owner set a template in the select, pressed "To outbox" and got a
+   * draft with a completely different text, because the code picked its own. Automatic
+   * choice stays what it was: the default.
    */
   const chosen = options.templateSlug
     ? (await db.select().from(templates).where(eq(templates.slug, options.templateSlug)))[0]
     : undefined;
 
   if (options.templateSlug && !chosen) {
-    return { draft: null, id: null, reason: `шаблона ${options.templateSlug} немає` };
+    return { draft: null, id: null, reason: `no template ${options.templateSlug}` };
   }
 
   const template = chosen ?? matchTemplate(await outreachTemplates(), target, language);
   if (!template) {
-    return { draft: null, id: null, reason: `немає шаблона ${target} мовою ${language}` };
+    return { draft: null, id: null, reason: `no ${target} template in ${language}` };
   }
 
-  // Мова йде за шаблоном: людина вибрала текст, і він написаний однією конкретною.
+  // The language follows the template: the person picked a text, and it is written in one specific language.
   const letterLanguage = chosen ? ((chosen.language as Language) ?? language) : language;
 
   const ai = options.ai
@@ -1096,19 +1103,19 @@ export async function draftForCompany(
     id: row!.id,
     reason: missingEmail
       ? enriched
-        ? 'обійшов сайт, адреси не знайшов. Чернетка в черзі, впиши пошту руками'
-        : 'адреси немає. Чернетка в черзі, впиши пошту руками'
+        ? 'crawled the site, found no address. The draft is queued, type the email by hand'
+        : 'no address. The draft is queued, type the email by hand'
       : null,
   };
 }
 
-/** Адреса приводиться до одного вигляду, інакше та сама пошта заведеться двічі. */
-/** Перше слово імені: саме воно стоїть у листі як `{{first_name}}`. */
+/** Addresses are normalised, otherwise the same email gets added twice. */
+/** The first word of the name: that is what the letter shows as `{{first_name}}`. */
 function firstName(value: string | null | undefined): string | null {
   return (value ?? '').trim().split(/\s+/)[0] || null;
 }
 
-/** Імʼя йде в регулярку, а в іменах трапляються крапки і дефіси. */
+/** The name goes into a regex, and names contain dots and hyphens. */
 function escapeForRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1120,8 +1127,8 @@ export function normalizeEmail(value: string | null | undefined): string | null 
 }
 
 /**
- * Запамʼятати адресу за компанією. Дублікат не заводиться, а мертва адреса
- * повертається до життя: якщо власник вписав її руками, значить перевірив.
+ * Remember an address for a company. No duplicate is created, and a dead address comes back
+ * to life: if the owner typed it in by hand, they checked it.
  */
 export async function rememberContact(
   companyId: number,
@@ -1147,12 +1154,12 @@ export async function rememberContact(
   return { created: true };
 }
 
-/** Пропустити компанію: чернетка стирається, історія не чіпається. */
+/** Skip a company: the draft is erased, history is left alone. */
 export async function discardDraft(id: number): Promise<{ deleted: boolean }> {
   const db = getDb();
   const [existing] = await db.select().from(outreach).where(eq(outreach.id, id));
   if (!existing) return { deleted: false };
-  if (existing.status !== 'draft') throw new Error('видаляти можна тільки чернетку');
+  if (existing.status !== 'draft') throw new Error('only a draft can be deleted');
   await db.delete(outreach).where(eq(outreach.id, id));
   return { deleted: true };
 }

@@ -10,10 +10,10 @@ import { seedOutreachTemplates } from '../src/pipeline/outreach.js';
 import { buildSystem, collectCompany, companyVerdict } from '../src/pipeline/verdict.js';
 
 /**
- * Вердикт по компанії. Модель тут підмінена стабом навмисно: перевіряється не те,
- * що вона відповість, а те, що з її відповіддю робить код. Саме там живуть помилки,
- * через які кнопка виглядає робочою: неіснуючий ключ шаблона, прийнятий мовчки, і
- * порожня відповідь, яка не лишає власнику навіть запасного варіанта.
+ * The company verdict. The model is stubbed here on purpose: what is tested is not what it
+ * answers, but what the code does with the answer. That is where the bugs live that make the
+ * button look like it works: a non-existent template key accepted silently, and an empty answer
+ * that leaves the owner without even a fallback.
  */
 
 let studio: Company;
@@ -28,7 +28,7 @@ const valid = {
   language: 'en',
   confidence: 80,
   angle: 'They build headless commerce on Next.js',
-  why: 'Стек збігається, є іменний контакт',
+  why: 'The stack matches and there is a named contact',
   risks: [],
   contact: 'Anna Koval',
   skip: false,
@@ -52,8 +52,8 @@ beforeAll(async () => {
     .values({ companyId: studio.id, name: 'Anna Koval', role: 'CTO', email: 'anna@acme-verdict.com' });
 });
 
-describe('збір даних про компанію', () => {
-  it('віддає модели тільки те, що є в базі', async () => {
+describe('collecting company data', () => {
+  it('gives the model only what is in the database', async () => {
     const block = await collectCompany(studio.id);
 
     expect(block.domain).toBe('acme-verdict.com');
@@ -63,41 +63,41 @@ describe('збір даних про компанію', () => {
   });
 });
 
-describe('системний блок', () => {
+describe('system block', () => {
   /*
-   * Кеш промпта це збіг початку запиту байт у байт. Тому шаблони мусять лягати в
-   * системний блок у стабільному порядку, інакше кожен наступний виклик коштує
-   * повну ціну замість десятої частини, і помітити це можна тільки по рахунку.
+   * The prompt cache is a byte-for-byte match of the request start. So templates must land in
+   * the system block in a stable order, otherwise every call costs full price instead of a
+   * tenth, and the only way to notice is the bill.
    */
-  it('однаковий при однакових шаблонах', () => {
+  it('is identical for identical templates', () => {
     const list = [
-      { slug: 'b', name: 'Б', kind: 'studio', for_kind: null, language: 'en', target_type: 'studio_named', note: null, body: 'Hi' },
-      { slug: 'a', name: 'А', kind: 'studio', for_kind: null, language: 'en', target_type: 'studio_generic', note: null, body: 'Hello' },
+      { slug: 'b', name: 'B', kind: 'studio', for_kind: null, language: 'en', target_type: 'studio_named', note: null, body: 'Hi' },
+      { slug: 'a', name: 'A', kind: 'studio', for_kind: null, language: 'en', target_type: 'studio_generic', note: null, body: 'Hello' },
     ];
 
-    expect(buildSystem(list, ['факт'])).toBe(buildSystem([...list], ['факт']));
+    expect(buildSystem(list, ['fact'])).toBe(buildSystem([...list], ['fact']));
     expect(buildSystem(list, [])).toContain('studio_named');
   });
 });
 
-describe('вердикт по компанії', () => {
-  it('приймає відповідь моделі і лишає поруч детермінований вибір', async () => {
+describe('company verdict', () => {
+  it('accepts the model answer and keeps the deterministic choice alongside', async () => {
     const report = await companyVerdict(studio.id, { caller: reply(valid), skipCache: true });
 
     expect(report.source).toBe('llm');
     expect(report.verdict?.template_slug).toBe('send_studio_named_en');
     expect(report.error).toBeNull();
-    // Компанія з Польщі означає англійську, і це рахує код, а не модель.
+    // A company in Poland means English, and the code computes that, not the model.
     expect(report.language).toBe('en');
     expect(report.fallbackTarget).toBe('studio_named');
     expect(report.fallbackSlug).toBeTruthy();
   });
 
   /*
-   * Модель регулярно вигадує схожий, але неіснуючий ключ. Мовчки прийнятий, він
-   * вів би в шаблон, якого немає, і кнопка виглядала б робочою, не працюючи.
+   * The model regularly invents a similar but non-existent key. Accepted silently, it would
+   * lead to a template that does not exist, and the button would look like it works without working.
    */
-  it('відкидає неіснуючий ключ шаблона', async () => {
+  it('rejects a non-existent template key', async () => {
     const report = await companyVerdict(studio.id, {
       caller: reply({ ...valid, template_slug: 'send_studio_named_pl' }),
       skipCache: true,
@@ -106,13 +106,13 @@ describe('вердикт по компанії', () => {
     expect(report.verdict).toBeNull();
     expect(report.source).toBe('invalid');
     expect(report.error).toContain('send_studio_named_pl');
-    // Запасний варіант лишається: без відповіді на "чим писати" власника не лишають.
+    // The fallback stays: the owner is never left without an answer to "what to write with".
     expect(report.fallbackSlug).toBeTruthy();
   });
 
-  it('невалідний JSON не валить кнопку', async () => {
+  it('invalid JSON does not break the button', async () => {
     const report = await companyVerdict(studio.id, {
-      caller: async () => ({ text: 'вибач, не можу', inputTokens: 10, outputTokens: 5 }),
+      caller: async () => ({ text: 'sorry, I cannot', inputTokens: 10, outputTokens: 5 }),
       skipCache: true,
     });
 
@@ -121,11 +121,11 @@ describe('вердикт по компанії', () => {
   });
 
   /*
-   * Другий клік по тій самій картці не має коштувати нічого. Ключ кешу включає і
-   * шаблони, і дані компанії, тому правка тексту або знайдена пошта самі дають
-   * новий вердикт, без окремої кнопки "перерахувати".
+   * A second click on the same card should cost nothing. The cache key includes both the
+   * templates and the company data, so a text edit or a found email gives a new verdict by
+   * itself, without a separate "recompute" button.
    */
-  it('повторний виклик іде з кешу і моделі не турбує', async () => {
+  it('a repeated call comes from cache and does not call the model', async () => {
     const first = await companyVerdict(studio.id, { caller: reply(valid), skipCache: true });
     expect(first.source).toBe('llm');
 

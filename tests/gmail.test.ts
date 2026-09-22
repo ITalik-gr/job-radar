@@ -10,20 +10,20 @@ import {
 import { explainSendError, stripEmDash } from '../src/lib/gmail.js';
 
 /**
- * Тест на кирилицю тут обовʼязковий, розділ 11 OUTREACH.md. Некоректне кодування
- * українського листа це мовчазний баг: у базі, в логах і у відправника текст
- * правильний, кракозябри бачить тільки одержувач.
+ * The Cyrillic test is mandatory here, section 11 of OUTREACH.md. Broken encoding of a Ukrainian
+ * letter is a silent bug: in the database, in the logs and for the sender the text is right, and
+ * only the recipient sees garbage. The Ukrainian fixtures below are therefore deliberate.
  */
 
 const base = {
-  fromName: 'Alex Example',
-  fromEmail: 'italik@example.com',
+  fromName: 'Olena Koval',
+  fromEmail: 'olena@example.com',
   to: 'anton@acme.com',
   subject: 'Frontend для Acme',
-  body: 'Вітаю, Антоне.\n\nПишу щодо вакансії.\n\nAlex',
+  body: 'Вітаю, Антоне.\n\nПишу щодо вакансії.\n\nOlena',
 };
 
-/** Тіло листа лежить у base64 після порожнього рядка, який відділяє заголовки. */
+/** The letter body sits in base64 after the blank line that separates the headers. */
 function decodeBody(raw: string): string {
   const [, ...rest] = raw.split('\r\n\r\n');
   const encoded = rest.join('\r\n\r\n').replace(/\r\n/g, '');
@@ -36,34 +36,34 @@ function headerLine(raw: string, name: string): string | undefined {
     .find((line) => line.toLowerCase().startsWith(`${name.toLowerCase()}:`));
 }
 
-describe('кодування заголовків', () => {
-  it('латиниця лишається читабельною', () => {
+describe('header encoding', () => {
+  it('Latin text stays readable', () => {
     expect(encodeHeader('Front-end for Acme')).toBe('Front-end for Acme');
   });
 
-  it('кирилиця йде в encoded-word', () => {
+  it('Cyrillic goes into an encoded-word', () => {
     const encoded = encodeHeader('Привіт');
     expect(encoded.startsWith('=?UTF-8?B?')).toBe(true);
     expect(fromBase64Url(base64Url('Привіт'))).toBe('Привіт');
   });
 
-  it('імʼя з комою береться в лапки, інакше кома розірве адресу', () => {
-    expect(formatAddress('Example, Alex', 'a@b.com')).toBe('"Example, Alex" <a@b.com>');
+  it('a name with a comma is quoted, otherwise the comma splits the address', () => {
+    expect(formatAddress('Koval, Olena', 'a@b.com')).toBe('"Koval, Olena" <a@b.com>');
   });
 
-  it('кирилиця в імені йде в encoded-word', () => {
-    expect(formatAddress('Олекса Приклад', 'a@b.com')).toContain('=?UTF-8?B?');
+  it('Cyrillic in a name goes into an encoded-word', () => {
+    expect(formatAddress('Олена Коваль', 'a@b.com')).toContain('=?UTF-8?B?');
   });
 
-  it('порожнє імʼя дає голу адресу без кутових дужок', () => {
+  it('an empty name gives a bare address without angle brackets', () => {
     expect(formatAddress('', 'a@b.com')).toBe('a@b.com');
   });
 });
 
-describe('лист RFC 2822 з кирилицею', () => {
+describe('RFC 2822 letter with Cyrillic', () => {
   const raw = buildMime(base);
 
-  it('тема закодована і розкодовується назад у той самий текст', () => {
+  it('the subject is encoded and decodes back to the same text', () => {
     const line = headerLine(raw, 'Subject')!;
     const encoded = line.slice('Subject: =?UTF-8?B?'.length, -2);
     expect(fromBase64Url(encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''))).toBe(
@@ -71,46 +71,46 @@ describe('лист RFC 2822 з кирилицею', () => {
     );
   });
 
-  it('тіло розкодовується посимвольно так само, як його склали', () => {
+  it('the body decodes character for character as it was built', () => {
     expect(decodeBody(raw)).toBe(base.body.replace(/\n/g, '\r\n'));
   });
 
-  it('оголошує utf-8 і base64, інакше клієнт вгадує кодування сам', () => {
+  it('declares utf-8 and base64, otherwise the client guesses the encoding', () => {
     expect(raw).toContain('Content-Type: text/plain; charset="UTF-8"');
     expect(raw).toContain('Content-Transfer-Encoding: base64');
   });
 
-  it('тільки text/plain: html від незнайомця фільтрується жорсткіше', () => {
+  it('text/plain only: html from a stranger is filtered more harshly', () => {
     expect(raw).not.toContain('text/html');
     expect(raw).not.toContain('multipart');
   });
 
-  it('From з іменем і Reply-To на ту саму адресу', () => {
-    expect(headerLine(raw, 'From')).toBe('From: Alex Example <italik@example.com>');
-    expect(headerLine(raw, 'Reply-To')).toBe('Reply-To: italik@example.com');
+  it('From with a name and Reply-To to the same address', () => {
+    expect(headerLine(raw, 'From')).toBe('From: Olena Koval <olena@example.com>');
+    expect(headerLine(raw, 'Reply-To')).toBe('Reply-To: olena@example.com');
   });
 
-  it('рядки base64 не довші за 76 символів, як вимагає RFC 2045', () => {
+  it('base64 lines are no longer than 76 characters, as RFC 2045 requires', () => {
     const long = buildMime({ ...base, body: 'Дуже довгий український рядок. '.repeat(40) });
     const lines = long.split('\r\n\r\n').slice(1).join('').split('\r\n');
     expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(76);
   });
 
-  it('raw для API це base64url без вирівнювання', () => {
+  it('raw for the API is base64url without padding', () => {
     const encoded = encodeMessage(base);
     expect(encoded).not.toMatch(/[+/=]/);
     expect(fromBase64Url(encoded)).toBe(raw);
   });
 });
 
-describe('тредування фолоу-апу', () => {
-  it('новий лист не має ні In-Reply-To, ні References', () => {
+describe('follow-up threading', () => {
+  it('a new letter has neither In-Reply-To nor References', () => {
     const raw = buildMime(base);
     expect(headerLine(raw, 'In-Reply-To')).toBeUndefined();
     expect(headerLine(raw, 'References')).toBeUndefined();
   });
 
-  it('фолоу-ап посилається на оригінал обома заголовками', () => {
+  it('a follow-up references the original with both headers', () => {
     const raw = buildMime({
       ...base,
       inReplyTo: '<abc@mail.gmail.com>',
@@ -120,7 +120,7 @@ describe('тредування фолоу-апу', () => {
     expect(headerLine(raw, 'References')).toBe('References: <abc@mail.gmail.com>');
   });
 
-  it('References тримає весь ланцюжок через пробіл', () => {
+  it('References holds the whole chain separated by spaces', () => {
     const raw = buildMime({
       ...base,
       inReplyTo: '<second@mail.gmail.com>',
@@ -131,34 +131,34 @@ describe('тредування фолоу-апу', () => {
     );
   });
 
-  it('порожні значення в ланцюжку не лишають зайвих пробілів', () => {
+  it('empty values in the chain leave no extra spaces', () => {
     const raw = buildMime({ ...base, references: ['<a@b>', ''] });
     expect(headerLine(raw, 'References')).toBe('References: <a@b>');
   });
 });
 
-describe('помилки відправки', () => {
-  it('вимкнений Gmail API пояснюється однією дією', () => {
+describe('send errors', () => {
+  it('a disabled Gmail API is explained with one action', () => {
     const raw =
       'Gmail API has not been used in project 8312224703 before or it is disabled. Enable it by visiting https://console.developers.google.com/...';
-    expect(explainSendError(raw, 403)).toContain('Увімкнути його в Google Cloud Console');
+    expect(explainSendError(raw, 403)).toContain('Enable it in Google Cloud Console');
   });
 
-  it('протухлий токен веде до повторного підключення', () => {
-    expect(explainSendError('invalid_grant', 401)).toContain('підключити пошту заново');
+  it('an expired token leads to reconnecting', () => {
+    expect(explainSendError('invalid_grant', 401)).toContain('reconnect mail');
   });
 
-  it('незнайома помилка віддається як є, без вигаданого пояснення', () => {
-    expect(explainSendError('щось дивне', 500)).toContain('щось дивне');
+  it('an unfamiliar error is passed on as is, without an invented explanation', () => {
+    expect(explainSendError('something odd', 500)).toContain('something odd');
   });
 });
 
-describe('em dash на виході', () => {
-  it('ріжеться перед відправкою, це останній рубіж', () => {
+describe('em dash on the way out', () => {
+  it('is stripped before sending, the last line of defence', () => {
     expect(stripEmDash('Ми робимо сайти — і магазини')).toBe('Ми робимо сайти, і магазини');
   });
 
-  it('текст без нього не міняється', () => {
+  it('text without one is unchanged', () => {
     expect(stripEmDash('Ми робимо сайти, і магазини')).toBe('Ми робимо сайти, і магазини');
   });
 });

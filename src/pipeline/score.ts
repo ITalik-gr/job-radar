@@ -1,9 +1,9 @@
 import { rules } from './rules.js';
 
 /**
- * Скоринг детермінований і живе в коді, а списки в config/scoring.json.
- * Порядок перевірок навмисний: спершу відсіювання (стоп-слова, роль, гео),
- * потім бали. Дешеве попереду дорогого.
+ * Scoring is deterministic and lives in code, while the lists live in config/scoring.json.
+ * The order of checks is deliberate: filtering first (stop words, role, geo), then points.
+ * Cheap before expensive.
  */
 
 export const STOP_WORD_SCORE = -100;
@@ -11,7 +11,7 @@ export const EXCLUDED_SCORE = -100;
 
 export interface ScoreSignals {
   text: string;
-  /** Домен і розмір компанії: гіганти проходять тільки з дуже сильним збігом. */
+  /** Company domain and size: giants pass only with a very strong match. */
   companyDomain?: string | null;
   companySizeHint?: string | null;
   title?: string | null;
@@ -36,11 +36,11 @@ export interface ScoreBreakdown {
   positives: ScoreReason[];
   negatives: ScoreReason[];
   excluded: boolean;
-  /** Чому запис узагалі не показується. null, якщо показується. */
+  /** Why the record is not shown at all. null if it is shown. */
   rejectedBy: string | null;
 }
 
-/** Межа слова, яка не ламається на крапках і решітках: `.net`, `c#`, `next.js`. */
+/** A word boundary that does not break on dots and hashes: `.net`, `c#`, `next.js`. */
 function occurs(haystack: string, needle: string): boolean {
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const before = /^[a-z0-9]/.test(needle) ? '(?<![a-z0-9])' : '(?<![a-z0-9.])';
@@ -65,21 +65,21 @@ export function hasStopWord(text: string): boolean {
 }
 
 /**
- * Роль за назвою. Без цієї перевірки "Sr. Manager, Accounting" набирає балів
- * з тексту про компанію, де згадані React і Next.js, і лізе в чергу.
+ * Role by title. Without this check "Sr. Manager, Accounting" scores points from company text
+ * that mentions React and Next.js, and gets into the queue.
  */
 export function roleFits(title: string | null | undefined): { ok: boolean; reason: string | null } {
   const gate = rules().roleGate;
   if (!gate.enabled) return { ok: true, reason: null };
 
   const value = (title ?? '').toLowerCase();
-  if (!value) return { ok: false, reason: 'без назви' };
+  if (!value) return { ok: false, reason: 'no title' };
 
   const banned = matchesAny(value, gate.neverMatch);
-  if (banned) return { ok: false, reason: `назва містить "${banned}"` };
+  if (banned) return { ok: false, reason: `title contains "${banned}"` };
 
   const wanted = matchesAny(value, gate.mustMatch);
-  if (!wanted) return { ok: false, reason: 'назва не схожа на інженерну' };
+  if (!wanted) return { ok: false, reason: 'the title does not look like an engineering role' };
 
   return { ok: true, reason: null };
 }
@@ -91,10 +91,10 @@ export interface GeoVerdict {
 }
 
 /**
- * Гео. Головна діра старої версії: прапорець remote вважався достатнім.
- * Насправді "Remote (US)" і "San Francisco, hybrid" означають, що з Києва не підходить.
+ * Geo. The main hole in the old version: the remote flag was considered enough. In fact
+ * "Remote (US)" and "San Francisco, hybrid" mean it does not work from the home city.
  */
-/** Збіг регіону по межі слова: без цього "ny" ловиться всередині "many". */
+/** Region match on word boundaries: without it "ny" matches inside "many". */
 function containsRegion(haystack: string, regions: string[]): string | null {
   for (const region of regions) {
     const escaped = region.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -105,55 +105,55 @@ function containsRegion(haystack: string, regions: string[]): string | null {
 
 export function geoFits(location: string | null | undefined, text = '', title = ''): GeoVerdict {
   const geo = rules().geo;
-  if (!geo.enabled) return { eligible: true, reason: 'перевірка гео вимкнена', weight: 0 };
+  if (!geo.enabled) return { eligible: true, reason: 'geo check disabled', weight: 0 };
 
-  // Дефіси і слеші в локаціях ("In-Office", "Remote/US") ламають пошук підрядка.
+  // Hyphens and slashes in locations ("In-Office", "Remote/US") break substring search.
   const place = (location ?? '').toLowerCase().replace(/[-/|]+/g, ' ').replace(/\s+/g, ' ').trim();
   const body = text.toLowerCase().slice(0, 6000);
   const haystack = `${place} ${body}`;
 
   if (geo.homeCity.some((city) => haystack.includes(city))) {
-    return { eligible: true, reason: 'згадані Київ або Україна', weight: geo.bonusUkraineFriendly };
+    return { eligible: true, reason: 'home city or country mentioned', weight: geo.bonusUkraineFriendly };
   }
 
-  // Місто часто ховається в назві: "Senior Engineer, Majors - NYC" при локації "Distributed".
+  // A city often hides in the title: "Senior Engineer, Majors - NYC" with location "Distributed".
   const inTitle = containsRegion(title.toLowerCase(), geo.blockedRegions);
   if (inTitle) {
-    return { eligible: false, reason: `місто в назві вакансії: ${inTitle}`, weight: geo.penaltyBlockedRegion };
+    return { eligible: false, reason: `city in the vacancy title: ${inTitle}`, weight: geo.penaltyBlockedRegion };
   }
 
   const allowed = containsRegion(place, geo.allowedRegions);
-  if (allowed) return { eligible: true, reason: `дозволений регіон: ${allowed}`, weight: 0 };
+  if (allowed) return { eligible: true, reason: `allowed region: ${allowed}`, weight: 0 };
 
   const hybrid = /\bhybrid\b|\bon-?site\b|\bin office\b|\bв офісі\b/.test(place);
   const blocked = containsRegion(place, geo.blockedRegions);
 
   if (hybrid && blocked) {
-    return { eligible: false, reason: `офіс або гібрид у ${blocked}`, weight: geo.penaltyHybridElsewhere };
+    return { eligible: false, reason: `office or hybrid in ${blocked}`, weight: geo.penaltyHybridElsewhere };
   }
   if (hybrid) {
-    return { eligible: false, reason: 'гібрид чи офіс поза Києвом', weight: geo.penaltyHybridElsewhere };
+    return { eligible: false, reason: 'hybrid or office outside the home city', weight: geo.penaltyHybridElsewhere };
   }
   if (blocked) {
-    return { eligible: false, reason: `прив'язка до регіону: ${blocked}`, weight: geo.penaltyBlockedRegion };
+    return { eligible: false, reason: `tied to a region: ${blocked}`, weight: geo.penaltyBlockedRegion };
   }
 
   const restriction = geo.restrictionPhrases.find((phrase) => body.includes(phrase));
   if (restriction) {
-    return { eligible: false, reason: `в тексті: "${restriction}"`, weight: geo.penaltyBlockedRegion };
+    return { eligible: false, reason: `in the text: "${restriction}"`, weight: geo.penaltyBlockedRegion };
   }
 
-  // Названо місце, але жодної ознаки віддаленості. Тоді це офіс, хай там що
-  // написано в прапорці remote: саме так у чергу лізли "Barcelona" і "In-Office".
+  // A place is named, but there is no sign of remote work. Then it is an office, whatever the
+  // remote flag says: that is exactly how "Barcelona" and "In-Office" got into the queue.
   const remoteMarker = geo.remoteMarkers.some((marker) => place.includes(marker));
   if (place.length > 1 && !remoteMarker) {
-    return { eligible: false, reason: `локація "${location}" без ознак віддаленості`, weight: geo.penaltyOnSitePlace };
+    return { eligible: false, reason: `location "${location}" with no sign of remote work`, weight: geo.penaltyOnSitePlace };
   }
 
-  return { eligible: true, reason: 'обмежень не знайдено', weight: 0 };
+  return { eligible: true, reason: 'no restrictions found', weight: 0 };
 }
 
-/** Скільки років досвіду вимагають. Беремо найбільше згадане число. */
+/** How many years of experience are required. The largest number mentioned wins. Ukrainian forms are matched too. */
 export function requiredYears(text: string): number | null {
   const matches = [...text.matchAll(/(\d{1,2})\s*\+?\s*(?:-|–|to)?\s*\d{0,2}\s*(?:years|yrs|роки|років|рок)/giu)];
   const years = matches
@@ -168,23 +168,23 @@ function experienceReasons(signals: ScoreSignals, haystack: string, title: strin
 
   const years = requiredYears(haystack);
   if (years !== null && years >= 7) {
-    reasons.push({ reason: `вимагають ${years}+ років`, weight: experience.years7 });
+    reasons.push({ reason: `requires ${years}+ years`, weight: experience.years7 });
   } else if (years !== null && years >= 5) {
-    reasons.push({ reason: `вимагають ${years}+ років`, weight: experience.years5 });
+    reasons.push({ reason: `requires ${years}+ years`, weight: experience.years5 });
   }
 
   const lead = /\b(tech lead|team lead|engineering manager|head of|director|principal|staff)\b/.test(title) ||
     (signals.seniority ?? '').toLowerCase() === 'lead';
-  if (lead) reasons.push({ reason: 'лідська позиція', weight: experience.leadTitle });
+  if (lead) reasons.push({ reason: 'lead position', weight: experience.leadTitle });
 
   if (/\b(junior|middle|mid-level)\b/.test(title)) {
-    reasons.push({ reason: 'грейд без завищених вимог', weight: experience.juniorBonus });
+    reasons.push({ reason: 'seniority without inflated requirements', weight: experience.juniorBonus });
   }
 
   return reasons;
 }
 
-/** Верхня межа розміру компанії з рядка каталогу: "10 - 49", "понад 1500", "200...800". */
+/** Upper bound of company size from a catalog string: "10 - 49", "понад 1500" (DOU), "200...800". */
 export function companyHeadcount(sizeHint: string | null | undefined): number | null {
   if (!sizeHint) return null;
   const numbers = [...sizeHint.matchAll(/\d[\d\s,]*/g)]
@@ -194,22 +194,22 @@ export function companyHeadcount(sizeHint: string | null | undefined): number | 
 }
 
 /**
- * Поправка на розмір компанії. Причина проста: у велику відому контору подача майже
- * завжди марна, тому вона має пройти поріг лише з дійсно сильним збігом.
+ * Company size adjustment. The reason is simple: applying to a large famous company is almost
+ * always futile, so it should clear the threshold only with a really strong match.
  */
 export function companySizeReason(signals: ScoreSignals): ScoreReason | null {
   const config = rules().companySize;
   const domain = (signals.companyDomain ?? '').toLowerCase();
 
   if (domain && config.knownBig.includes(domain)) {
-    return { reason: 'велика відома компанія', weight: config.bigPenalty };
+    return { reason: 'large well-known company', weight: config.bigPenalty };
   }
 
   const headcount = companyHeadcount(signals.companySizeHint);
   if (headcount === null) return null;
-  if (headcount >= config.bigFrom) return { reason: `${headcount}+ людей у компанії`, weight: config.bigPenalty };
-  if (headcount >= config.midFrom) return { reason: `${headcount} людей у компанії`, weight: config.midPenalty };
-  if (headcount <= config.smallUpTo) return { reason: 'невелика компанія', weight: config.smallBonus };
+  if (headcount >= config.bigFrom) return { reason: `${headcount}+ people in the company`, weight: config.bigPenalty };
+  if (headcount >= config.midFrom) return { reason: `${headcount} people in the company`, weight: config.midPenalty };
+  if (headcount <= config.smallUpTo) return { reason: 'small company', weight: config.smallBonus };
   return null;
 }
 
@@ -218,7 +218,7 @@ function contextReasons(signals: ScoreSignals, haystack: string): ScoreReason[] 
   const reasons: ScoreReason[] = [];
 
   if (/equity only|unpaid|no salary|without pay|за долю|без оплати/.test(haystack)) {
-    reasons.push({ reason: 'equity only або без оплати', weight: context.equityOnly });
+    reasons.push({ reason: 'equity only or unpaid', weight: context.equityOnly });
   }
 
   const c1 =
@@ -226,26 +226,27 @@ function contextReasons(signals: ScoreSignals, haystack: string): ScoreReason[] 
     /\bc1\b|native english|native speaker|fluent english/.test(haystack);
   const video = /video interview|video call|відеозустріч|відеоінтервʼю|screening call/.test(haystack);
   if (c1 && video) {
-    reasons.push({ reason: 'C1 англійська плюс відеоспівбесіда', weight: context.englishC1WithVideo });
+    reasons.push({ reason: 'C1 English plus a video interview', weight: context.englishC1WithVideo });
   }
 
   const noSalary = !signals.salaryMin && !signals.salaryMax;
   if (noSalary && /competitive|конкурентн/.test(haystack)) {
-    reasons.push({ reason: 'вилки немає, зате "competitive"', weight: context.noSalaryCompetitive });
+    reasons.push({ reason: 'no salary range, but "competitive"', weight: context.noSalaryCompetitive });
   }
 
-  // Вакансія українською означає, що співбесіда теж буде українською.
-  // Це прямий плюс: письмова англійська сильна, довгий технічний дзвінок англійською ні.
+  // A vacancy written in Ukrainian means the interview will be in Ukrainian too. The regexes
+  // below match Ukrainian letters and words on purpose. It is a plus for an owner whose written
+  // English is strong and whose long technical calls in English are not.
   if (/[іїєґ]/i.test(haystack) && /(вакансі|розробник|досвід|обов|команд)/i.test(haystack)) {
-    reasons.push({ reason: 'вакансія українською', weight: context.ukrainianVacancy });
+    reasons.push({ reason: 'vacancy in Ukrainian', weight: context.ukrainianVacancy });
   }
 
   return reasons;
 }
 
 /**
- * Бали за технології. Назва важить утричі, бали з тексту обмежені стелею:
- * інакше довгий блок "про компанію" з переліком стеку витягує нагору будь-що.
+ * Points for technologies. The title weighs three times as much, text points are capped:
+ * otherwise a long "about the company" block listing the stack pulls anything to the top.
  */
 function keywordReasons(title: string, body: string, remote: boolean | null | undefined): ScoreReason[] {
   const { weights } = rules();
@@ -254,7 +255,7 @@ function keywordReasons(title: string, body: string, remote: boolean | null | un
 
   for (const [term, weight] of Object.entries(weights.terms)) {
     if (occurs(title, term)) {
-      positives.push({ reason: `${term} у назві`, weight: weight * weights.titleMultiplier });
+      positives.push({ reason: `${term} in the title`, weight: weight * weights.titleMultiplier });
       continue;
     }
     if (occurs(body, term)) {
@@ -287,23 +288,23 @@ export function scoreVacancy(signals: ScoreSignals): ScoreBreakdown {
   };
 
   if (signals.blacklisted) {
-    return { ...empty, excluded: true, rejectedBy: 'компанія в blacklist' };
+    return { ...empty, excluded: true, rejectedBy: 'company is blacklisted' };
   }
 
   const stopWords = findStopWords(haystack);
   if (stopWords.length > 0) {
-    return { ...empty, stopWords, rejectedBy: `стоп-слово: ${stopWords.join(', ')}` };
+    return { ...empty, stopWords, rejectedBy: `stop word: ${stopWords.join(', ')}` };
   }
 
   const role = roleFits(signals.title);
   if (!role.ok) {
-    return { ...empty, rejectedBy: `не та роль: ${role.reason}` };
+    return { ...empty, rejectedBy: `wrong role: ${role.reason}` };
   }
 
   const geo = geoFits(signals.location, body, title);
   const positives = keywordReasons(title, body, signals.remote);
-  // Контекстні причини бувають і з плюсом (вакансія українською, невелика компанія),
-  // тому розкладаємо їх за знаком, а не складаємо все в мінуси.
+  // Context reasons can carry a plus too (vacancy in Ukrainian, small company), so they are
+  // split by sign rather than all counted as minuses.
   const contextual = [...experienceReasons(signals, haystack, title), ...contextReasons(signals, haystack)];
   const size = companySizeReason(signals);
   if (size) contextual.push(size);
@@ -325,13 +326,13 @@ export function scoreVacancy(signals: ScoreSignals): ScoreBreakdown {
     positives,
     negatives,
     excluded: false,
-    rejectedBy: geo.eligible ? null : `гео: ${geo.reason}`,
+    rejectedBy: geo.eligible ? null : `geo: ${geo.reason}`,
   };
 }
 
 export function explain(breakdown: ScoreBreakdown): string {
-  const lines: string[] = [`рахунок: ${breakdown.score}`];
-  if (breakdown.rejectedBy) lines.push(`відсіяно: ${breakdown.rejectedBy}`);
+  const lines: string[] = [`score: ${breakdown.score}`];
+  if (breakdown.rejectedBy) lines.push(`rejected: ${breakdown.rejectedBy}`);
   for (const item of breakdown.positives) lines.push(`  +${item.weight}  ${item.reason}`);
   for (const item of breakdown.negatives) lines.push(`  ${item.weight}  ${item.reason}`);
   return lines.join('\n');

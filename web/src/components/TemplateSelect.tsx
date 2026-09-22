@@ -3,10 +3,11 @@ import { Select } from '@mantine/core';
 import { api } from '../lib/api';
 
 /**
- * Список шаблонів приходить з бази, а не з масиву в коді. Значення це slug, бо саме
- * він лягає в `outreach.template_used` знімком на момент листа.
+ * The template list comes from the database, not from an array in the code. The value
+ * is the slug, because that is what lands in `outreach.template_used` as a snapshot
+ * taken when the letter was sent.
  *
- * Архівні не показуються: архів це "прибрати з очей, але не втратити".
+ * Archived ones are hidden: archiving means "out of sight, but not lost".
  */
 export function TemplateSelect({
   kind,
@@ -24,16 +25,17 @@ export function TemplateSelect({
   const options = (data?.templates ?? [])
     .filter((row) => row.kind === kind && !row.archived)
     /*
-     * У підписі і назва, і мова: шаблони ходять парами uk та en, і без мови
-     * список читається як два однакові рядки поспіль.
+     * The label carries both the name and the language: templates come in uk and en
+     * pairs, and without the language the list reads as two identical rows in a row.
      */
     .map((row) => ({ value: row.slug, label: `${row.name}, ${row.language}` }));
 
   /*
-   * Тут більше немає вибору "перший у списку". Початковий шаблон пропонує блок листа
-   * на тій самій картці, і він враховує тип компанії, тобто пропонує розумніше.
-   * Поки обидва ставили значення самі, вигравав той, чий ефект спрацював останнім,
-   * і підказка за типом компанії мовчки затиралась першим рядком списку.
+   * There is no "first in the list" choice here any more. The starting template is
+   * suggested by the letter block on the same card, and it takes the company kind into
+   * account, so its guess is better. While both set the value, whichever effect ran
+   * last won, and the suggestion by company kind was silently overwritten by the first
+   * row of the list.
    */
 
   return (
@@ -41,11 +43,11 @@ export function TemplateSelect({
       data={options}
       value={value}
       onChange={(next) => next && onChange(next)}
-      placeholder={options.length === 0 ? 'шаблонів немає' : 'шаблон'}
+      placeholder={options.length === 0 ? 'no templates' : 'template'}
       disabled={options.length === 0}
       allowDeselect={false}
       w={width}
-      aria-label="шаблон листа"
+      aria-label="letter template"
     />
   );
 }

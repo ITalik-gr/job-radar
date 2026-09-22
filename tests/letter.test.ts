@@ -10,22 +10,27 @@ const context = {
   vacancyTitle: 'Frontend Developer',
 };
 
-describe('підстановка в шаблон листа', () => {
-  it('підставляє всі підтримувані значення', () => {
+describe('filling a letter template', () => {
+  it('fills in every supported value', () => {
     const { text } = renderLetter(
-      'Вітаю, {{first_name}}. Бачив {{domain}}, ви {{niche}}. Стек: {{their_stack}}.',
+      'Hi {{first_name}}. Saw {{domain}}, you are {{niche}}. Stack: {{their_stack}}.',
       context,
     );
-    expect(text).toBe('Вітаю, Anton. Бачив acme.com, ви дизайн-студія. Стек: react, next.js.');
+    expect(text).toBe('Hi Anton. Saw acme.com, you are a design studio. Stack: react, next.js.');
   });
 
-  it('повне імʼя і перше слово це різні токени', () => {
+  it('a Ukrainian letter gets the niche in Ukrainian', () => {
+    const { text } = renderLetter('Вітаю. Ви {{niche}}.', { ...context, language: 'uk' });
+    expect(text).toBe('Вітаю. Ви дизайн-студія.');
+  });
+
+  it('the full name and the first word are different tokens', () => {
     const { text } = renderLetter('{{contact_name}} | {{first_name}}', context);
     expect(text).toBe('Anton Malyy | Anton');
   });
 
-  it('порожнє значення не лишає фігурних дужок у листі', () => {
-    const { text, missing } = renderLetter('Вітаю, {{contact_name}}.', {
+  it('an empty value leaves no curly braces in the letter', () => {
+    const { text, missing } = renderLetter('Hi {{contact_name}}.', {
       company: 'Acme',
       domain: 'acme.com',
     });
@@ -34,7 +39,7 @@ describe('підстановка в шаблон листа', () => {
     expect(missing).toContain('contact_name');
   });
 
-  it('невідомий токен повідомляється окремо від порожнього', () => {
+  it('an unknown token is reported separately from an empty one', () => {
     const { missing, unknown } = renderLetter('{{compnay}} {{contact_name}}', {
       company: 'Acme',
       domain: 'acme.com',
@@ -44,117 +49,117 @@ describe('підстановка в шаблон листа', () => {
     expect(missing).toEqual(['contact_name']);
   });
 
-  it('пробіли всередині дужок не ламають підстановку', () => {
+  it('spaces inside the braces do not break substitution', () => {
     expect(renderLetter('{{ company }}', context).text).toBe('Acme Studio');
   });
 
-  it('подвійні пробіли і висячі коми після порожнього значення прибираються', () => {
-    const { text } = renderLetter('Вітаю {{contact_name}} , маю пропозицію', {
+  it('double spaces and dangling commas after an empty value are cleaned up', () => {
+    const { text } = renderLetter('Hi {{contact_name}} , I have an offer', {
       company: 'Acme',
       domain: 'acme.com',
     });
-    expect(text).toBe('Вітаю, маю пропозицію');
+    expect(text).toBe('Hi, I have an offer');
   });
 
-  it('шаблон без плейсхолдерів лишається як є', () => {
-    expect(renderLetter('Просто текст', context).text).toBe('Просто текст');
+  it('a template without placeholders stays as is', () => {
+    expect(renderLetter('Just text', context).text).toBe('Just text');
   });
 
-  it('перелік плейсхолдерів для редактора не порожній і має підписи', () => {
+  it('the placeholder list for the editor is not empty and has hints', () => {
     expect(LETTER_PLACEHOLDERS.length).toBeGreaterThan(4);
     expect(LETTER_PLACEHOLDERS.every((item) => item.token && item.hint)).toBe(true);
   });
 });
 
 describe('mailto', () => {
-  it('складає посилання з темою і тілом', () => {
-    const link = mailtoLink('a@acme.com', 'Пропозиція', 'Вітаю');
+  it('builds a link with subject and body', () => {
+    const link = mailtoLink('a@acme.com', 'Offer', 'Hello');
     expect(link).toMatch(/^mailto:a@acme\.com\?/);
     expect(link).toContain('subject=');
     expect(link).toContain('body=');
   });
 
-  it('пробіл кодується як %20, бо поштові клієнти не розуміють плюс', () => {
-    expect(mailtoLink('a@acme.com', 'дві теми', '')).toContain('%20');
-    expect(mailtoLink('a@acme.com', 'дві теми', '')).not.toContain('+');
+  it('a space is encoded as %20, because mail clients do not understand plus', () => {
+    expect(mailtoLink('a@acme.com', 'two words', '')).toContain('%20');
+    expect(mailtoLink('a@acme.com', 'two words', '')).not.toContain('+');
   });
 
-  it('без адреси посилання немає', () => {
-    expect(mailtoLink(null, 'Тема', 'Текст')).toBeNull();
+  it('no address means no link', () => {
+    expect(mailtoLink(null, 'Subject', 'Body')).toBeNull();
   });
 });
 
 /*
- * Перший абзац це такий самий текст власника, як і тіло листа, і мітки в ньому
- * мусять працювати. До цього він вставлявся готовим рядком, і `{{company}}`,
- * написаний в полі абзацу, доїжджав до пошти фігурними дужками.
+ * The first paragraph is the owner's text just like the letter body, and placeholders must work
+ * in it. It used to be inserted as a ready string, and `{{company}}` typed into the paragraph
+ * field reached the mail as curly braces.
  */
-describe('мітки всередині першого абзацу', () => {
-  it('абзац проходить підстановку, а не вставляється як є', () => {
-    const { text } = renderLetter('{{intro}} Далі текст.', {
+describe('placeholders inside the first paragraph', () => {
+  it('the paragraph goes through substitution rather than being inserted as is', () => {
+    const { text } = renderLetter('{{intro}} More text.', {
       ...context,
-      intro: 'Бачив {{company}} і їхній {{their_stack}}.',
+      intro: 'Saw {{company}} and their {{their_stack}}.',
     });
 
-    expect(text).toBe('Бачив Acme Studio і їхній react, next.js. Далі текст.');
+    expect(text).toBe('Saw Acme Studio and their react, next.js. More text.');
   });
 
-  it('порожня мітка в абзаці повідомляється, коли шаблон абзац бере', () => {
+  it('an empty placeholder in the paragraph is reported when the template uses the paragraph', () => {
     const { text, missing } = renderLetter('{{intro}}', {
       company: 'Acme',
       domain: 'acme.com',
-      intro: 'Вітаю, {{contact_name}}.',
+      intro: 'Hi {{contact_name}}.',
     });
 
     expect(text).not.toContain('{{');
     expect(missing).toContain('contact_name');
   });
 
-  it('шаблон без мітки абзацу не скаржиться на його вміст', () => {
-    const { missing, unknown } = renderLetter('Просто текст про {{company}}.', {
+  it('a template without the paragraph marker does not complain about its contents', () => {
+    const { missing, unknown } = renderLetter('Just text about {{company}}.', {
       company: 'Acme',
       domain: 'acme.com',
-      intro: 'Заготовка з {{compnay}} і {{contact_name}}.',
+      intro: 'A draft with {{compnay}} and {{contact_name}}.',
     });
 
     expect(missing).toEqual([]);
     expect(unknown).toEqual([]);
   });
 
-  it('мітка абзацу всередині самого абзацу це помилка, а не рекурсія', () => {
+  it('the paragraph marker inside the paragraph itself is an error, not recursion', () => {
     const { text, unknown } = renderLetter('{{intro}}', {
       company: 'Acme',
       domain: 'acme.com',
-      intro: 'Текст {{intro}} текст',
+      intro: 'Text {{intro}} text',
     });
 
-    expect(text).toBe('Текст текст');
+    expect(text).toBe('Text text');
     expect(unknown).toContain('intro');
   });
 
-  it('мітки працюють і в темі листа', () => {
-    const { text } = renderLetter('Frontend для {{company}}, {{country}}', {
+  it('placeholders work in the subject too', () => {
+    const { text } = renderLetter('Frontend for {{company}}, {{country}}', {
       ...context,
       country: 'Poland',
     });
 
-    expect(text).toBe('Frontend для Acme Studio, Poland');
+    expect(text).toBe('Frontend for Acme Studio, Poland');
   });
 });
 
-describe('підпис', () => {
-  it('підставляється на місце мітки', () => {
-    const { text } = renderLetter('Текст.\n\n{{signature}}', {
+describe('signature', () => {
+  it('is placed where the marker stands', () => {
+    const { text } = renderLetter('Text.\n\n{{signature}}', {
       company: 'Acme',
       domain: 'acme.com',
-      signature: 'Alex\nexample.dev',
+      signature: 'Olena\nolena.dev',
     });
 
-    expect(text).toBe('Текст.\n\nAlex\nexample.dev');
+    expect(text).toBe('Text.\n\nOlena\nolena.dev');
   });
 
-  it('порожній підпис не лишає дужок і повідомляється', () => {
-    const { text, missing } = renderLetter('Текст.\n\n{{signature}}', {
+  it('an empty signature leaves no braces and is reported', () => {
+    const { text, missing } = renderLetter('Text.\n\n{{signature}}', {
       company: 'Acme',
       domain: 'acme.com',
     });

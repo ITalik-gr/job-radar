@@ -80,14 +80,14 @@ function template(over: Partial<Template> = {}): Template {
   return {
     id: 1,
     slug: 'test_tpl',
-    name: 'Тест',
+    name: 'Test',
     kind: 'studio',
     language: 'en',
     targetType: 'studio_named',
     forKind: null,
     subject: 'Front-end for {{company}}',
     intro: null,
-    body: 'Hi {{first_name}},\n\nSaw {{domain}}.\n\nAlex',
+    body: 'Hi {{first_name}},\n\nSaw {{domain}}.\n\nOlena',
     note: null,
     archived: false,
     createdAt: Date.now(),
@@ -133,59 +133,59 @@ beforeAll(async () => {
   });
 });
 
-describe('вибір шаблона', () => {
-  it('вакансія перебиває все інше', () => {
+describe('template choice', () => {
+  it('a vacancy beats everything else', () => {
     expect(pickTargetType({ hasVacancy: true, contactName: null, contactEmail: 'hello@a.com' })).toBe(
       'vacancy',
     );
   });
 
-  it('іменний контакт і особиста пошта дають studio_named', () => {
+  it('a named contact with a personal address gives studio_named', () => {
     expect(
       pickTargetType({ hasVacancy: false, contactName: 'Anton', contactEmail: 'anton@a.com' }),
     ).toBe('studio_named');
   });
 
-  it('імʼя при загальній пошті це все одно studio_generic', () => {
+  it('a name on a generic mailbox is still studio_generic', () => {
     expect(
       pickTargetType({ hasVacancy: false, contactName: 'Anton', contactEmail: 'hello@a.com' }),
     ).toBe('studio_generic');
   });
 
-  it('без контакту studio_generic', () => {
+  it('no contact means studio_generic', () => {
     expect(pickTargetType({ hasVacancy: false })).toBe('studio_generic');
   });
 });
 
-describe('загальна пошта', () => {
+describe('generic mailbox', () => {
   it.each(['hello@a.com', 'info@a.com', 'jobs@a.com', 'hr.team@a.com', 'careers@a.com'])(
-    '%s читає менеджер',
+    '%s is read by a manager',
     (email) => {
       expect(isGenericEmail(email)).toBe(true);
     },
   );
 
-  it.each(['anton@a.com', 'a.malyy@a.com', 'cto@a.com'])('%s іменна', (email) => {
+  it.each(['anton@a.com', 'a.malyy@a.com', 'cto@a.com'])('%s is personal', (email) => {
     expect(isGenericEmail(email)).toBe(false);
   });
 
-  it('порожня адреса вважається загальною, іменного листа з неї не буде', () => {
+  it('an empty address counts as generic, no named letter comes from it', () => {
     expect(isGenericEmail(null)).toBe(true);
   });
 });
 
-describe('мова', () => {
-  it.each(['UA', 'ua', 'Ukraine', 'Україна'])('%s означає uk', (country) => {
+describe('language', () => {
+  it.each(['UA', 'ua', 'Ukraine', 'Україна'])('%s means uk', (country) => {
     expect(pickLanguage(country)).toBe('uk');
   });
 
-  it.each(['PL', 'Germany', null, ''])('%s означає en', (country) => {
+  it.each(['PL', 'Germany', null, ''])('%s means en', (country) => {
     expect(pickLanguage(country)).toBe('en');
   });
 });
 
-describe('вибір контакту', () => {
-  it('іменний контакт з поштою важливіший за загальну скриньку', () => {
+describe('contact choice', () => {
+  it('a named contact with an email beats a generic mailbox', () => {
     const picked = pickContact([
       contact({ id: 1, name: null, email: 'hello@acme.com' }),
       contact({ id: 2, name: 'Anton', email: 'anton@acme.com' }),
@@ -193,58 +193,58 @@ describe('вибір контакту', () => {
     expect(picked?.id).toBe(2);
   });
 
-  it('без пошти контакт не годиться, лист нікуди слати', () => {
+  it('a contact without an email will not do, there is nowhere to send', () => {
     expect(pickContact([contact({ email: null })])).toBeNull();
   });
 });
 
-describe('складання чернетки', () => {
-  it('підставляє значення і не лишає помилки', () => {
+describe('building a draft', () => {
+  it('fills in the values and leaves no error', () => {
     const draft = buildDraft(candidate(), template(), 'en');
     expect(draft.subject).toBe('Front-end for Acme Studio');
     expect(draft.body).toContain('Hi Anton,');
     expect(draft.error).toBeNull();
   });
 
-  it('порожній плейсхолдер робить чернетку проблемною, а не листом "Hi ,"', () => {
+  it('an empty placeholder makes the draft problematic rather than a "Hi ," letter', () => {
     const draft = buildDraft(candidate({ contact: contact({ name: null }) }), template(), 'en');
     expect(draft.error).toContain('first_name');
     expect(draft.body).not.toContain('Hi ,');
   });
 
-  it('порожній шаблон це помилка, а не порожній лист', () => {
+  it('an empty template is an error, not an empty letter', () => {
     const draft = buildDraft(candidate(), template({ body: '   ' }), 'en');
-    expect(draft.error).toContain('шаблон порожній');
+    expect(draft.error).toContain('template is empty');
   });
 
-  it('мітка в квадратних дужках означає, що текст ще не дописали', () => {
+  it('a square bracket marker means the text is not finished yet', () => {
     const draft = buildDraft(
       candidate(),
-      template({ body: 'Hi {{first_name}},\n\n[другий абзац]' }),
+      template({ body: 'Hi {{first_name}},\n\n[second paragraph]' }),
       'en',
     );
-    expect(draft.error).toContain('мітки');
+    expect(draft.error).toContain('markers');
   });
 
-  it('без адреси чернетка не готова', () => {
+  it('without an address the draft is not ready', () => {
     const draft = buildDraft(candidate({ contact: contact({ email: null }) }), template(), 'en');
-    expect(draft.error).toContain('немає адреси');
+    expect(draft.error).toContain('no address');
   });
 
-  it('невідомий токен це друкарська помилка, а не мовчазний порожній рядок', () => {
+  it('an unknown token is a typo, not a silent empty string', () => {
     const draft = buildDraft(candidate(), template({ body: 'Hi {{firstname}}' }), 'en');
-    expect(draft.error).toContain('невідомі плейсхолдери');
+    expect(draft.error).toContain('unknown placeholders');
   });
 });
 
-describe('стартові шаблони', () => {
-  it('доливаються один раз, повторний виклик нічого не додає', async () => {
+describe('starter templates', () => {
+  it('are added once, a repeated call adds nothing', async () => {
     const added = await seedOutreachTemplates();
     expect(added).toBe(8);
     expect(await seedOutreachTemplates()).toBe(0);
   });
 
-  it('покривають усі випадки на двох мовах', async () => {
+  it('cover every case in two languages', async () => {
     const list = await outreachTemplates();
     for (const target of ['vacancy', 'studio_named', 'studio_generic', 'followup'] as const) {
       expect(matchTemplate(list, target, 'uk')).not.toBeNull();
@@ -252,41 +252,41 @@ describe('стартові шаблони', () => {
     }
   });
 
-  it('приходять з міткою замість тексту, тому власник мусить їх дописати', async () => {
+  it('come with markers instead of text, so the owner has to finish them', async () => {
     const list = await outreachTemplates();
     const draft = buildDraft(candidate(), matchTemplate(list, 'studio_named', 'en')!, 'en');
-    expect(draft.error).toContain('мітки');
+    expect(draft.error).toContain('markers');
   });
 });
 
-describe('кандидати на лист', () => {
-  it('компанія в блеклисті не потрапляє в кандидати', async () => {
+describe('letter candidates', () => {
+  it('a blacklisted company is not a candidate', async () => {
     const list = await draftCandidates(50);
     expect(list.map((row) => row.companyId)).not.toContain(blocked.id);
   });
 
-  it('вакансія вище порогу підтягується до компанії', async () => {
+  it('a vacancy above the threshold is attached to the company', async () => {
     const list = await draftCandidates(50);
     const row = list.find((item) => item.companyId === ukrainian.id);
     expect(row?.vacancyTitle).toBe('Senior Frontend');
     expect(row?.vacancyStack).toEqual(['react', 'typescript']);
   });
 
-  it('для студії береться іменний контакт', async () => {
+  it('a studio gets its named contact', async () => {
     const list = await draftCandidates(50);
     expect(list.find((item) => item.companyId === studio.id)?.contact?.email).toBe('anton@acme.com');
   });
 });
 
-describe('підготовка чернеток', () => {
-  it('dry-run нічого не пише в базу', async () => {
+describe('preparing drafts', () => {
+  it('dry-run writes nothing to the database', async () => {
     const report = await prepareDrafts({ dryRun: true });
     expect(report.drafts.length).toBeGreaterThan(0);
     expect(report.created).toBe(0);
     expect(await listDrafts()).toHaveLength(0);
   });
 
-  it('створює чернетки і вибирає шаблон під мову і випадок', async () => {
+  it('creates drafts and picks the template by language and case', async () => {
     const report = await prepareDrafts({});
     expect(report.created).toBe(2);
 
@@ -298,39 +298,39 @@ describe('підготовка чернеток', () => {
     expect(pl?.templateUsed).toBe('send_studio_named_en');
   });
 
-  it('чернетка не рахується надісланим листом', async () => {
+  it('a draft does not count as a sent letter', async () => {
     const rows = await getDb().select().from(outreach);
     expect(rows.every((row) => row.status === 'draft' && row.sentAt === null)).toBe(true);
   });
 
-  it('компанії з чернеткою вдруге не беруться', async () => {
+  it('companies with a draft are not taken twice', async () => {
     const report = await prepareDrafts({});
     expect(report.created).toBe(0);
   });
 
-  it('шаблон із мітками робить чернетку проблемною', async () => {
+  it('a template with markers makes the draft problematic', async () => {
     const drafts = await listDrafts();
     expect(drafts.every((row) => row.error !== null)).toBe(true);
   });
 });
 
-describe('компанія без адреси', () => {
+describe('company without an address', () => {
   /*
-   * Чернетка без адреси раніше лягала в чергу з позначкою "немає адреси, куди писати",
-   * і власник бачив лист, який нікуди не піде, доки не запустить збір контактів окремо.
-   * Тепер обхід сайту йде до складання листа, а якщо адреси немає і після нього,
-   * чернетка не створюється зовсім.
+   * A draft without an address used to land in the queue marked "no address to write to",
+   * and the owner saw a letter that would go nowhere until they ran contact collection
+   * separately. Now the site crawl comes before the letter is built, and if there is still
+   * no address after it, no draft is created at all.
    *
-   * `enrichLimit: 0` тут для того, щоб тест не ходив у мережу.
+   * `enrichLimit: 0` keeps the test off the network.
    */
-  it('у чергу не потрапляє, а причина називається', async () => {
+  it('does not reach the queue, and the reason is given', async () => {
     const db = getDb();
     const empty = (await upsertCompany({ name: 'Silent', domain: 'silent.io', source: 'test' })).company;
 
     /*
-     * Адреса є, але мертва після hard bounce. Саме такі компанії і давали зіпсовані
-     * чернетки: відбір кандидатів дивиться лише на наявність пошти, а вибір контакту
-     * ще й на її придатність, і між цими двома перевірками лист устигав створитись.
+     * There is an address, but it is dead after a hard bounce. Exactly such companies produced
+     * broken drafts: candidate selection only checks that an email exists, contact choice also
+     * checks that it is usable, and a letter slipped through between the two checks.
      */
     await db.insert(contacts).values({
       companyId: empty.id,
@@ -344,14 +344,14 @@ describe('компанія без адреси', () => {
 
     expect((await listDrafts()).length).toBe(before);
     expect(report.skipped.some((row) => row.company === 'Silent')).toBe(true);
-    expect(report.skipped.find((row) => row.company === 'Silent')?.reason).toContain('адреси');
+    expect(report.skipped.find((row) => row.company === 'Silent')?.reason).toContain('address');
 
     await db.delete(companies).where(eq(companies.id, empty.id));
   });
 });
 
-describe('заміна шаблона в чернетці', () => {
-  it('текст збирається заново, а перший абзац лишається', async () => {
+describe('swapping the template on a draft', () => {
+  it('the text is rebuilt and the first paragraph stays', async () => {
     const db = getDb();
     const [draft] = await listDrafts();
     const was = draft!.templateUsed;
@@ -367,21 +367,21 @@ describe('заміна шаблона в чернетці', () => {
     expect(row!.templateId).toBe(other.id);
   });
 
-  it('невідомий шаблон це помилка, а не тиха заміна', async () => {
+  it('an unknown template is an error, not a silent swap', async () => {
     const [draft] = await listDrafts();
-    await expect(retemplateDraft(draft!.id, 'нема_такого')).rejects.toThrow('немає');
+    await expect(retemplateDraft(draft!.id, 'no_such_template')).rejects.toThrow('no template');
   });
 });
 
-describe('чернетка по кнопці з Черги', () => {
+describe('draft from the Queue button', () => {
   /*
-   * Шаблон, вибраний руками на картці, раніше нікуди не йшов: код підбирав свій
-   * за роллю і мовою, і власник отримував чернетку зовсім іншим текстом.
+   * A template picked by hand on the card used to go nowhere: the code picked its own by
+   * role and language, and the owner got a draft with a completely different text.
    *
-   * Компанія тут своя, а не спільна: чернетка на компанію буває рівно одна, тому
-   * тест на спільній заважав би сусіднім.
+   * The company here is the test's own rather than shared: a company has exactly one draft,
+   * so a test on a shared one would get in the way of its neighbours.
    */
-  it('бере шаблон, вибраний на картці, а не підібраний кодом', async () => {
+  it('uses the template picked on the card, not the one chosen by code', async () => {
     const db = getDb();
     const own = (await upsertCompany({ name: 'Choice', domain: 'choice.ua', country: 'UA', source: 'test' }))
       .company;
@@ -397,7 +397,7 @@ describe('чернетка по кнопці з Черги', () => {
 
     const [row] = await db.select().from(outreach).where(eq(outreach.id, manual.id!));
     expect(row!.templateUsed).toBe('send_studio_generic_en');
-    // Шаблон запамʼятався номером, інакше перегенерація абзацу не знає, з чого збирати.
+    // The template is remembered by id, otherwise intro regeneration would not know what to build from.
     expect(row!.templateId).not.toBeNull();
 
     await db.delete(outreach).where(eq(outreach.companyId, own.id));
@@ -405,44 +405,44 @@ describe('чернетка по кнопці з Черги', () => {
     await db.delete(companies).where(eq(companies.id, own.id));
   });
 
-  it('неіснуючий шаблон не підміняється тихо іншим', async () => {
+  it('a missing template is not silently replaced by another', async () => {
     const db = getDb();
     const own = (await upsertCompany({ name: 'NoTpl', domain: 'notpl.ua', country: 'UA', source: 'test' }))
       .company;
     await db.insert(contacts).values({ companyId: own.id, name: 'Ola', email: 'ola@notpl.ua' });
 
-    const result = await draftForCompany(own.id, null, { templateSlug: 'нема_такого' });
+    const result = await draftForCompany(own.id, null, { templateSlug: 'no_such_template' });
     expect(result.id).toBeNull();
-    expect(result.reason).toContain('нема_такого');
+    expect(result.reason).toContain('no_such_template');
 
     await db.delete(contacts).where(eq(contacts.companyId, own.id));
     await db.delete(companies).where(eq(companies.id, own.id));
   });
 
-  it('другу чернетку тій самій компанії не створює', async () => {
+  it('does not create a second draft for the same company', async () => {
     const first = await draftForCompany(studio.id);
     expect(first.id).not.toBeNull();
 
     const second = await draftForCompany(studio.id);
     expect(second.id).toBe(first.id);
-    expect(second.reason).toContain('вже лежить');
+    expect(second.reason).toContain('already queued');
   });
 
   /*
-   * Без адреси чернетка все одно лягає в чергу, з порожнім полем адреси. Раніше тут
-   * була відмова, і компанія зникала з поля зору, хоча знайти пошту очима на їхньому
-   * сайті часто справа хвилини. Відправку це не відкриває, її тримає `checkSend`.
+   * Without an address the draft still lands in the queue, with an empty address field. This
+   * used to be a refusal, and the company dropped out of sight, although finding the email on
+   * their site by eye often takes a minute. It does not open sending, `checkSend` holds that.
    */
-  it('без адреси чернетка створюється з порожнім полем і поясненням', async () => {
+  it('without an address the draft is created with an empty field and an explanation', async () => {
     const db = getDb();
     const empty = (await upsertCompany({ name: 'Ghost', domain: 'ghost.io', source: 'test' })).company;
-    // enrich: false, щоб тест не ходив у мережу.
+    // enrich: false keeps the test off the network.
     const result = await draftForCompany(empty.id, null, { enrich: false });
 
     expect(result.id).not.toBeNull();
-    expect(result.reason).toContain('впиши пошту руками');
+    expect(result.reason).toContain('type the email by hand');
     expect(result.draft?.contactEmail).toBeNull();
-    // Помилка є, тобто чернетка лежить у вкладці "Потребують уваги", а не готова до відправки.
+    // There is an error, so the draft sits in the "Need attention" tab rather than being ready to send.
     expect(result.draft?.error).not.toBeNull();
 
     await db.delete(outreach).where(eq(outreach.companyId, empty.id));
@@ -450,11 +450,11 @@ describe('чернетка по кнопці з Черги', () => {
   });
 
   /*
-   * Вписана руками адреса не лишається всередині листа: вона заводиться контактом
-   * компанії, тому видно її і на сторінці студії, і наступного разу радар уже не
-   * вважає, що писати нікуди.
+   * An address typed by hand does not stay inside the letter: it becomes a company contact,
+   * so it shows on the studio page too, and next time the radar no longer thinks there is
+   * nowhere to write.
    */
-  it('вписана в чернетці адреса стає контактом компанії', async () => {
+  it('an address typed into a draft becomes a company contact', async () => {
     const db = getDb();
     const empty = (await upsertCompany({ name: 'Manual', domain: 'manual.io', source: 'test' })).company;
     const created = await draftForCompany(empty.id, null, { enrich: false });
@@ -473,12 +473,11 @@ describe('чернетка по кнопці з Черги', () => {
   });
 
   /*
-   * Найтонше місце вибору адреси. Лист складається один раз, і `{{first_name}}`
-   * у ньому давно перетворився на конкретне "Hi Anna". Перевести чернетку на
-   * адресу Ігоря і лишити текст як є означає мовчки привітатись з Анною: помилки
-   * немає, плейсхолдерів немає, лист іде.
+   * The subtlest part of address choice. A letter is built once, and `{{first_name}}` in it
+   * has long become a specific "Hi Anna". Moving the draft to Ihor's address and leaving the
+   * text as is means silently greeting Anna: no error, no placeholders, the letter goes.
    */
-  it('зміна контакту переписує імʼя в темі і в тексті', async () => {
+  it('changing the contact rewrites the name in the subject and the body', async () => {
     const db = getDb();
     const company = (await upsertCompany({ name: 'Swap', domain: 'swap.io', source: 'test' })).company;
     await db
@@ -488,7 +487,7 @@ describe('чернетка по кнопці з Черги', () => {
 
     await updateDraft(created.id!, {
       subject: 'Anna, front-end for Swap',
-      body: 'Hi Anna,\n\nSaw swap.io.\n\nAlex',
+      body: 'Hi Anna,\n\nSaw swap.io.\n\nOlena',
       contactEmail: 'anna@swap.io',
       contactName: 'Anna Koval',
     });
@@ -509,10 +508,10 @@ describe('чернетка по кнопці з Черги', () => {
   });
 
   /*
-   * Нового імені немає, старе в тексті лишилось. Вигадати звертання нема з чого,
-   * тому чернетка чесно стає проблемною замість того, щоб піти з чужим іменем.
+   * There is no new name, and the old one is still in the text. There is nothing to build a
+   * greeting from, so the draft honestly becomes problematic instead of going out with someone else's name.
    */
-  it('адреса без імені лишає чернетку проблемною, а не мовчить', async () => {
+  it('an address without a name keeps the draft problematic instead of staying silent', async () => {
     const db = getDb();
     const company = (await upsertCompany({ name: 'Orphan', domain: 'orphan.io', source: 'test' })).company;
     await db
@@ -522,7 +521,7 @@ describe('чернетка по кнопці з Черги', () => {
 
     await updateDraft(created.id!, {
       subject: 'Front-end for Orphan',
-      body: 'Hi Anna,\n\nSaw orphan.io.\n\nAlex',
+      body: 'Hi Anna,\n\nSaw orphan.io.\n\nOlena',
       contactEmail: 'anna@orphan.io',
       contactName: 'Anna Koval',
     });
@@ -540,16 +539,16 @@ describe('чернетка по кнопці з Черги', () => {
   });
 
   /*
-   * Список адрес їде разом з чернеткою, інакше вибрати іншу означало б згадати
-   * її напамʼять. Іменні першими: лист на hello@ читає менеджер, не техлід.
+   * The address list travels with the draft, otherwise picking another one would mean
+   * recalling it from memory. Named first: a letter to hello@ is read by a manager, not a tech lead.
    */
-  it('чернетка несе всі адреси компанії, іменні першими', async () => {
+  it('a draft carries every company address, named ones first', async () => {
     const db = getDb();
     const company = (await upsertCompany({ name: 'Many', domain: 'many.io', source: 'test' })).company;
     await db.insert(contacts).values([
       { companyId: company.id, email: 'hello@many.io' },
       { companyId: company.id, name: 'Olena Marchuk', role: 'CTO', email: 'olena@many.io' },
-      { companyId: company.id, name: 'Без пошти' },
+      { companyId: company.id, name: 'No Email' },
     ]);
     const created = await draftForCompany(company.id, null, { enrich: false });
 
@@ -563,54 +562,54 @@ describe('чернетка по кнопці з Черги', () => {
   });
 });
 
-describe('правка чернетки', () => {
-  it('дописаний текст знімає позначку про проблему', async () => {
+describe('editing a draft', () => {
+  it('finished text clears the problem flag', async () => {
     const [draft] = await listDrafts();
     const updated = await updateDraft(draft!.id, {
       subject: 'Front-end',
-      body: 'Вітаю.\n\nКоротко про справу.\n\nAlex',
+      body: 'Вітаю.\n\nКоротко про справу.\n\nOlena',
     });
     expect(updated?.error).toBeNull();
   });
 
-  it('незаповнений плейсхолдер лишає чернетку проблемною', async () => {
+  it('an unfilled placeholder keeps the draft problematic', async () => {
     const [draft] = await listDrafts();
     const updated = await updateDraft(draft!.id, { body: 'Вітаю, {{first_name}}.' });
     expect(updated?.error).toContain('first_name');
   });
 
-  it('надісланий лист правити не можна, це знімок того, що пішло', async () => {
+  it('a sent letter cannot be edited, it is a snapshot of what went out', async () => {
     const [draft] = await listDrafts();
     await getDb().update(outreach).set({ status: 'sent', sentAt: Date.now() }).where(eq(outreach.id, draft!.id));
-    await expect(updateDraft(draft!.id, { body: 'нове' })).rejects.toThrow('чернетку');
+    await expect(updateDraft(draft!.id, { body: 'new text' })).rejects.toThrow('only a draft');
   });
 });
 
-describe('видалення чернетки', () => {
-  it('чернетку можна прибрати', async () => {
+describe('deleting a draft', () => {
+  it('a draft can be removed', async () => {
     const drafts = await listDrafts();
     expect(await discardDraft(drafts[0]!.id)).toEqual({ deleted: true });
   });
 
-  it('надісланий лист не видаляється', async () => {
+  it('a sent letter is not deleted', async () => {
     const [sent] = await getDb().select().from(outreach).where(eq(outreach.status, 'sent'));
-    await expect(discardDraft(sent!.id)).rejects.toThrow('чернетку');
+    await expect(discardDraft(sent!.id)).rejects.toThrow('only a draft');
   });
 });
 
 /*
- * Підпис однаковий у всіх листах, тому живе окремо від шаблонів. Шаблони, написані
- * до появи мітки, не лишаються без нього: він дописується в кінець сам.
+ * The signature is the same in every letter, so it lives apart from the templates. Templates
+ * written before the placeholder existed are not left without it: it is appended on its own.
  */
-describe('підпис у листі', () => {
-  const signature = 'Alex Example\nexample.dev';
+describe('signature in a letter', () => {
+  const signature = 'Olena Koval\nolena.dev';
 
-  it('дописується в кінець, якщо мітки в шаблоні немає', () => {
+  it('is appended at the end when the template has no placeholder', () => {
     const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', null, signature);
     expect(built.body.endsWith(signature)).toBe(true);
   });
 
-  it('мітка ставить його туди, де вона стоїть, і другого разу не буде', () => {
+  it('the placeholder puts it where it stands, and there is no second copy', () => {
     const built = buildDraft(
       candidate(),
       template({ body: 'Hi.\n\n{{signature}}\n\nP.S. one line.' }),
@@ -620,10 +619,10 @@ describe('підпис у листі', () => {
     );
 
     expect(built.body).toContain(`${signature}\n\nP.S. one line.`);
-    expect(built.body.split('example.dev')).toHaveLength(2);
+    expect(built.body.split('olena.dev')).toHaveLength(2);
   });
 
-  it('підпис, уже вписаний у шаблон руками, не дублюється', () => {
+  it('a signature already typed into the template by hand is not duplicated', () => {
     const built = buildDraft(
       candidate(),
       template({ body: `Hi.\n\nSaw {{domain}}.\n\n${signature}` }),
@@ -632,10 +631,10 @@ describe('підпис у листі', () => {
       signature,
     );
 
-    expect(built.body.split('example.dev')).toHaveLength(2);
+    expect(built.body.split('olena.dev')).toHaveLength(2);
   });
 
-  it('порожній підпис нічого не дописує', () => {
+  it('an empty signature appends nothing', () => {
     const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', null, '');
     expect(built.body).toBe('Hi.\n\nSaw acme.com.');
   });

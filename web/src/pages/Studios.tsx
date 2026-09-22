@@ -49,14 +49,14 @@ import { Score } from '../components/Score';
 import { LetterBlock } from '../components/LetterBlock';
 import { SimilarBlock } from '../components/SimilarBlock';
 
-/** Підписи типів компаній. Той самий перелік, що в `src/pipeline/company-kind.ts`. */
+/** Company kind labels. The same list as in `src/pipeline/company-kind.ts`. */
 const KIND_LABELS: Record<string, string> = {
-  studio: 'студія',
-  design: 'дизайн-студія',
-  startup: 'стартап',
-  product: 'продукт',
-  outstaff: 'аутстаф',
-  unknown: 'тип невідомий',
+  studio: 'studio',
+  design: 'design studio',
+  startup: 'startup',
+  product: 'product',
+  outstaff: 'outstaffing',
+  unknown: 'unknown kind',
 };
 
 const KIND_COLORS: Record<string, string> = {
@@ -68,7 +68,7 @@ const KIND_COLORS: Record<string, string> = {
   unknown: 'gray',
 };
 
-/** Стек, знятий із сайту студії. WordPress і Tilda означають, що фронт там навряд чи наймають. */
+/** Stack taken from the studio site. WordPress and Tilda mean they are unlikely to hire front end developers. */
 const WEAK_STACK = ['wordpress', 'tilda', 'wix', 'squarespace', 'drupal'];
 
 function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; onSelect: () => void }) {
@@ -103,10 +103,10 @@ function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; on
           <Group gap={4} mt={6} wrap="nowrap" style={{ overflow: 'hidden' }}>
             {card.openVacancies > 0 && (
               <Badge size="xs" color="green">
-                вакансій {card.openVacancies}
+                {card.openVacancies} vacancies
               </Badge>
             )}
-            {/* Оцінка видно вже у списку: інакше репутацію треба відкривати по одній картці. */}
+            {/* The rating shows in the list already: otherwise reputation takes opening cards one by one. */}
             {card.rating !== null && (
               <Badge size="xs" color={card.rating >= 4.5 ? 'green' : card.rating >= 4 ? 'gray' : 'yellow'}>
                 {card.rating.toFixed(1)}
@@ -126,9 +126,9 @@ function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; on
 }
 
 /**
- * Каталоги пхають у теги все підряд, аж до часток відсотків і ставок за годину.
- * Тому за замовчуванням видно перші десять, а решта розкривається і згортається
- * назад: раніше лічильник "ще 6" був просто текстом і нічого не робив.
+ * Catalogs stuff everything into tags, down to percentage shares and hourly rates.
+ * So the first ten are visible by default and the rest expand and collapse again:
+ * the "6 more" counter used to be plain text that did nothing.
  */
 function TagList({ tags, limit = 10 }: { tags: string[]; limit?: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -144,7 +144,7 @@ function TagList({ tags, limit = 10 }: { tags: string[]; limit?: number }) {
       ))}
       {hidden > 0 && (
         <Anchor component="button" type="button" size="sm" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? 'згорнути' : `ще ${hidden}`}
+          {expanded ? 'collapse' : `${hidden} more`}
         </Anchor>
       )}
     </Group>
@@ -168,24 +168,24 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
       notifications.show({
         color: 'green',
         title: card.name,
-        message: result.created ? `контакт ${result.email} додано` : `${result.email} уже був у контактах`,
+        message: result.created ? `contact ${result.email} added` : `${result.email} was already a contact`,
       });
     },
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не додалось', message: error.message }),
+      notifications.show({ color: 'red', title: 'not added', message: error.message }),
   });
 
   /*
-   * Обхід сайту однієї компанії по кнопці. Загальний прохід іде партіями і бере
-   * компанії за пріоритетом, тобто конкретна студія, яку власник дивиться прямо
-   * зараз, може чекати на нього днями. Тут вона обходиться відразу.
+   * Crawling one company site on demand. The general pass runs in batches and picks
+   * companies by priority, so the specific studio the owner is looking at right now
+   * could wait days for it. Here it is crawled at once.
    */
   const [report, setReport] = useState<RefreshReport | null>(null);
 
   /*
-   * Повний перегляд однієї компанії: заново на сайт, career-сторінка, стек, контакти.
-   * Нічні проходи роблять те саме, але за розкладом і партіями, тому конкретна студія,
-   * яку власник дивиться зараз, могла б чекати своєї черги днями.
+   * A full review of one company: back to the site, careers page, stack, contacts.
+   * Nightly passes do the same on a schedule and in batches, so the specific studio the
+   * owner is looking at now could wait its turn for days.
    */
   const refresh = useMutation({
     mutationFn: () => api.refreshCompany(card.companyId),
@@ -196,22 +196,22 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
         color: result.contactsAdded > 0 || result.techAdded.length > 0 ? 'green' : 'yellow',
         title: card.name,
         message: !result.reachable
-          ? 'сайт не відкрився серверу. Він у черзі для розширення: попап, "Обійти в фоні"'
+          ? 'the site did not open for the server. It is queued for the extension: popup, "Crawl in background"'
           : result.clientRendered && result.emails.length === 0
-            ? 'сайт малює вміст скриптом. Він у черзі для розширення: попап, "Обійти в фоні"'
-            : `сторінок ${result.pagesFetched}, контактів +${result.contactsAdded}, стек +${result.techAdded.length}`,
+            ? 'the site renders its content with script. It is queued for the extension: popup, "Crawl in background"'
+            : `pages ${result.pagesFetched}, contacts +${result.contactsAdded}, stack +${result.techAdded.length}`,
       });
     },
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+      notifications.show({ color: 'red', title: 'failed', message: error.message }),
   });
 
   /*
-   * Вердикт моделі: яким шаблоном заходити і за що зачепитись.
+   * The model's verdict: which template to open with and what to hook onto.
    *
-   * Порада, а не рішення. Обраний шаблон одразу підставляється в селект унизу,
-   * але змінити його там можна в один клік, і саме на цьому вибір і стоїть:
-   * розсилка як була детермінованою, так і лишається.
+   * Advice, not a decision. The chosen template goes straight into the select below, but
+   * it can be changed there with one click, and that is the whole point: sending was
+   * deterministic and stays that way.
    */
   const [verdict, setVerdict] = useState<VerdictReport | null>(null);
 
@@ -226,12 +226,12 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
         message:
           result.error ??
           (result.verdict?.skip
-            ? `радить не писати: ${result.verdict.skip_reason ?? 'без причини'}`
-            : `шаблон ${result.verdict?.template_slug}, впевненість ${result.verdict?.confidence}`),
+            ? `advises not to write: ${result.verdict.skip_reason ?? 'no reason given'}`
+            : `template ${result.verdict?.template_slug}, confidence ${result.verdict?.confidence}`),
       });
     },
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+      notifications.show({ color: 'red', title: 'failed', message: error.message }),
   });
 
   const toDrafts = useMutation({
@@ -240,10 +240,10 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
       notifications.show({
         color: result.id && !result.reason ? 'green' : 'yellow',
         title: card.name,
-        message: result.reason ?? 'чернетка на сторінці До відправки',
+        message: result.reason ?? 'draft is on the Outbox page',
       }),
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+      notifications.show({ color: 'red', title: 'failed', message: error.message }),
   });
 
   useHotkeys(
@@ -275,21 +275,21 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             <Badge color={KIND_COLORS[card.kind] ?? 'gray'}>{KIND_LABELS[card.kind] ?? card.kind}</Badge>
             {card.sizeHint && <Badge color="gray">{card.sizeHint}</Badge>}
             {/*
-              Оцінка і відгуки поруч із назвою навмисно: це найшвидша відповідь на
-              питання "чи є там кому читати лист", і заради неї не треба розкривати картку.
+              Rating and reviews sit next to the name on purpose: they are the quickest answer
+              to "is anyone there to read the letter", and it should not take opening the card.
             */}
             {card.rating !== null && (
               <Badge color={card.rating >= 4.5 ? 'green' : card.rating >= 4 ? 'gray' : 'yellow'}>
                 {card.rating.toFixed(1)}
-                {card.reviewsCount !== null && ` · ${card.reviewsCount} відгуків`}
+                {card.reviewsCount !== null && ` · ${card.reviewsCount} reviews`}
               </Badge>
             )}
             {card.rating === null && card.reviewsCount !== null && (
-              <Badge color="gray">{card.reviewsCount} відгуків</Badge>
+              <Badge color="gray">{card.reviewsCount} reviews</Badge>
             )}
             {card.lastContactedAt && (
               <Badge color="yellow" leftSection={<Clock size={11} />}>
-                писали {formatDate(card.lastContactedAt)}
+                contacted {formatDate(card.lastContactedAt)}
               </Badge>
             )}
           </Group>
@@ -303,8 +303,8 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
           )}
 
           {/*
-            Мертвий сайт видно одразу, ще до того як власник почне писати лист.
-            Рік береться з копірайту футера, дата з найсвіжішої публікації.
+            A dead site shows up right away, before the owner starts writing.
+            The year comes from the footer copyright, the date from the latest post.
           */}
           {(() => {
             const yearsBehind = card.copyrightYear ? new Date().getFullYear() - card.copyrightYear : 0;
@@ -314,18 +314,18 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             if (yearsBehind < 2 && silentDays < 540) return null;
 
             return (
-              <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="Схоже, сайт покинутий">
-                {yearsBehind >= 2 && `Копірайт ${card.copyrightYear} року. `}
-                {silentDays >= 540 && `Останній пост ${silentDays} днів тому. `}
-                Такі студії рідко відповідають на листи.
+              <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="The site looks abandoned">
+                {yearsBehind >= 2 && `Copyright ${card.copyrightYear}. `}
+                {silentDays >= 540 && `Last post ${silentDays} days ago. `}
+                Studios like this rarely answer letters.
               </Alert>
             );
           })()}
 
           {weak.length > 0 && (
-            <Alert color="yellow" mt="md" title="Стек сайту слабкий">
-              На сайті видно {weak.join(', ')}. Така студія рідко наймає React-розробника, лист майже напевно
-              піде в нікуди.
+            <Alert color="yellow" mt="md" title="Weak site stack">
+              The site shows {weak.join(', ')}. A studio like this rarely hires a React developer, and the
+              letter will most likely go nowhere.
             </Alert>
           )}
 
@@ -338,16 +338,16 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               variant="light"
               leftSection={<ExternalLink size={14} />}
             >
-              {card.kind === 'startup' ? 'Сайт стартапу' : 'Сайт студії'}
+              {card.kind === 'startup' ? 'Startup site' : 'Studio site'}
             </Button>
             {card.careersUrl && (
               <Button component="a" href={card.careersUrl} target="_blank" rel="noreferrer" variant="subtle">
-                Сторінка вакансій
+                Careers page
               </Button>
             )}
             {card.sourceUrl && (
               <Button component="a" href={card.sourceUrl} target="_blank" rel="noreferrer" variant="subtle">
-                Профіль у каталозі
+                Catalog profile
               </Button>
             )}
           </Group>
@@ -356,37 +356,37 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
 
           <DataList labelWidth={132} gap="sm">
             <DataList.Item>
-              <DataList.ItemLabel>рахунок</DataList.ItemLabel>
+              <DataList.ItemLabel>score</DataList.ItemLabel>
               <DataList.ItemValue>
                 <Score value={card.score} />
               </DataList.ItemValue>
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>де</DataList.ItemLabel>
+              <DataList.ItemLabel>location</DataList.ItemLabel>
               <DataList.ItemValue>
-                {[card.city, card.country].filter(Boolean).join(', ') || <Text c="dimmed">не вказано</Text>}
+                {[card.city, card.country].filter(Boolean).join(', ') || <Text c="dimmed">not stated</Text>}
               </DataList.ItemValue>
             </DataList.Item>
 
             {(card.hourlyRate || card.minProject || card.foundedYear) && (
               <DataList.Item>
-                <DataList.ItemLabel>каталог</DataList.ItemLabel>
+                <DataList.ItemLabel>catalog</DataList.ItemLabel>
                 <DataList.ItemValue>
                   <Group gap={6}>
-                    {card.hourlyRate && <Badge color="gray">ставка {card.hourlyRate}</Badge>}
-                    {card.minProject && <Badge color="gray">проєкт від {card.minProject}</Badge>}
-                    {card.foundedYear && <Badge color="gray">з {card.foundedYear}</Badge>}
+                    {card.hourlyRate && <Badge color="gray">rate {card.hourlyRate}</Badge>}
+                    {card.minProject && <Badge color="gray">projects from {card.minProject}</Badge>}
+                    {card.foundedYear && <Badge color="gray">since {card.foundedYear}</Badge>}
                   </Group>
                 </DataList.ItemValue>
               </DataList.Item>
             )}
 
             <DataList.Item>
-              <DataList.ItemLabel>стек із сайту</DataList.ItemLabel>
+              <DataList.ItemLabel>stack from the site</DataList.ItemLabel>
               <DataList.ItemValue>
                 {card.techHints.length === 0 ? (
-                  <Text c="dimmed">не визначено</Text>
+                  <Text c="dimmed">not detected</Text>
                 ) : (
                   <Group gap={6}>
                     {card.techHints.map((tech) => (
@@ -400,10 +400,10 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>теги каталогу</DataList.ItemLabel>
+              <DataList.ItemLabel>catalog tags</DataList.ItemLabel>
               <DataList.ItemValue>
                 {card.tags.length === 0 ? (
-                  <Text c="dimmed">немає</Text>
+                  <Text c="dimmed">none</Text>
                 ) : (
                   <TagList tags={card.tags} />
                 )}
@@ -411,13 +411,13 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>джерела</DataList.ItemLabel>
-              <DataList.ItemValue>{card.sources.join(', ') || <Text c="dimmed">невідомо</Text>}</DataList.ItemValue>
+              <DataList.ItemLabel>sources</DataList.ItemLabel>
+              <DataList.ItemValue>{card.sources.join(', ') || <Text c="dimmed">unknown</Text>}</DataList.ItemValue>
             </DataList.Item>
 
             {/*
-              Блок "Інше": усе, що каталог показав понад відомі поля. Набір різний
-              у кожного каталогу, тому це просто пари підпис-значення, без колонок.
+              The "Other" block: everything the catalog showed beyond the known fields. The set
+              differs per catalog, so these are plain label and value pairs, no columns.
             */}
             {Object.entries(card.extra ?? {}).map(([label, value]) => (
               <DataList.Item key={label}>
@@ -427,14 +427,14 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             ))}
           </DataList>
 
-          {/* Іменні контакти цінніші за hello@, тому вони окремим блоком і вище за розбір рахунку. */}
+          {/* Named contacts are worth more than hello@, so they get their own block above the score breakdown. */}
           <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
-            контакти
+            contacts
           </Text>
           {card.contacts.length === 0 ? (
             <Text c="dimmed" size="sm">
-              іменних контактів немає. Пошта на сайті майже завжди hello@ або info@, її читає менеджер.
-              Кнопка "Знайти контакти" внизу обійде сайт цієї компанії просто зараз.
+              no named contacts. The address on a site is almost always hello@ or info@, and a manager reads it.
+              The "Refresh from site" button below crawls this company's site right now.
             </Text>
           ) : (
             <Stack gap={6}>
@@ -445,45 +445,45 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
           )}
 
           {/*
-            Звіт останнього перегляду. Показується як є, з подробицями: кнопкою
-            перевіряють, чи працює пошук, а саме "оновлено" не каже нічого про те,
-            чи сайт узагалі відкрився і звідки взявся стек.
+            Report of the last review. Shown as is, with details: the button is how the
+            search gets checked, and a bare "updated" says nothing about whether the site
+            opened at all or where the stack came from.
           */}
           {report && (
             <Alert mt="md" color={report.reachable ? 'gray' : 'yellow'} p="xs">
               <Stack gap={4}>
                 <Text size="xs">
-                  сторінок відкрито: {report.pagesFetched}
-                  {!report.reachable && ', головна не відкрилась серверу'}
-                  {report.reachable && report.clientRendered && ', сторінка малюється скриптом'}
-                  {report.needsBrowser && '. Домен у черзі для розширення'}
+                  pages opened: {report.pagesFetched}
+                  {!report.reachable && ', the home page did not open for the server'}
+                  {report.reachable && report.clientRendered && ', the page renders with script'}
+                  {report.needsBrowser && '. The domain is queued for the extension'}
                 </Text>
                 <Text size="xs">
-                  career-сторінка: {report.careersUrl ?? 'не знайдена'}
+                  careers page: {report.careersUrl ?? 'not found'}
                   {report.careersSlug ? ` (${report.careersKind}: ${report.careersSlug})` : ''}
                 </Text>
                 <Text size="xs">
-                  стек: {report.techHints.length} усього
-                  {report.techAdded.length > 0 ? `, нове: ${report.techAdded.join(', ')}` : ', нічого нового'}
+                  stack: {report.techHints.length} total
+                  {report.techAdded.length > 0 ? `, new: ${report.techAdded.join(', ')}` : ', nothing new'}
                 </Text>
                 <Text size="xs">
-                  пошта: {report.emails.length > 0 ? report.emails.join(', ') : 'не знайдена'}
-                  {report.contactsAdded > 0 ? `, додано ${report.contactsAdded}` : ''}
-                  {report.people > 0 ? `, людей з іменами: ${report.people}` : ''}
+                  email: {report.emails.length > 0 ? report.emails.join(', ') : 'not found'}
+                  {report.contactsAdded > 0 ? `, added ${report.contactsAdded}` : ''}
+                  {report.people > 0 ? `, people with names: ${report.people}` : ''}
                 </Text>
               </Stack>
             </Alert>
           )}
 
           {/*
-            Пошта, знайдена очима. Парсер дістає не все: адреса буває в картинці,
-            у формі, під скриптом. Побачив, вписав, і вона одразу є і тут, і в чернетці.
+            An address found by eye. The parser does not get everything: an address can sit in
+            an image, a form, behind a script. Seen, typed, and it is here and in the draft at once.
           */}
           <Group gap="xs" mt="sm" align="end">
             <TextInput
               size="xs"
               w={240}
-              label="додати пошту руками"
+              label="add an address by hand"
               placeholder="hello@company.com"
               value={email}
               onChange={(event) => setEmail(event.currentTarget.value)}
@@ -492,8 +492,8 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             <TextInput
               size="xs"
               w={160}
-              label="імʼя, якщо відоме"
-              placeholder="необовʼязково"
+              label="name, if known"
+              placeholder="optional"
               value={contactName}
               onChange={(event) => setContactName(event.currentTarget.value)}
             />
@@ -504,14 +504,14 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               loading={addContact.isPending}
               onClick={() => addContact.mutate()}
             >
-              Додати
+              Add
             </Button>
           </Group>
 
           {/*
-            Вердикт по компанії. Кнопка окремо від решти навмисно: це єдине місце
-            на картці, яке коштує грошей, і натискати його має людина свідомо, а
-            не воно саме при відкритті кожної студії.
+            The company verdict. The button stands apart on purpose: it is the only thing on
+            the card that costs money, and a person should press it deliberately rather than
+            have it fire on opening every studio.
           */}
           <Group gap="xs" mt="lg" align="center">
             <Button
@@ -522,11 +522,11 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               loading={askVerdict.isPending}
               onClick={() => askVerdict.mutate()}
             >
-              Що тут писати
+              What to write here
             </Button>
             {verdict?.source === 'cache' && (
               <Text size="xs" c="dimmed">
-                з кешу, модель не турбували
+                from cache, the model was not called
               </Text>
             )}
           </Group>
@@ -538,17 +538,17 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               color={verdict.verdict ? (verdict.verdict.skip ? 'yellow' : 'gray') : 'yellow'}
             >
               <Stack gap={6}>
-                {/* Порожній вердикт завжди пояснює себе, правило 3 CLAUDE.md. */}
+                {/* An empty verdict always explains itself, rule 3 of CLAUDE.md. */}
                 {verdict.error && <Text size="xs">{verdict.error}</Text>}
 
                 {verdict.verdict && (
                   <>
                     <Group gap="xs">
                       <Badge color={verdict.verdict.skip ? 'yellow' : 'green'} size="sm">
-                        {verdict.verdict.skip ? 'не писати' : (verdict.verdict.template_slug ?? 'без шаблона')}
+                        {verdict.verdict.skip ? 'do not write' : (verdict.verdict.template_slug ?? 'no template')}
                       </Badge>
                       <Text size="xs" c="dimmed">
-                        впевненість {verdict.verdict.confidence}, мова {verdict.verdict.language}
+                        confidence {verdict.verdict.confidence}, language {verdict.verdict.language}
                       </Text>
                     </Group>
 
@@ -562,24 +562,24 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
 
                     {verdict.verdict.contact && (
                       <Text size="xs" c="dimmed">
-                        писати: {verdict.verdict.contact}
+                        write to: {verdict.verdict.contact}
                       </Text>
                     )}
 
                     {verdict.verdict.risks.length > 0 && (
                       <Text size="xs" c="dimmed">
-                        ризики: {verdict.verdict.risks.join('; ')}
+                        risks: {verdict.verdict.risks.join('; ')}
                       </Text>
                     )}
                   </>
                 )}
 
                 {/*
-                  Детермінований вибір поруч завжди. Без нього незрозуміло, чи модель
-                  щось побачила, чи повторила те, що код і так рахує сам.
+                  The deterministic choice is always shown alongside. Without it there is no
+                  telling whether the model saw something or repeated what the code computes anyway.
                 */}
                 <Text size="xs" c="dimmed">
-                  без моделі пішов би {verdict.fallbackSlug ?? 'жоден шаблон'} ({verdict.fallbackTarget})
+                  without the model it would be {verdict.fallbackSlug ?? 'no template'} ({verdict.fallbackTarget})
                 </Text>
               </Stack>
             </Alert>
@@ -606,7 +606,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
           />
 
           <Text size="xs" tt="uppercase" fw={500} c="dimmed" mt="lg" mb="xs" style={{ letterSpacing: '0.04em' }}>
-            звідки такий рахунок
+            where the score comes from
           </Text>
           <Stack gap={4}>
             {card.why.map((item) => (
@@ -629,28 +629,28 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
       </ScrollArea>
 
       <PaneFooter>
-        <Tooltip label="статус «цікава»: студія лишається в цьому списку і зʼявляється у фільтрі Компаній. Лист не надсилається">
+        <Tooltip label="status interesting: the studio stays in this list and shows up in the Companies filter. No letter is sent">
           <Button
             color="green"
             leftSection={<Check size={15} />}
             rightSection={<Kbd size="xs">i</Kbd>}
             onClick={() => onAct({ action: 'interesting' })}
           >
-            Цікаво
+            Interesting
           </Button>
         </Tooltip>
-        <Tooltip label="статус «відкинув сам»: студія зникає зі списку назовсім, але лишається в базі">
+        <Tooltip label="status rejected by me: the studio leaves the list for good but stays in the database">
           <Button
             variant="default"
             leftSection={<ThumbsDown size={15} />}
             rightSection={<Kbd size="xs">n</Kbd>}
             onClick={() => onAct({ action: 'not_interesting' })}
           >
-            Не цікаво
+            Not interesting
           </Button>
         </Tooltip>
 
-        <Tooltip label="більше ніколи не показувати цю компанію">
+        <Tooltip label="never show this company again">
           <Button
             color="red"
             variant="light"
@@ -658,27 +658,27 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             rightSection={<Kbd size="xs">b</Kbd>}
             onClick={() => onAct({ action: 'blacklist' })}
           >
-            Блок
+            Block
           </Button>
         </Tooltip>
-        <Tooltip label="прибрати зі списку на 60 днів">
+        <Tooltip label="remove from the list for 60 days">
           <Button
             variant="default"
             leftSection={<Clock size={15} />}
             rightSection={<Kbd size="xs">s</Kbd>}
             onClick={() => onAct({ action: 'snooze', days: 60 })}
           >
-            Відкласти
+            Snooze
           </Button>
         </Tooltip>
 
         <Group gap="xs" ml="auto" wrap="nowrap">
           {/*
-            Основний шлях для студій і стартапів: лист збирається тим самим кодом,
-            що й нічна підготовка, і лягає на сторінку До відправки. Кнопка "Написав"
-            поруч лишається журналом для листів, написаних руками деінде.
+            The main path for studios and startups: the letter is built by the same code as
+            the nightly preparation and lands on the Outbox page. The "Contacted" button next
+            to it stays as a log for letters written by hand elsewhere.
           */}
-          <Tooltip label="зібрати чернетку листа. Якщо адреси немає, спершу обійде сайт компанії">
+          <Tooltip label="build a letter draft. If there is no address, crawls the company site first">
             <Button
               variant="light"
               leftSection={<MailPlus size={15} />}
@@ -686,10 +686,10 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               loading={toDrafts.isPending}
               onClick={() => toDrafts.mutate()}
             >
-              У чергу листів
+              To outbox
             </Button>
           </Tooltip>
-          <Tooltip label="заново зайти на сайт: career-сторінка, стек, пошта, контакти, ознаки живості">
+          <Tooltip label="visit the site again: careers page, stack, email, contacts, signs of life">
             <Button
               variant="default"
               leftSection={<RefreshCw size={15} />}
@@ -697,11 +697,11 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               loading={refresh.isPending}
               onClick={() => refresh.mutate()}
             >
-              Оновити з сайту
+              Refresh from site
             </Button>
           </Tooltip>
           <TemplateSelect kind="studio" value={template} onChange={setTemplate} width={240} />
-          <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
+          <Tooltip label="mark the letter as already sent. The record goes to Contacts, a follow-up reminder comes in 7 days">
             <Button
               leftSection={<Send size={15} />}
               rightSection={<Kbd size="xs">e</Kbd>}
@@ -710,7 +710,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               onAct({
                 action: 'contacted',
                 templateUsed: template,
-                // Знімок контакту: через рік у Контактах має бути видно, кому саме писали.
+                // A contact snapshot: a year later Contacts must still show who exactly was written to.
                 contactName: card.contacts.find((contact) => contact.name)?.name ?? null,
                 contactEmail:
                   card.contacts.find((contact) => contact.name && contact.email)?.email ??
@@ -719,7 +719,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
               })
             }
             >
-              Написав
+              Contacted
             </Button>
           </Tooltip>
         </Group>
@@ -729,17 +729,17 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
 }
 
 export interface CompanyListProps {
-  /** Порожнє означає всі, крім продуктових. */
+  /** Empty means everything except product companies. */
   kind?: string;
   emptyTitle?: string;
   emptyHint?: string;
-  /** Розділ в адресі: `#/studios/acme.com` або `#/startups/acme.com`. */
+  /** The address section: `#/studios/acme.com` or `#/startups/acme.com`. */
   section?: string;
 }
 
 /**
- * Студії і Стартапи це той самий екран з різним зрізом бази, тому сторінка
- * параметризована типом, а не скопійована вдруге на триста рядків.
+ * Studios and Startups are the same screen over different slices of the database, so the
+ * page is parameterised by kind instead of being copied a second time, three hundred lines over.
  */
 export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }: CompanyListProps = {}) {
   const client = useQueryClient();
@@ -747,16 +747,16 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   /*
-   * Відкрита картка це домен в адресі, а не номер у списку. Номер живе рівно до
-   * наступного фільтра: після зміни пошуку третій рядок це вже інша компанія, і
-   * посилання на "третій рядок" не означало б нічого.
+   * The open card is a domain in the address, not a position in the list. A position
+   * lives only until the next filter: after the search changes the third row is another
+   * company, and a link to "the third row" would mean nothing.
    */
   const [domain, select] = useSelection(section);
 
   /*
-   * Пошук чекає, поки людина допише. Без цього кожна натиснута літера це окремий
-   * запит, а запит тут не дешевий: рахунок рахується для всієї бази, і на слові
-   * "design" це шість повних проходів замість одного.
+   * Search waits until typing stops. Without that every key press is a separate request,
+   * and a request here is not cheap: the score is computed over the whole database, and
+   * the word "design" would mean six full passes instead of one.
    */
   const [search] = useDebouncedValue(filters.q, 300);
   const query = useMemo(
@@ -773,20 +773,20 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
     mutationFn: ({ id, body }: { id: number; body: Record<string, unknown>; name: string }) =>
       api.companyAction(id, body),
     onSuccess: (_result, { name }) => {
-      notifications.show({ color: 'green', title: name, message: 'збережено' });
+      notifications.show({ color: 'green', title: name, message: 'saved' });
       void client.invalidateQueries({ queryKey: ['studios'] });
       void client.invalidateQueries({ queryKey: ['stats'] });
     },
     onError: (mutationError) =>
-      notifications.show({ color: 'red', title: 'не збереглось', message: String(mutationError) }),
+      notifications.show({ color: 'red', title: 'not saved', message: String(mutationError) }),
   });
 
   const cards = data?.cards ?? [];
 
   /*
-   * Компанії з адреси може не бути в поточному зрізі: власник прийшов за
-   * посиланням, а фільтр її ховає, або він щойно натиснув "не цікаво" і вона
-   * зникла зі списку. Тоді відкривається перша, а адреса підтягується під неї.
+   * The company from the address may be missing from the current slice: the owner came
+   * from a link and a filter hides it, or they just pressed "not interesting" and it left
+   * the list. Then the first one opens, and the address follows it.
    */
   const index = Math.max(0, cards.findIndex((card) => card.domain === domain));
   const current = cards[index];
@@ -817,7 +817,7 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
   if (error) {
     return (
       <Box p="lg">
-        <Alert color="red" title="Не вдалось прочитати список студій">
+        <Alert color="red" title="Could not read the studio list">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
       </Box>
@@ -831,7 +831,7 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
         <>
           <PaneHeader>
             <TextInput
-              placeholder="назва, домен або тег"
+              placeholder="name, domain or tag"
               leftSection={<Search size={14} />}
               value={filters.q}
               onChange={(event) => setFilters({ ...filters, q: event.currentTarget.value })}
@@ -842,7 +842,7 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
               onClick={() => setFiltersOpen((value) => !value)}
               px="sm"
             >
-              Фільтри
+              Filters
             </Button>
           </PaneHeader>
 
@@ -850,21 +850,21 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
             <Stack gap="sm" p="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
               <Group gap="sm" grow>
                 <TextInput
-                  label="Країна"
+                  label="Country"
                   placeholder="UA"
                   value={filters.country}
                   onChange={(event) => setFilters({ ...filters, country: event.currentTarget.value })}
                 />
                 <NumberInput
-                  label="Мін. рахунок"
+                  label="Min score"
                   placeholder={String(data?.threshold ?? 5)}
                   value={filters.min}
                   onChange={(value) => setFilters({ ...filters, min: value === '' ? '' : String(value) })}
                 />
               </Group>
               <NumberInput
-                label="Мін. оцінка в каталозі"
-                description="компанії без оцінки не показуються"
+                label="Min catalog rating"
+                description="companies without a rating are hidden"
                 placeholder="4.5"
                 step={0.1}
                 min={0}
@@ -873,13 +873,13 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
                 onChange={(value) => setFilters({ ...filters, rating: value === '' ? '' : String(value) })}
               />
               <Checkbox
-                label="показати тих, кому вже писали"
+                label="show those already contacted"
                 checked={filters.all === '1'}
                 onChange={(event) => setFilters({ ...filters, all: event.currentTarget.checked ? '1' : '' })}
               />
-              {/* Головний робочий фільтр: лист на hello@ читає менеджер, не техлід. */}
+              {/* The main working filter: a letter to hello@ is read by a manager, not a tech lead. */}
               <Checkbox
-                label="тільки з іменним контактом"
+                label="only with a named contact"
                 checked={filters.named === '1'}
                 onChange={(event) =>
                   setFilters({ ...filters, named: event.currentTarget.checked ? '1' : '' })
@@ -889,22 +889,22 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
           )}
 
           <Group px="md" py={8} gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-            {/* Різниця між total і aboveThreshold це головне число тут: без нього
-                короткий список читається як зламаний збір, хоча база повна. */}
+            {/* The gap between total and aboveThreshold is the key number here: without it a
+                short list reads as broken collection, although the database is full. */}
             <Text size="xs" c="dimmed">
-              {data ? `${cards.length} з ${data.total} компаній` : 'читаю'}
+              {data ? `${cards.length} of ${data.total} companies` : 'loading'}
               {data && data.total > data.aboveThreshold && (
-                <Tooltip label="поріг можна змінити на сторінці Правила">
+                <Tooltip label="the threshold can be changed on the Rules page">
                   <Text span c="dimmed">
                     {' '}
-                    · поріг {data.threshold} приховав {data.total - data.aboveThreshold}
+                    · threshold {data.threshold} hid {data.total - data.aboveThreshold}
                   </Text>
                 </Tooltip>
               )}
             </Text>
             {/*
-              Вивантаження звичайним посиланням, а не через fetch: браузер сам
-              збереже файл за заголовком content-disposition, і не треба возитись з blob.
+              Export through a plain link rather than fetch: the browser saves the file itself
+              from the content-disposition header, with no blob juggling.
             */}
             <Anchor
               href={`/api/export/studios${filters.named === '1' ? '?named=1' : ''}`}
@@ -915,7 +915,7 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
               CSV
             </Anchor>
             <Text size="xs" c="dimmed">
-              <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> перехід
+              <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> navigate
             </Text>
           </Group>
 
@@ -945,10 +945,10 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
             <EmptyState
               icon={<Palette size={28} />}
               withIndicatorBackground
-              title={isLoading ? 'Читаю каталог' : (emptyTitle ?? 'Під ці фільтри нічого не підпало')}
+              title={isLoading ? 'Loading the catalog' : (emptyTitle ?? 'Nothing matches these filters')}
               description={
                 emptyHint ??
-                'Знизь мінімальний рахунок або збери ще сторінок каталогу розширенням у браузері.'
+                'Lower the minimum score or collect more catalog pages with the browser extension.'
               }
             />
           </Box>

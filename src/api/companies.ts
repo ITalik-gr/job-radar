@@ -17,7 +17,7 @@ import { deleteContact, updateContact } from '../pipeline/contacts.js';
 
 export const companiesRoutes = new Hono();
 
-/** Порахувати відкриті вакансії підзапитом, щоб не тягнути їх усі в память. */
+/** Count open vacancies with a subquery, so they are not all loaded into memory. */
 const openVacancies = sql<number>`(
   select count(*) from ${vacancies}
   where ${vacancies.companyId} = ${companies.id} and ${vacancies.closedAt} is null
@@ -56,9 +56,9 @@ companiesRoutes.get('/', async (c) => {
       sources: companies.sources,
       lastChecked: companies.lastChecked,
       /*
-       * Поля, які читає скоринг компаній. Без них рахунок на цій сторінці рахувався
-       * за неповною компанією і не збігався з тим самим рахунком у Студіях: тип,
-       * ознаки покинутого сайту і репутація з каталогу просто не доїжджали сюди.
+       * The fields company scoring reads. Without them the score on this page was computed from an
+       * incomplete company and did not match the same score on Studios: kind, abandoned site signs
+       * and catalog reputation simply never got here.
        */
       kind: companies.kind,
       copyrightYear: companies.copyrightYear,
@@ -77,13 +77,13 @@ companiesRoutes.get('/', async (c) => {
     .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(companies.name);
 
-  // Сортуємо за рахунком студії, а не за кількістю вакансій: інакше вгорі назавжди
-  // осідають гіганти з сотнями позицій, куди подаватись сенсу немає.
+  // Sort by studio score rather than vacancy count: otherwise giants with hundreds of positions
+  // settle at the top forever, and applying there makes no sense.
   const scored = rows.map((row) => ({
     ...row,
     score: scoreCompany({
-      // Рядок уже містить усі колонки, які читає скоринг, тому перелічувати
-      // їх удруге не треба: саме той перелік і розʼїхався зі схемою.
+      // The row already has every column scoring reads, so there is no need to list them again:
+      // that very list is what drifted away from the schema.
       company: row as never,
       openVacancies: row.openVacancies,
       status: row.status,
@@ -107,7 +107,7 @@ companiesRoutes.get('/:id', async (c) => {
   const id = Number(c.req.param('id'));
 
   const [company] = await db.select().from(companies).where(eq(companies.id, id));
-  if (!company) return c.json({ error: 'компанії немає' }, 404);
+  if (!company) return c.json({ error: 'no such company' }, 404);
 
   const [state] = await db.select().from(companyState).where(eq(companyState.companyId, id));
 
@@ -140,27 +140,26 @@ companiesRoutes.get('/:id', async (c) => {
 });
 
 /**
- * Контакт, доданий руками зі сторінки студії.
+ * A contact added by hand from the studio page.
  *
- * Пошта на сайті часто лежить там, куди парсер не дістає: у картинці, у формі,
- * у футері під скриптом. Побачити її очима і вписати це хвилина, а без цієї
- * кнопки компанія лишалась би назавжди без адреси і без листа.
+ * The email on a site often sits where the parser cannot reach: in an image, in a form, in a
+ * script-rendered footer. Spotting and typing it takes a minute, and without this button the
+ * company would stay forever without an address and without a letter.
  */
 /**
- * Повний перегляд однієї компанії: заново на сайт, стек, контакти, career-сторінка.
- * Нічні проходи роблять те саме за розкладом, а тут це робиться зараз і без умов.
+ * A full review of one company: back to the site, stack, contacts, careers page. Nightly passes do
+ * the same on schedule, while here it happens now and unconditionally.
  */
 companiesRoutes.post('/:id/refresh', async (c) =>
   c.json(await refreshCompany(Number(c.req.param('id')))),
 );
 
 /**
- * Вердикт моделі: яким шаблоном заходити до цієї компанії і за що зачепитись.
+ * The model's verdict: which template to approach this company with and what to hook onto.
  *
- * POST, а не GET, навмисно: за кнопкою стоїть виклик моделі і витрата з денної
- * стелі. Повторне натискання віддається з кешу, поки не змінились ні шаблони,
- * ні дані компанії, тому дешевизна тут не привід робити з цього GET, який хтось
- * колись почне смикати списком.
+ * POST rather than GET on purpose: behind the button is a model call that spends the daily cap. A
+ * repeated press is served from cache as long as neither the templates nor the company data
+ * changed, but that cheapness is no reason to make it a GET someone might one day call in a loop.
  */
 companiesRoutes.post('/:id/verdict', async (c) =>
   c.json(await companyVerdict(Number(c.req.param('id')))),
@@ -173,21 +172,21 @@ companiesRoutes.post('/:id/contacts', async (c) => {
     .catch(() => ({}) as { email?: string; name?: string; role?: string });
 
   const email = normalizeEmail(body.email);
-  if (!email) return c.json({ error: 'потрібна коректна адреса' }, 400);
+  if (!email) return c.json({ error: 'a valid address is required' }, 400);
 
   const result = await rememberContact(companyId, email, body.name?.trim() || null, body.role?.trim() || null);
   return c.json({ email, ...result });
 });
 
 /**
- * Правка знайденого контакту.
+ * Editing a found contact.
  *
- * Збір дає половинки: зі сторінки команди приходить імʼя з посадою без адреси,
- * зі сторінки контактів адреса без імені. Звести їх докупи може тільки людина,
- * і без цієї ручки єдиним способом було завести ще один рядок.
+ * Collection yields halves: a team page brings a name with a title and no address, a contact page
+ * brings an address without a name. Only a person can join them, and without this endpoint the
+ * only way was to add yet another row.
  *
- * Шлях під компанією навмисно: контакт поза компанією не існує, і так у логах
- * одразу видно, кого саме правили.
+ * The path sits under the company on purpose: a contact does not exist outside a company, and this
+ * way the logs show right away whose contact was edited.
  */
 companiesRoutes.patch('/:id/contacts/:contactId', async (c) => {
   const body = await c.req
@@ -201,7 +200,7 @@ companiesRoutes.patch('/:id/contacts/:contactId', async (c) => {
   }
 });
 
-/** Видалення контакту: у збір регулярно потрапляє інвестор з відгуку або клієнт з кейсу. */
+/** Deleting a contact: collection regularly picks up an investor from a testimonial or a client from a case study. */
 companiesRoutes.delete('/:id/contacts/:contactId', async (c) =>
   c.json(await deleteContact(Number(c.req.param('contactId')))),
 );

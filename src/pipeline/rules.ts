@@ -4,8 +4,8 @@ import { log } from '../lib/log.js';
 import defaultRules from '../../config/scoring.json' with { type: 'json' };
 
 /**
- * Правила відбору живуть у config/scoring.json, а не в коді. Причина проста:
- * ці списки доводиться правити щотижня, і кожна правка не має бути релізом.
+ * Selection rules live in config/scoring.json, not in code. The reason is simple: these lists get
+ * edited every week, and an edit should not be a release.
  */
 
 const numberMap = z.record(z.string(), z.number());
@@ -65,29 +65,29 @@ export const rulesSchema = z.object({
     hasCareersPage: z.number(),
     hasOpenVacancies: z.number(),
     /*
-     * Вага за типом компанії. Необовʼязкове поле з дефолтом навмисно: без цього
-     * конфіг, збережений з інтерфейсу до появи поля, перестав би проходити Zod
-     * і скоринг мовчки відкотився б до вшитого.
+     * Weight by company kind. An optional field with a default on purpose: without it a config saved
+     * from the interface before the field existed would stop passing Zod, and scoring would silently
+     * fall back to the bundled one.
      */
     kindWeights: numberMap.default({}),
     /*
-     * Штраф за мертвий сайт. Необовʼязковий з дефолтом, як і kindWeights:
-     * конфіг, збережений з інтерфейсу до появи поля, мусить лишатись валідним.
+     * Dead site penalty. Optional with a default, like kindWeights: a config saved from the interface
+     * before the field existed must stay valid.
      */
     stale: z
       .object({
-        /** На скільки років копірайт має відстати від поточного, щоб це рахувалось. */
+        /** How many years the copyright must lag behind the current one to count. */
         copyrightYearsBehind: z.number().default(2),
         copyrightPenalty: z.number().default(-4),
-        /** Скільки днів без нового поста означає мертвий блог. */
+        /** How many days without a new post mean a dead blog. */
         blogSilentDays: z.number().default(540),
         blogPenalty: z.number().default(-2),
       })
       .default({}),
     hourlyRateBonus: numberMap,
     /*
-     * Репутація з каталогу. Необовʼязкова з дефолтами, як kindWeights і stale:
-     * конфіг, збережений з інтерфейсу до появи поля, мусить лишатись валідним.
+     * Catalog reputation. Optional with defaults, like kindWeights and stale: a config saved from the
+     * interface before the field existed must stay valid.
      */
     reputation: z
       .object({
@@ -107,7 +107,7 @@ export type Rules = z.infer<typeof rulesSchema>;
 
 const CONFIG_PATH = process.env.SCORING_CONFIG ?? 'config/scoring.json';
 
-/** Ключі, що починаються з підкреслення, це коментарі для людини. */
+/** Keys starting with an underscore are comments for humans. */
 function stripComments<T>(value: T): T {
   if (Array.isArray(value)) return value.map(stripComments) as T;
   if (value && typeof value === 'object') {
@@ -122,28 +122,28 @@ function stripComments<T>(value: T): T {
 }
 
 /**
- * Три джерела правил, у порядку старшинства:
+ * Three sources of rules, in order of precedence:
  *
- *   база  →  файл на диску  →  вшита в бандл версія
+ *   database  ->  file on disk  ->  version bundled into the build
  *
- * База найстарша, бо це те, що власник змінив з інтерфейсу, і на Workers це єдиний
- * спосіб щось змінити взагалі: файлової системи там немає. Файл лишається для
- * локальної роботи, коли зручніше правити конфіг у редакторі. Вшита версія це
- * значення за замовчуванням, з якого починається чистий запуск.
+ * The database comes first, because that is what the owner changed from the interface, and on
+ * Workers it is the only way to change anything at all: there is no filesystem. The file stays for
+ * local work, when editing the config in an editor is handier. The bundled version is the default
+ * a clean start begins with.
  *
- * Кеші тримаються окремо саме через це старшинство. Раніше був один кеш, і
- * періодичне перечитування файла затирало б правку з інтерфейсу через 5 секунд.
+ * The caches are kept apart precisely because of this precedence. There used to be one cache, and
+ * periodically re-reading the file would have wiped an interface edit after 5 seconds.
  */
 let fromDb: Rules | null = null;
 let fromFile: Rules | null = null;
 let bundled: Rules | null = null;
 
-/** Ключ у таблиці settings, під яким лежить весь обʼєкт правил. */
+/** The key in the settings table that holds the whole rules object. */
 export const RULES_KEY = 'scoring';
 
 /**
- * Конфіг вшитий у бандл статичним імпортом, щоб код працював і на Workers,
- * де файлової системи немає.
+ * The config is bundled with a static import, so the code works on Workers too, where there is no
+ * filesystem.
  */
 export function loadRules(): Rules {
   return rulesSchema.parse(stripComments(defaultRules));
@@ -154,7 +154,7 @@ export function rules(): Rules {
   return fromDb ?? fromFile ?? bundled;
 }
 
-/** Звідки взялись поточні правила. Потрібно інтерфейсу, щоб не брехати про джерело. */
+/** Where the current rules came from. The interface needs it so it does not lie about the source. */
 export function rulesSource(): 'db' | 'file' | 'bundled' {
   if (fromDb) return 'db';
   if (fromFile) return 'file';
@@ -162,8 +162,8 @@ export function rulesSource(): 'db' | 'file' | 'bundled' {
 }
 
 /**
- * У Node конфіг додатково перечитується з диска, тому правку у файлі видно без
- * перезапуску. На Workers ця функція нічого не робить.
+ * In Node the config is additionally re-read from disk, so an edit in the file is visible without a
+ * restart. On Workers this function does nothing.
  */
 export async function refreshRules(path = CONFIG_PATH): Promise<Rules> {
   if (typeof process === 'undefined' || !process.versions?.node) return rules();
@@ -173,12 +173,12 @@ export async function refreshRules(path = CONFIG_PATH): Promise<Rules> {
     const raw = JSON.parse(await readFile(path, 'utf8')) as unknown;
     fromFile = rulesSchema.parse(stripComments(raw));
   } catch (error) {
-    log.warn({ err: String(error) }, 'конфіг скорингу з диска не прочитався, лишаю вшитий');
+    log.warn({ err: String(error) }, 'scoring config could not be read from disk, keeping the bundled one');
   }
   return rules();
 }
 
-/** Перечитати правила з бази. Викликається на старті і після кожного збереження. */
+/** Re-read the rules from the database. Called at startup and after every save. */
 export async function refreshRulesFromDb(): Promise<Rules> {
   try {
     const [{ getDb }, { settings }] = await Promise.all([
@@ -188,15 +188,15 @@ export async function refreshRulesFromDb(): Promise<Rules> {
     const [row] = await getDb().select().from(settings).where(eq(settings.key, RULES_KEY));
     fromDb = row ? rulesSchema.parse(stripComments(row.value)) : null;
   } catch (error) {
-    log.warn({ err: String(error) }, 'правила з бази не прочитались, лишаю файл або вшиті');
+    log.warn({ err: String(error) }, 'rules could not be read from the database, keeping the file or the bundled ones');
   }
   return rules();
 }
 
 /**
- * Зберегти правила з інтерфейсу. Приймається тільки повний обʼєкт: часткові патчі
- * вимагали б домовленості про злиття, і будь-яка помилка в ній тихо ламала б скоринг.
- * Zod тут не для форми, а для того, щоб у базу не потрапив конфіг, на якому впаде діф.
+ * Save rules from the interface. Only a full object is accepted: partial patches would need a merge
+ * convention, and any mistake in it would silently break scoring. Zod here is not for the form but
+ * to keep out of the database a config the diff would crash on.
  */
 export async function saveRules(next: unknown): Promise<Rules> {
   const parsed = rulesSchema.parse(stripComments(next));
@@ -214,11 +214,11 @@ export async function saveRules(next: unknown): Promise<Rules> {
     });
 
   fromDb = parsed;
-  log.info({ threshold: parsed.threshold }, 'правила збережено з інтерфейсу');
+  log.info({ threshold: parsed.threshold }, 'rules saved from the interface');
   return parsed;
 }
 
-/** Скинути правку з інтерфейсу і вернутись до файла або вшитої версії. */
+/** Drop the interface edit and go back to the file or the bundled version. */
 export async function resetRules(): Promise<Rules> {
   const [{ getDb }, { settings }] = await Promise.all([
     import('../db/client.js'),
@@ -226,11 +226,11 @@ export async function resetRules(): Promise<Rules> {
   ]);
   await getDb().delete(settings).where(eq(settings.key, RULES_KEY));
   fromDb = null;
-  log.info('правила скинуто до значень за замовчуванням');
+  log.info('rules reset to defaults');
   return rules();
 }
 
-/** Періодичне перечитування конфіга у Node. Таймер не тримає процес живим. */
+/** Periodic config re-read in Node. The timer does not keep the process alive. */
 export function watchRules(intervalMs = 5000): void {
   if (typeof process === 'undefined' || !process.versions?.node) return;
   void refreshRules();

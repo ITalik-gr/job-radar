@@ -1,17 +1,36 @@
 /**
- * Пересилає зібране в Job Radar і веде лічильник за добу.
- * Адрес налаштовується: локальний сервер або задеплоєний воркер на Cloudflare.
+ * Sends what was collected to Job Radar and keeps a per day counter.
+ * The address is configured by the user: a local server or their own worker.
  */
-// Локально замінити на http://localhost:3000 у попапі розширення.
-const DEFAULTS = { apiUrl: 'https://job-radar.example.workers.dev', token: '' };
+
+/*
+ * No default address on purpose.
+ *
+ * It used to point at the author's own worker. Anyone who installed the
+ * extension without opening settings shipped their scraped companies to
+ * someone else's radar and could not tell: the popup said "connected" and the
+ * counters went up, because that other server did answer. An empty address
+ * fails loudly instead, which is the only honest default here.
+ */
+const DEFAULTS = { apiUrl: '', token: '' };
 
 async function settings() {
   return chrome.storage.local.get(DEFAULTS);
 }
 
+/** Address of the radar, or null while the extension is not set up yet. */
+async function apiBase() {
+  const { apiUrl } = await settings();
+  const clean = String(apiUrl || '').trim().replace(/\/$/, '');
+  return clean || null;
+}
+
 async function call(path, options = {}) {
   const { apiUrl, token } = await settings();
-  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api${path}`, {
+  const base = String(apiUrl || '').trim().replace(/\/$/, '');
+  if (!base) throw new Error('radar address is not set');
+
+  const response = await fetch(`${base}/api${path}`, {
     ...options,
     headers: {
       'content-type': 'application/json',
@@ -19,7 +38,7 @@ async function call(path, options = {}) {
     },
   });
   if (!response.ok) {
-    const detail = response.status === 401 ? 'невірний токен' : `${response.status} від сервера`;
+    const detail = response.status === 401 ? 'wrong token' : `server answered ${response.status}`;
     throw new Error(detail);
   }
   return response.json();
@@ -100,11 +119,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'radar:open-app') {
-    settings().then(({ apiUrl }) => {
-      const isLocal = /localhost|127\.0\.0\.1/.test(apiUrl);
-      chrome.tabs.create({ url: isLocal ? 'http://localhost:5173' : apiUrl });
+    apiBase().then((base) => {
+      if (!base) return sendResponse({ ok: false, error: 'radar address is not set' });
+      const isLocal = /localhost|127\.0\.0\.1/.test(base);
+      chrome.tabs.create({ url: isLocal ? 'http://localhost:5173' : base });
       sendResponse({ ok: true });
     });
+    return true;
+  }
+
+  /** Whether the extension knows where to send anything at all. */
+  if (message.type === 'radar:configured') {
+    apiBase().then((base) => sendResponse({ ok: true, configured: Boolean(base) }));
     return true;
   }
 

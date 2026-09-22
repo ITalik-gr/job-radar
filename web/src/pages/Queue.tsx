@@ -47,14 +47,14 @@ import { LetterBlock } from '../components/LetterBlock';
 import { Score } from '../components/Score';
 
 const DONE: Record<string, string> = {
-  interesting: 'у цікавих',
-  not_interesting: 'відкинуто',
-  contacted: 'позначено як написано',
-  blacklist: 'у блокліст',
-  snooze: 'відкладено на 30 днів',
+  interesting: 'marked interesting',
+  not_interesting: 'rejected',
+  contacted: 'marked as contacted',
+  blacklist: 'blacklisted',
+  snooze: 'snoozed for 30 days',
 };
 
-/** Рядок списку. Тільки те, за чим власник обирає, що читати далі: рахунок, компанія, роль. */
+/** A list row. Only what the owner picks the next read by: score, company, role. */
 function Row({
   card,
   active,
@@ -98,17 +98,17 @@ function Row({
             {card.contactedNote && <Clock size={13} color="var(--mantine-color-yellow-7)" />}
             {waiting > 0 && (
               <Badge size="xs" color="gray" ml="auto">
-                {waiting} дн
+                {waiting}d
               </Badge>
             )}
           </Group>
 
           <Text size="sm" lineClamp={2} mt={2}>
-            {card.title ?? 'без назви'}
+            {card.title ?? 'untitled'}
           </Text>
 
-          {/* У вузькому списку теги стеку не влазять і обрізаються в кашу.
-              Тут потрібне лише те, за чим обирають, що читати далі. */}
+          {/* In a narrow list stack tags do not fit and get cut into a mess.
+              Only what decides the next read is needed here. */}
           <Group gap={6} mt={6} wrap="nowrap" style={{ overflow: 'hidden' }}>
             {card.remote && (
               <Badge size="xs" color="green">
@@ -116,7 +116,7 @@ function Row({
               </Badge>
             )}
             <Text size="xs" c="dimmed" truncate>
-              {[card.seniority, card.location, formatSalary(card)].filter(Boolean).join(' · ') || 'без деталей'}
+              {[card.seniority, card.location, formatSalary(card)].filter(Boolean).join(' · ') || 'no details'}
             </Text>
           </Group>
         </Box>
@@ -125,7 +125,7 @@ function Row({
   );
 }
 
-/** Відкрита картка. Одна на екран, тому тут можна дозволити собі повітря і повний текст. */
+/** The open card. One per screen, so it can afford room and the full text. */
 function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string, unknown>) => void }) {
   const [template, setTemplate] = useState<string | null>(null);
   const salary = formatSalary(card);
@@ -138,10 +138,10 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
       notifications.show({
         color: result.id && !result.reason ? 'green' : 'yellow',
         title: card.company,
-        message: result.reason ?? 'чернетка на сторінці До відправки',
+        message: result.reason ?? 'draft is on the Outbox page',
       }),
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не вийшло', message: error.message }),
+      notifications.show({ color: 'red', title: 'failed', message: error.message }),
   });
 
   useHotkeys(
@@ -166,8 +166,8 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
             <Anchor href={`https://${card.domain}`} target="_blank" rel="noreferrer" fw={600}>
               {card.company}
             </Anchor>
-            {/* Картка компанії в застосунку: стек, контакти, історія листування. */}
-            <Tooltip label="картка компанії в радарі">
+            {/* The company card in the app: stack, contacts, correspondence history. */}
+            <Tooltip label="company card in the radar">
               <Anchor href={companyHref(card.domain)} size="sm" c="dimmed" style={{ display: 'flex' }}>
                 <Building2 size={14} />
               </Anchor>
@@ -177,24 +177,24 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
             </Text>
             {card.needsReview && (
               <Badge color="yellow" leftSection={<TriangleAlert size={11} />}>
-                перевірити вручну
+                review by hand
               </Badge>
             )}
           </Group>
 
-          <Title order={2}>{card.title ?? 'без назви'}</Title>
+          <Title order={2}>{card.title ?? 'untitled'}</Title>
 
           {card.contactedNote && (
-            <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="Цій компанії вже писали">
-              {card.contactedNote}. Повторний контакт через квартал нормальний, через тиждень ні.
+            <Alert color="yellow" mt="md" icon={<Clock size={16} />} title="This company was contacted before">
+              {card.contactedNote}. Reaching out again after a quarter is fine, after a week it is not.
             </Alert>
           )}
 
           {waiting > 0 && (
             <Alert color="gray" mt="md" icon={<Clock size={16} />}>
-              Картка чекає рішення {waiting} {waiting === 1 ? 'день' : 'дн'}: її перенесли з
-              попередніх зрізів, бо ти її не розібрав. Вона займає місце в денному ліміті,
-              поки не отримає рішення.
+              This card has waited {waiting} {waiting === 1 ? 'day' : 'days'} for a decision: it
+              was carried over from earlier slices because you did not decide on it. It takes a
+              place in the daily limit until it gets a decision.
             </Alert>
           )}
 
@@ -208,11 +208,11 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
               leftSection={<ExternalLink size={14} />}
               rightSection={<Kbd size="xs">↵</Kbd>}
             >
-              Відкрити вакансію
+              Open vacancy
             </Button>
             {card.careersUrl && (
               <Button component="a" href={card.careersUrl} target="_blank" rel="noreferrer" variant="subtle">
-                Усі вакансії компанії
+                All company vacancies
               </Button>
             )}
           </Group>
@@ -221,45 +221,45 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
 
           <DataList labelWidth={132} gap="sm">
             <DataList.Item>
-              <DataList.ItemLabel>рахунок</DataList.ItemLabel>
+              <DataList.ItemLabel>score</DataList.ItemLabel>
               <DataList.ItemValue>
                 <Score value={card.score} />
               </DataList.ItemValue>
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>грейд</DataList.ItemLabel>
-              <DataList.ItemValue>{card.seniority ?? <Text c="dimmed">не вказано</Text>}</DataList.ItemValue>
+              <DataList.ItemLabel>seniority</DataList.ItemLabel>
+              <DataList.ItemValue>{card.seniority ?? <Text c="dimmed">not stated</Text>}</DataList.ItemValue>
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>формат</DataList.ItemLabel>
+              <DataList.ItemLabel>format</DataList.ItemLabel>
               <DataList.ItemValue>
                 <Group gap="xs">
-                  {card.remote ? <Badge color="green">remote</Badge> : <Text c="dimmed">не вказано</Text>}
+                  {card.remote ? <Badge color="green">remote</Badge> : <Text c="dimmed">not stated</Text>}
                   {card.location && <Text>{card.location}</Text>}
                 </Group>
               </DataList.ItemValue>
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>вилка</DataList.ItemLabel>
+              <DataList.ItemLabel>salary</DataList.ItemLabel>
               <DataList.ItemValue>
                 {salary ? (
                   <Text fw={600} className="tabular">
                     {salary}
                   </Text>
                 ) : (
-                  <Text c="dimmed">не вказана</Text>
+                  <Text c="dimmed">not stated</Text>
                 )}
               </DataList.ItemValue>
             </DataList.Item>
 
             <DataList.Item>
-              <DataList.ItemLabel>стек</DataList.ItemLabel>
+              <DataList.ItemLabel>stack</DataList.ItemLabel>
               <DataList.ItemValue>
                 {card.stack.length === 0 ? (
-                  <Text c="dimmed">не розпізнано</Text>
+                  <Text c="dimmed">not recognised</Text>
                 ) : (
                   <Stack gap={6}>
                     <Group gap={6}>
@@ -268,7 +268,7 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
                       ))}
                     </Group>
                     <Text size="xs" c="dimmed">
-                      натисни тег, щоб змінити його вагу або відправити у стоп-слова
+                      click a tag to change its weight or make it a stop word
                     </Text>
                   </Stack>
                 )}
@@ -277,7 +277,7 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
           </DataList>
 
           {card.why && (
-            <Alert mt="lg" variant="light" icon={<MessageSquareQuote size={16} />} title="Думка моделі">
+            <Alert mt="lg" variant="light" icon={<MessageSquareQuote size={16} />} title="Model opinion">
               {card.why}
             </Alert>
           )}
@@ -294,22 +294,22 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
 
           <Group gap="sm" mt="lg" mb="xs">
             <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>
-              сирий текст вакансії
+              raw vacancy text
             </Text>
             {card.rawText && (
               <Text size="xs" c="dimmed">
-                {card.rawText.length} символів
+                {card.rawText.length} characters
               </Text>
             )}
             <Anchor component="button" type="button" size="xs" onClick={() => setRawOpen((value) => !value)}>
-              {rawOpen ? 'згорнути' : 'розкрити повністю'}
+              {rawOpen ? 'collapse' : 'expand fully'}
             </Anchor>
           </Group>
 
           {/*
-            Згорнутий стан це вікно з власним скролом, а не обрізаний текст:
-            прочитати перший абзац можна не розкриваючи блок. Розкритий стан знімає
-            обмеження висоти зовсім, і текст скролиться разом зі сторінкою.
+            Collapsed is a window with its own scroll, not truncated text: the first
+            paragraph can be read without expanding. Expanded removes the height limit
+            entirely, and the text scrolls with the page.
           */}
           <Code
             block
@@ -320,39 +320,39 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
                 : { maxHeight: 260, overflowY: 'auto', overscrollBehavior: 'contain' }
             }
           >
-            {card.rawText || 'сирого тексту немає'}
+            {card.rawText || 'no raw text'}
           </Code>
         </Box>
       </ScrollArea>
 
-      {/* Смуга рішень. Завжди на одному місці, тому руку не треба шукати кнопку заново. */}
+      {/* The decision bar. Always in the same place, so the hand never hunts for a button. */}
       {/*
-        Рішення злива і рішення відмови стоять ліворуч, надсилання листа праворуч.
-        Так шість кнопок вкладаються в один рядок і не переносяться на другий,
-        а рука щоразу тягнеться в те саме місце.
+        Keep and reject decisions sit on the left, sending a letter on the right.
+        That way six buttons fit on one row without wrapping, and the hand
+        reaches for the same spot every time.
       */}
       <PaneFooter>
-        <Tooltip label="компанія в статус «цікава», картка зникає з черги. Лист не надсилається">
+        <Tooltip label="company becomes interesting, the card leaves the queue. No letter is sent">
           <Button
             color="green"
             leftSection={<Check size={15} />}
             rightSection={<Kbd size="xs">i</Kbd>}
             onClick={() => onAct({ action: 'interesting' })}
           >
-            Цікаво
+            Interesting
           </Button>
         </Tooltip>
-        <Tooltip label="статус «відкинув сам», більше не показуємо. Вакансія лишається в базі для статистики">
+        <Tooltip label="status rejected by me, never shown again. The vacancy stays in the database for statistics">
           <Button
             variant="default"
             leftSection={<ThumbsDown size={15} />}
             rightSection={<Kbd size="xs">n</Kbd>}
             onClick={() => onAct({ action: 'not_interesting' })}
           >
-            Не цікаво
+            Not interesting
           </Button>
         </Tooltip>
-        <Tooltip label="більше ніколи не показувати цю компанію">
+        <Tooltip label="never show this company again">
           <Button
             color="red"
             variant="light"
@@ -360,45 +360,46 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
             rightSection={<Kbd size="xs">b</Kbd>}
             onClick={() => onAct({ action: 'blacklist' })}
           >
-            Блок
+            Block
           </Button>
         </Tooltip>
-        <Tooltip label="прибрати з черги на 30 днів">
+        <Tooltip label="remove from the queue for 30 days">
           <Button
             variant="default"
             leftSection={<Clock size={15} />}
             rightSection={<Kbd size="xs">s</Kbd>}
             onClick={() => onAct({ action: 'snooze', days: 30 })}
           >
-            Відкласти
+            Snooze
           </Button>
         </Tooltip>
 
         <Group gap="xs" ml="auto" wrap="nowrap">
           {/*
-            Міст між Чергою і розсилкою: та сама компанія, ті самі шаблони і той
-            самий вибір мови, що й у нічній підготовці. Без цієї кнопки лишалось
-            би два паралельні способи написати листа, які з часом розійшлись би.
+            The bridge between the Queue and sending: the same company, the same
+            templates and the same language choice as the nightly preparation. Without
+            this button there would be two parallel ways to write a letter, and they
+            would drift apart over time.
           */}
-          <Tooltip label="зібрати чернетку листа. Якщо адреси немає, спершу обійде сайт компанії">
+          <Tooltip label="build a letter draft. If there is no address, crawls the company site first">
             <Button
               variant="light"
               leftSection={<MailPlus size={15} />}
               loading={toDrafts.isPending}
               onClick={() => toDrafts.mutate()}
             >
-              У чергу листів
+              To outbox
             </Button>
           </Tooltip>
           <TemplateSelect kind="vacancy" value={template} onChange={setTemplate} width={240} />
-          <Tooltip label="позначити, що лист уже надіслано. Запис іде в Контакти, фолоу-ап нагадає через 7 днів">
+          <Tooltip label="mark the letter as already sent. The record goes to Contacts, a follow-up reminder comes in 7 days">
             <Button
               leftSection={<Send size={15} />}
               rightSection={<Kbd size="xs">e</Kbd>}
               disabled={!template}
               onClick={() => onAct({ action: 'contacted', channel: 'email', templateUsed: template })}
             >
-              Написав
+              Contacted
             </Button>
           </Tooltip>
         </Group>
@@ -408,9 +409,9 @@ function Detail({ card, onAct }: { card: QueueCard; onAct: (body: Record<string,
 }
 
 /**
- * Порожня черга буває з трьох різних причин, і дії власника в кожному випадку різні.
- * Тому текст не один на всі випадки: раніше тут завжди писало "новий зріз завтра",
- * що при нулі вакансій вище порогу просто вводило в оману.
+ * An empty queue has three different causes, and the owner's next step differs for each.
+ * So there is no single text: this used to always say "new slice tomorrow", which was
+ * simply misleading when zero vacancies cleared the threshold.
  */
 function EmptyReason({ decided, total }: { decided: number; total: number }) {
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: () => api.stats() });
@@ -420,8 +421,8 @@ function EmptyReason({ decided, total }: { decided: number; total: number }) {
       <EmptyState
         icon={<Inbox size={28} />}
         withIndicatorBackground
-        title="Сьогоднішній зріз розібрано"
-        description={`Усі ${total} карток пройдені. Новий зріз збереться завтра, або запусти джерела кнопкою у шапці.`}
+        title="The slice for today is done"
+        description={`All ${total} cards are done. A new slice is built tomorrow, or run the sources from the header button.`}
       />
     );
   }
@@ -431,8 +432,8 @@ function EmptyReason({ decided, total }: { decided: number; total: number }) {
       <EmptyState
         icon={<Filter size={28} />}
         withIndicatorBackground
-        title="Нічого не проходить поріг"
-        description={`У базі ${stats.vacancies.open} відкритих вакансій, але жодна не набрала ${stats.threshold} балів. Знизь поріг або поправ ваги в config/scoring.json, далі Запустити, Перерахувати рахунки.`}
+        title="Nothing clears the threshold"
+        description={`The database has ${stats.vacancies.open} open vacancies, but none scored ${stats.threshold}. Lower the threshold or adjust the weights on the Rules page, then Run, Rescore.`}
       />
     );
   }
@@ -441,11 +442,11 @@ function EmptyReason({ decided, total }: { decided: number; total: number }) {
     <EmptyState
       icon={<Inbox size={28} />}
       withIndicatorBackground
-      title="Нових вакансій для черги немає"
+      title="No new vacancies for the queue"
       description={
         stats
-          ? `Поріг проходять ${stats.vacancies.aboveThreshold} вакансій, і всі вони вже розібрані. Потрібні нові знахідки: Запустити, Оновити вакансії.`
-          : 'Потрібні нові знахідки: Запустити, Оновити вакансії.'
+          ? `${stats.vacancies.aboveThreshold} vacancies clear the threshold, and all of them are decided. New finds are needed: Run, Refresh vacancies.`
+          : 'New finds are needed: Run, Refresh vacancies.'
       }
     />
   );
@@ -455,11 +456,10 @@ export function QueuePage() {
   const client = useQueryClient();
 
   /*
-   * Курсор черги навмисно лишається станом, а не йде в адресу, на відміну від
-   * решти списків. Черга це потік на день: десять карток, по одному рішенню на
-   * кожну, і картка зникає, щойно рішення прийнято. Посилання на "четверту
-   * картку черги" протухає за хвилину і завтра означає зовсім інше, тому
-   * адресувати тут нема чого.
+   * The queue cursor deliberately stays in state rather than the address, unlike the
+   * other lists. The queue is a daily stream: ten cards, one decision each, and a card
+   * disappears as soon as it is decided. A link to "the fourth queue card" goes stale
+   * in a minute and means something else tomorrow, so there is nothing to address.
    */
   const [cursor, setCursor] = useState(0);
   const { data, error, isLoading } = useQuery({ queryKey: ['queue'], queryFn: () => api.queue() });
@@ -467,13 +467,13 @@ export function QueuePage() {
   const act = useMutation({
     mutationFn: ({ id, body }: { id: number; body: Record<string, unknown>; company: string }) => api.act(id, body),
     onSuccess: (_result, { body, company }) => {
-      notifications.show({ color: 'green', title: company, message: DONE[String(body.action)] ?? 'збережено' });
+      notifications.show({ color: 'green', title: company, message: DONE[String(body.action)] ?? 'saved' });
       void client.invalidateQueries({ queryKey: ['queue'] });
       void client.invalidateQueries({ queryKey: ['stats'] });
       void client.invalidateQueries({ queryKey: ['outreach'] });
     },
     onError: (mutationError) =>
-      notifications.show({ color: 'red', title: 'не збереглось', message: String(mutationError) }),
+      notifications.show({ color: 'red', title: 'not saved', message: String(mutationError) }),
   });
 
   const pending = data?.cards.filter((card) => !card.decision) ?? [];
@@ -496,7 +496,7 @@ export function QueuePage() {
   if (error) {
     return (
       <Box p="lg">
-        <Alert color="red" title="Не вдалось прочитати чергу">
+        <Alert color="red" title="Could not read the queue">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
       </Box>
@@ -524,16 +524,16 @@ export function QueuePage() {
         <>
           <PaneHeader stacked>
             <Group gap="xs" justify="space-between" wrap="nowrap">
-              <Text fw={600}>{pending.length} чекають рішення</Text>
+              <Text fw={600}>{pending.length} awaiting a decision</Text>
               <Text size="xs" c="dimmed">
-                зріз за {data.day}
+                slice for {data.day}
               </Text>
             </Group>
-            {/* Прогрес показує, що черга конечна: десять карток закінчуються, і це видно. */}
+            {/* The progress bar shows the queue is finite: ten cards run out, and you can see it. */}
             <Progress value={(decided / Math.max(1, data.cards.length)) * 100} size="xs" mt={10} />
             <Group gap={6} mt={10}>
               <Text size="xs" c="dimmed">
-                розібрано {decided} з {data.cards.length}
+                decided {decided} of {data.cards.length}
               </Text>
               <Text size="xs" c="dimmed">
                 ·
@@ -541,7 +541,7 @@ export function QueuePage() {
               <Kbd size="xs">j</Kbd>
               <Kbd size="xs">k</Kbd>
               <Text size="xs" c="dimmed">
-                перехід
+                navigate
               </Text>
             </Group>
           </PaneHeader>

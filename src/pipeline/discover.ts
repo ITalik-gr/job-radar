@@ -7,7 +7,7 @@ import { log } from '../lib/log.js';
 import { normalizeUrl } from '../lib/normalize.js';
 import { withRun } from '../lib/runs.js';
 
-/** Шляхи, які пробуються по черзі. Порядок за спаданням імовірності. */
+/** Paths tried in turn. Ordered by decreasing likelihood. */
 export const CAREER_PATHS = [
   '/careers',
   '/career',
@@ -19,11 +19,12 @@ export const CAREER_PATHS = [
   '/team/careers',
 ];
 
+// The Ukrainian words match careers links on Ukrainian sites.
 const CAREER_TEXT = /(career|job|vacanc|join us|hiring|ваканс|карʼєр|кар'єр|команда)/i;
 
 /**
- * Ознаки стеку прямо з HTML. Дешева евристика, але робоча: сліди рушія лишаються
- * в атрибутах, іменах бандлів і адресах CDN, і підробити їх нема кому.
+ * Stack signs straight from the HTML. A cheap heuristic, but it works: traces of the engine stay in
+ * attributes, bundle names and CDN addresses, and nobody bothers to fake them.
  */
 export const TECH_MARKERS: [RegExp, string][] = [
   [/_next\/|__NEXT_DATA__/i, 'next.js'],
@@ -68,14 +69,14 @@ export const TECH_MARKERS: [RegExp, string][] = [
 ];
 
 /**
- * Ознаки з видимого тексту, а не з розмітки.
+ * Signs from the visible text rather than the markup.
  *
- * Це друга половина картини, і без неї вона брехлива. Студія розповідає на сторінці
- * послуг, що робить headless-магазини на Shopify і Sanity, а її власний сайт при
- * цьому стоїть на WordPress: розмітка покаже WordPress і нічого більше. Для листа
- * важливіше те, що вона *робить клієнтам*, а не на чому зроблена її візитівка.
+ * This is the second half of the picture, and without it the picture lies. A studio says on its
+ * services page that it builds headless stores on Shopify and Sanity, while its own site runs on
+ * WordPress: the markup shows WordPress and nothing else. For a letter, what it *does for clients*
+ * matters more than what its business card is built on.
  *
- * Тому і збігів тут вимагається слово цілком: "react" всередині "reactive" не рахується.
+ * That is also why a match here requires a whole word: "react" inside "reactive" does not count.
  */
 export const TEXT_MARKERS: [RegExp, string][] = [
   [/\bheadless\b/i, 'headless cms'],
@@ -119,7 +120,7 @@ export const TEXT_MARKERS: [RegExp, string][] = [
   [/\brag\b|\bvector (search|database)\b/i, 'rag'],
 ];
 
-/** ATS впізнається за посиланням: далі працюємо тільки через його API. */
+/** An ATS is recognised by its link: from then on we work only through its API. */
 export const ATS_PATTERNS: [RegExp, string][] = [
   [/boards\.greenhouse\.io\/([\w-]+)|job-boards\.greenhouse\.io\/([\w-]+)/i, 'greenhouse'],
   [/jobs\.lever\.co\/([\w-]+)/i, 'lever'],
@@ -134,7 +135,7 @@ export interface AtsMatch {
   slug: string;
 }
 
-/** ATS, які ми вміємо читати через API. Такий kind не можна замінювати на html. */
+/** ATS boards we can read through an API. Such a kind must not be replaced with html. */
 export const KNOWN_ATS = ['greenhouse', 'lever', 'ashby', 'workable', 'recruitee', 'personio'];
 
 export function detectAts(html: string): AtsMatch | null {
@@ -153,9 +154,9 @@ export function detectTech(html: string): string[] {
 }
 
 /**
- * Те, про що компанія пише словами. Розбирається саме видимий текст: у розмітці
- * назви технологій трапляються у складі класів і бандлів, і збіг там нічого не
- * означає, а в тексті сторінки послуг означає рівно те, що написано.
+ * What the company says in words. The visible text is parsed on purpose: in markup technology names
+ * appear inside classes and bundles, and a match there means nothing, while on a services page it
+ * means exactly what it says.
  */
 export function detectTechFromText(html: string): string[] {
   const $ = cheerio.load(html);
@@ -165,12 +166,12 @@ export function detectTechFromText(html: string): string[] {
   return TEXT_MARKERS.filter(([pattern]) => pattern.test(text)).map(([, name]) => name);
 }
 
-/** Обидві половини разом, без повторів: розмітка сайту плюс те, що написано словами. */
+/** Both halves together, without repeats: the site markup plus what is written in words. */
 export function detectStack(html: string): string[] {
   return [...new Set([...detectTech(html), ...detectTechFromText(html)])];
 }
 
-/** Посилання на вакансії з хедера і футера: часто вони не на очевидному шляху. */
+/** Vacancy links from the header and footer: they are often not on the obvious path. */
 export function findCareerLinks(html: string, base: string): string[] {
   const $ = cheerio.load(html);
   const found = new Set<string>();
@@ -178,7 +179,7 @@ export function findCareerLinks(html: string, base: string): string[] {
   $('a[href]').each((_, node) => {
     const href = ($(node).attr('href') ?? '').trim();
     const text = $(node).text();
-    // Порожній href резолвиться в головну сторінку, а текст посилання може бути "Careers".
+    // An empty href resolves to the home page, while the link text may say "Careers".
     if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
     if (!CAREER_TEXT.test(href) && !CAREER_TEXT.test(text)) return;
     try {
@@ -186,14 +187,14 @@ export function findCareerLinks(html: string, base: string): string[] {
       if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
       found.add(normalizeUrl(url.href) ?? url.href);
     } catch {
-      // Порожній або сміттєвий href, просто пропускаємо.
+      // An empty or garbage href, just skip it.
     }
   });
 
   return [...found];
 }
 
-/** Сторінка вакансій має містити щось схоже на перелік позицій, а не просто слово careers. */
+/** A careers page has to contain something like a list of positions, not just the word careers. Ukrainian phrases included. */
 export function looksLikeCareersPage(html: string): boolean {
   const $ = cheerio.load(html);
   $('script, style, noscript').remove();
@@ -219,8 +220,8 @@ export interface DiscoveryResult {
 }
 
 /**
- * Один прохід по компанії: головна сторінка дає стек і посилання на вакансії,
- * далі перевіряються типові шляхи. Якщо знайшовся ATS, HTML більше не чіпаємо.
+ * One pass over a company: the home page gives the stack and vacancy links, then the typical paths
+ * are checked. If an ATS is found, the HTML is not touched again.
  */
 export async function discoverCompany(company: Company): Promise<DiscoveryResult> {
   const base = `https://${company.domain}`;
@@ -241,12 +242,12 @@ export async function discoverCompany(company: Company): Promise<DiscoveryResult
     result.attempts += 1;
     result.techHints = [...new Set([...company.techHints, ...detectStack(homepage)])];
   } catch (error) {
-    log.warn({ domain: company.domain, err: String(error) }, 'головна сторінка не відкрилась');
+    log.warn({ domain: company.domain, err: String(error) }, 'home page did not open');
     return result;
   }
 
-  // Відомий ATS зі slug це найцінніше, що є в картці компанії. Discovery може його
-  // доповнити, але ніколи не понижує до html лише тому, що на головній немає посилання.
+  // A known ATS with a slug is the most valuable thing on a company card. Discovery may add to it,
+  // but never downgrades it to html just because the home page has no link.
   const locked = KNOWN_ATS.includes(company.careersKind) && Boolean(company.careersSlug);
 
   const ats = detectAts(homepage);
@@ -281,7 +282,7 @@ export async function discoverCompany(company: Company): Promise<DiscoveryResult
         return result;
       }
     } catch {
-      // 404 на вгаданому шляху це нормальний результат, просто пробуємо наступний.
+      // A 404 on a guessed path is a normal outcome, just try the next one.
     }
   }
 
@@ -291,16 +292,16 @@ export async function discoverCompany(company: Company): Promise<DiscoveryResult
 
 export interface DiscoverOptions {
   limit?: number;
-  /** Обійти конкретну компанію за доменом. */
+  /** Crawl a specific company by domain. */
   domain?: string;
-  /** Ігнорувати обмеження і брати всіх підряд. */
+  /** Ignore the restrictions and take everyone. */
   all?: boolean;
 }
 
 /**
- * Кого обходимо. Обмеження навмисне: компаній із каталогів будуть сотні, і сліпий
- * обхід усіх це тисяча марних запитів на добу. Беремо тільки цікаві або ті, чий сайт
- * уже показав фронтендовий стек.
+ * Who gets crawled. The restriction is deliberate: catalogs will bring hundreds of companies, and a
+ * blind crawl of all of them is a thousand useless requests a day. Only interesting ones are taken,
+ * or those whose site has already shown a front end stack.
  */
 export async function candidatesForDiscovery(options: DiscoverOptions = {}): Promise<Company[]> {
   const db = getDb();
@@ -316,7 +317,7 @@ export async function candidatesForDiscovery(options: DiscoverOptions = {}): Pro
       and(
         or(eq(companies.careersKind, 'unknown'), isNull(companies.careersUrl)),
         sql`${companies.careersKind} != 'none'`,
-        // Компанію з відомим ATS і slug обходити нема сенсу, її вакансії беруться з API.
+        // A company with a known ATS and slug is not worth crawling, its vacancies come from the API.
         isNull(companies.careersSlug),
       ),
     );
@@ -327,22 +328,22 @@ export async function candidatesForDiscovery(options: DiscoverOptions = {}): Pro
     return row.company.techHints.some((hint) => ['react', 'next.js', 'astro', 'vue', 'svelte', 'nuxt'].includes(hint));
   });
 
-  // Компанії без жодного tech_hint ще не обходились, їм потрібен перший дотик до головної.
+  // Companies without a single tech_hint have not been crawled yet and need a first visit to the home page.
   const untouched = rows.filter((row) => row.company.techHints.length === 0);
   const pool = options.all ? rows : [...interesting, ...untouched];
 
   const unique = new Map(pool.map((row) => [row.company.id, row.company]));
 
   /*
-   * Спершу ті, кого не чіпали найдовше, і `null` попереду всіх. Це не косметика:
-   * компанія, чия головна не відкрилась, лишається в тому самому наборі кандидатів,
-   * і без цього порядку кожна наступна партія бралась би за ту саму десятку.
+   * Those untouched the longest go first, with `null` ahead of everyone. This is not cosmetic: a
+   * company whose home page did not open stays in the same candidate set, and without this order
+   * every next batch would take the same ten.
    */
   const ordered = [...unique.values()].sort((a, b) => (a.lastChecked ?? 0) - (b.lastChecked ?? 0));
   return ordered.slice(0, options.limit ?? 25);
 }
 
-/** Скільки компаній чекає на обхід. Потрібне інтерфейсу, щоб знати, коли зупинитись. */
+/** How many companies await a crawl. The interface needs it to know when to stop. */
 export async function pendingDiscovery(options: DiscoverOptions = {}): Promise<number> {
   const all = await candidatesForDiscovery({ ...options, limit: Number.MAX_SAFE_INTEGER });
   return all.length;
@@ -356,7 +357,7 @@ export interface DiscoverStats {
   withAts: number;
   withHtml: number;
   none: number;
-  /** Скільки компаній лишилось після цієї партії. Нуль означає, що обхід закінчено. */
+  /** How many companies are left after this batch. Zero means the crawl is done. */
   remaining: number;
 }
 
@@ -400,8 +401,8 @@ export async function discover(options: DiscoverOptions = {}): Promise<DiscoverS
       } catch (error) {
         const message = `${company.domain}: ${error instanceof Error ? error.message : String(error)}`;
         stats.errors.push(message);
-        log.warn({ err: message }, 'discovery впав на компанії');
-        // Позначка часу навіть на невдачі: інакше ця компанія вічно перша в черзі.
+        log.warn({ err: message }, 'discovery failed on a company');
+        // Timestamp even on failure: otherwise this company is forever first in line.
         await db.update(companies).set({ lastChecked: Date.now() }).where(eq(companies.id, company.id));
       }
     }

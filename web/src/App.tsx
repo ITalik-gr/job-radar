@@ -49,26 +49,26 @@ import { SourcesPage } from './pages/Sources';
 import { TemplatesPage } from './pages/Templates';
 import { RulesPage } from './pages/Rules';
 
-// Статистика тягне recharts, тому вантажиться окремим чанком лише коли її відкрили.
+// Stats pulls in recharts, so it loads as a separate chunk only once opened.
 const StatsPage = lazy(() => import('./pages/Stats').then((module) => ({ default: module.StatsPage })));
 
 const TABS = [
-  { id: 'queue', label: 'Черга', icon: Inbox, hint: 'десять карток на день, по одному рішенню на кожну' },
-  { id: 'studios', label: 'Студії', icon: Palette, hint: 'кому писати без вакансії: усе з каталогів, що пройшло поріг рахунку' },
-  { id: 'startups', label: 'Стартапи', icon: Rocket, hint: 'холодний лист стартапу: чи наймають видно з кількості знайдених вакансій' },
-  { id: 'companies', label: 'Компанії', icon: Building2, hint: 'уся база як довідник: пошук, статуси, історія. Писати звідси не треба' },
-  { id: 'sending', label: 'До відправки', icon: MailPlus, hint: 'готові чернетки листів, по одному натисканню на кожен' },
-  { id: 'outreach', label: 'Контакти', icon: Send, hint: 'кому писали і хто відповів' },
-  { id: 'stats', label: 'Статистика', icon: BarChart3, hint: 'стек, вилки, час життя вакансій' },
-  { id: 'sources', label: 'Джерела', icon: Radio, hint: 'стан адаптерів і ручний запуск' },
-  { id: 'templates', label: 'Шаблони', icon: FileText, hint: 'твої тексти листів і резюме' },
-  { id: 'rules', label: 'Правила', icon: SlidersHorizontal, hint: 'поріг, стоп-слова і ваги термінів' },
-  { id: 'operations', label: 'Операції', icon: Play, hint: 'усе, що раніше жило в CLI: збір, обробка, перевірки' },
+  { id: 'queue', label: 'Queue', icon: Inbox, hint: 'ten cards a day, one decision each' },
+  { id: 'studios', label: 'Studios', icon: Palette, hint: 'who to write to without a vacancy: everything from the catalogs above the score threshold' },
+  { id: 'startups', label: 'Startups', icon: Rocket, hint: 'a cold letter to a startup: whether they hire shows in the number of vacancies found' },
+  { id: 'companies', label: 'Companies', icon: Building2, hint: 'the whole database as a directory: search, statuses, history. Not the place to write from' },
+  { id: 'sending', label: 'Outbox', icon: MailPlus, hint: 'ready letter drafts, one click each' },
+  { id: 'outreach', label: 'Contacts', icon: Send, hint: 'who was written to and who replied' },
+  { id: 'stats', label: 'Stats', icon: BarChart3, hint: 'stack, salaries, vacancy lifetime' },
+  { id: 'sources', label: 'Sources', icon: Radio, hint: 'adapter status and manual runs' },
+  { id: 'templates', label: 'Templates', icon: FileText, hint: 'your letter texts and resumes' },
+  { id: 'rules', label: 'Rules', icon: SlidersHorizontal, hint: 'threshold, stop words and term weights' },
+  { id: 'operations', label: 'Operations', icon: Play, hint: 'everything that used to live in the CLI: collection, processing, checks' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
-/** Сторінки з двома панелями керують скролом самі, решта скролиться цілком. */
+/** Two-pane pages manage their own scrolling, the rest scroll as a whole. */
 const FULL_HEIGHT: TabId[] = ['queue', 'studios', 'startups', 'templates'];
 
 function TokenGate() {
@@ -90,8 +90,8 @@ function TokenGate() {
 
         <PasswordInput
           data-autofocus
-          label="Токен доступу"
-          description="Той самий, що заданий секретом RADAR_TOKEN у воркері. Зберігається локально в браузері."
+          label="Access token"
+          description="The same value as the RADAR_TOKEN secret on the worker. Stored locally in the browser."
           placeholder="RADAR_TOKEN"
           value={value}
           onChange={(event) => setValue(event.currentTarget.value)}
@@ -99,7 +99,7 @@ function TokenGate() {
         />
 
         <Button fullWidth mt="lg" disabled={!value.trim()} onClick={save}>
-          Увійти
+          Sign in
         </Button>
       </Paper>
     </div>
@@ -107,9 +107,9 @@ function TokenGate() {
 }
 
 /**
- * Рядок стану в бічній колонці. Значення обрізається, повний текст у підказці:
- * пошта буває довгою, і без обрізання вона розсовувала колонку і лізла в друге
- * слово, як на скріні з адресою.
+ * A status row in the sidebar. The value is truncated with the full text in a tooltip:
+ * email addresses can be long, and untruncated they pushed the column apart and ran
+ * into the next word.
  */
 function StatusRow({
   label,
@@ -155,9 +155,9 @@ function StatusRow({
 
 export function App() {
   /*
-   * Розділ живе в адресі, а не в стані. Завдяки цьому перехід на конкретну
-   * контору це звичайне посилання `#/companies/acme.com` з будь-якого місця,
-   * а не проп через усе дерево, і кнопка "назад" працює як належить.
+   * The section lives in the address, not in state. That makes going to a specific
+   * company an ordinary link `#/companies/acme.com` from anywhere rather than a prop
+   * through the whole tree, and the back button works as it should.
    */
   const { segments, go } = useRoute();
   const tab: TabId = (TABS.find((item) => item.id === segments[0])?.id ?? 'queue') as TabId;
@@ -174,11 +174,11 @@ export function App() {
     queryFn: () => api.outreach(7),
     refetchInterval: 60_000,
   });
-  // Ті самі ключі, що й на сторінках, тому лічильники в навігації беруться з кешу.
+  // The same keys as on the pages, so the navigation counters come from the cache.
   const { data: queue } = useQuery({ queryKey: ['queue'], queryFn: () => api.queue() });
   const { data: sources } = useQuery({ queryKey: ['sources'], queryFn: () => api.sources() });
-  // Пошта або підключена, або ні. Мовчазний третій стан означав би, що листи
-  // просто перестали йти, а власник дізнається про це через тиждень.
+  // Mail is either connected or not. A silent third state would mean letters just
+  // stopped going out, and the owner would find out a week later.
   const { data: gmail } = useQuery({
     queryKey: ['gmail-status'],
     queryFn: () => api.gmailStatus(),
@@ -186,13 +186,15 @@ export function App() {
     retry: false,
   });
 
-  // Цифри 1..6 перемикають розділи: руки лишаються на клавіатурі під час розбору черги.
+  // Digits switch sections: hands stay on the keyboard while working the queue.
   useHotkeys(
     useMemo(() => Object.fromEntries(TABS.map((item, index) => [String(index + 1), () => setTab(item.id)])), []),
   );
 
-  // Задеплоєна версія без токена не покаже нічого, тому питаємо його одразу.
-  if (statsError instanceof Error && /токен/i.test(statsError.message)) return <TokenGate />;
+  // A deployed instance shows nothing without a token, so ask for it straight away.
+  if (statsError instanceof Error && (statsError as Error & { status?: number }).status === 401) {
+    return <TokenGate />;
+  }
 
   const pending = queue?.cards.filter((card) => !card.decision).length ?? 0;
   const overdue = waiting?.length ?? 0;
@@ -215,8 +217,8 @@ export function App() {
       padding={0}
       styles={{ main: { height: '100dvh', display: 'flex', flexDirection: 'column' } }}
     >
-      {/* Логотип живе в шапці над навігацією, інакше в лівому верхньому куті
-          виявляється назва сторінки, а не назва застосунку. */}
+      {/* The logo sits in the header above the navigation, otherwise the top left
+          corner shows the page name instead of the application name. */}
       <AppShell.Header>
         <Group h="100%" gap={0} wrap="nowrap">
           <Group
@@ -243,10 +245,10 @@ export function App() {
             <Group gap="xl" ml="auto" wrap="nowrap" visibleFrom="md">
               {stats && (
                 <>
-                  <HeaderStat label="відкритих вакансій" value={stats.vacancies.open} />
-                  <HeaderStat label="вище порогу" value={stats.vacancies.aboveThreshold} />
-                  <HeaderStat label="написано" value={stats.funnel.contacted ?? 0} />
-                  {overdue > 0 && <HeaderStat label="без відповіді 7+ дн" value={overdue} color="yellow.8" />}
+                  <HeaderStat label="open vacancies" value={stats.vacancies.open} />
+                  <HeaderStat label="above threshold" value={stats.vacancies.aboveThreshold} />
+                  <HeaderStat label="contacted" value={stats.funnel.contacted ?? 0} />
+                  {overdue > 0 && <HeaderStat label="no reply 7+ days" value={overdue} color="yellow.8" />}
                 </>
               )}
             </Group>
@@ -284,7 +286,7 @@ export function App() {
           <>
             <Divider />
             <Stack gap={6} p="md">
-              {/* Підказку про цифри показуємо один раз тут, а не бейджем у кожному рядку. */}
+              {/* The digit hint is shown once here rather than as a badge on every row. */}
               <Group gap={6} mb={2}>
                 <Kbd size="xs">1</Kbd>
                 <Text size="xs" c="dimmed">
@@ -292,48 +294,48 @@ export function App() {
                 </Text>
                 <Kbd size="xs">9</Kbd>
                 <Text size="xs" c="dimmed">
-                  перемикають розділи
+                  switch sections
                 </Text>
               </Group>
-              <StatusRow label="поріг рахунку" value={String(stats.threshold)} />
+              <StatusRow label="score threshold" value={String(stats.threshold)} />
               <StatusRow
-                label="виклики моделі"
+                label="model calls"
                 value={String(stats.llmBudgetLeft)}
-                hint="скільки викликів лишилось сьогодні"
+                hint="calls left for today"
               />
               {/*
-                Хто класифікує, видно одразу: Anthropic це рахунок за токени,
-                Workers AI це квота вже оплаченого плану Cloudflare.
+                Who classifies is visible at a glance: Anthropic bills per token,
+                Workers AI uses the quota of an already paid Cloudflare plan.
               */}
               <StatusRow
-                label="класифікує"
+                label="classifier"
                 value={stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
                 hint={stats.llmModel}
               />
               {/*
-                Пошта має три стани, а не два: підключена, не підключена і
-                підключена з поламаною адресою відправника. Третій найпідліший,
-                бо все виглядає робочим, а лист іде з нечитабельним From.
+                Mail has three states, not two: connected, not connected, and
+                connected with a broken sender address. The third is the nastiest,
+                because everything looks fine while letters go out with an unreadable From.
               */}
               <StatusRow
-                label="пошта"
-                hint={gmail?.hint ?? gmail?.email ?? 'Gmail для розсилки'}
+                label="mail"
+                hint={gmail?.hint ?? gmail?.email ?? 'Gmail for sending'}
                 tone={gmail?.connected ? (gmail.emailValid ? 'ok' : 'warn') : 'warn'}
                 value={
                   gmail?.connected
                     ? gmail.emailValid
-                      ? (gmail.email ?? 'підключена')
-                      : 'перевір адресу'
+                      ? (gmail.email ?? 'connected')
+                      : 'check the address'
                     : undefined
                 }
                 action={
-                  gmail?.connected ? undefined : { label: 'підключити', href: api.gmailConnectUrl() }
+                  gmail?.connected ? undefined : { label: 'connect', href: api.gmailConnectUrl() }
                 }
               />
               {stats.vacancies.needsReview > 0 && (
                 <Group gap={6} c="yellow.8">
                   <CircleAlert size={14} />
-                  <Text size="xs">на ручний перегляд {stats.vacancies.needsReview}</Text>
+                  <Text size="xs">for manual review {stats.vacancies.needsReview}</Text>
                 </Group>
               )}
             </Stack>
@@ -370,7 +372,7 @@ function HeaderStat({ label, value, color }: { label: string; value: number; col
       <Text size="xs" c="dimmed" tt="uppercase" fw={500} style={{ letterSpacing: '0.04em' }}>
         {label}
       </Text>
-      {/* Значення читається з відстані, підпис лише уточнює, тому різниця в розмірі велика. */}
+      {/* The value is read from a distance and the label only qualifies it, hence the big size gap. */}
       <Text fz={16} lh={1.3} fw={600} c={color} className="tabular">
         {value}
       </Text>

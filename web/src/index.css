@@ -1,8 +1,8 @@
 /*
- * Порядок шарів важливий. Mantine приносить власне скидання стилів і власні класи,
- * Tailwind тут лишається тільки для верстки сторінок, тому його утиліти мусять
- * перебивати Mantine. Preflight від Tailwind не підключаємо: два скидання поспіль
- * конфліктують і ламають типографіку компонентів.
+ * Layer order matters. Mantine brings its own reset and its own classes, while
+ * Tailwind is here only for page layout, so its utilities must win over Mantine.
+ * Tailwind preflight stays off: two resets in a row conflict and break the
+ * typography of the components.
  */
 @layer theme, mantine, utilities;
 
@@ -17,12 +17,12 @@ body,
   height: 100%;
 }
 
-/* Числа в таблицях і рахунках вирівнюються по колонках, інакше їх неможливо порівняти. */
+/* Numbers in tables and scores line up in columns, otherwise they cannot be compared. */
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Сирий текст вакансії: моноширинний, з переносами, без горизонтального скролу. */
+/* Raw vacancy text: monospaced, wrapped, no horizontal scroll. */
 .raw-text {
   white-space: pre-wrap;
   word-break: break-word;

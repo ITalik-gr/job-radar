@@ -1,7 +1,7 @@
 node_modules/
 data/*.db
 data/*.db-*
-# Рефреш-токен Gmail. Доступ до пошти власника, у комітах йому не місце.
+# Gmail refresh token. It is access to the owner's mailbox and never belongs in a commit.
 data/.gmail-token.json
 logs/
 
@@ -13,3 +13,7 @@ imports/**/*.csv
 .DS_Store
 dist/
 imports/statrups
+
+# The owner's personal notes. They hold a name, a phone number and an email, so they stay
+# on disk and out of git. A pattern rather than file names, so the names leak nothing either.
+*_CONTEXT*.md

@@ -4,21 +4,21 @@ import { companyState, outreach, sendLog } from '../db/schema.js';
 import { BLOCKED_STATUSES, RECONTACT_DAYS } from './outreach.js';
 
 /**
- * Запобіжники відправки, розділ 9 OUTREACH.md.
+ * Sending guards, section 9 of OUTREACH.md.
  *
- * Кожен це окрема функція з окремим тестом, і жоден не живе всередині
- * UI-хендлера. Причина проста: перевірка, вписана в обробник кнопки, існує рівно
- * доти, доки ніхто не додав другу кнопку. А ціна помилки тут не бага в інтерфейсі,
- * а зіпсована репутація відправника і заблокований особистий Gmail.
+ * Each is a separate function with its own test, and none lives inside a UI handler. The reason
+ * is simple: a check written into a button handler exists only until someone adds a second
+ * button. And the cost of a mistake here is not an interface bug but a ruined sender reputation
+ * and a blocked personal Gmail.
  */
 
 /**
- * Денна стеля зашита константою, а не налаштуванням в інтерфейсі. Це навмисно:
- * поле, яке можна підняти в момент азарту, не є запобіжником.
+ * The daily cap is a constant, not a setting in the interface. On purpose: a field that can be
+ * raised in a moment of excitement is not a guard.
  */
 export const DAILY_SEND_LIMIT = 20;
 
-/** Прогрів: перші три дні по 5 листів, дні 4-7 по 10, далі повна стеля. */
+/** Warmup: 5 letters a day for the first three days, 10 on days 4-7, then the full cap. */
 export const WARMUP_STEPS: { untilDay: number; limit: number }[] = [
   { untilDay: 3, limit: 5 },
   { untilDay: 7, limit: 10 },
@@ -35,11 +35,11 @@ export const QUIET_HOUR_END = 8;
 export interface Blocker {
   code: string;
   message: string;
-  /** Коли перевірка сама себе відпустить. Для таймера в інтерфейсі. */
+  /** When the check releases itself. For the timer in the interface. */
   retryAt?: number;
 }
 
-/** Київський календарний день у форматі YYYY-MM-DD. Доба ліміту саме київська. */
+/** The Kyiv calendar day as YYYY-MM-DD. The limit day follows Kyiv time. */
 export function kyivDay(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Kyiv',
@@ -51,7 +51,7 @@ export function kyivDay(date: Date): string {
 
 interface KyivClock {
   hour: number;
-  /** 0 це неділя, як у Date.getDay. */
+  /** 0 is Sunday, as in Date.getDay. */
   weekday: number;
 }
 
@@ -67,15 +67,15 @@ export function kyivClock(date: Date): KyivClock {
 
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
   const weekday = WEEKDAYS.indexOf(parts.find((part) => part.type === 'weekday')?.value ?? 'Mon');
-  // 24 замість 0 віддає Intl опівночі, і без цього нічна перевірка мовчки ламається.
+  // Intl returns 24 instead of 0 at midnight, and without this the night check silently breaks.
   return { hour: hour === 24 ? 0 : hour, weekday };
 }
 
 /**
- * Робоче вікно: будній день з 08:00 до 22:00 за Києвом.
+ * Working window: a weekday from 08:00 to 22:00 Kyiv time.
  *
- * Лист у суботу вночі виглядає як бот навіть тоді, коли текст написала людина,
- * і саме так його прочитає одержувач.
+ * A letter sent on a Saturday night looks like a bot even when a person wrote it, and that is
+ * exactly how the recipient will read it.
  */
 export function isSendWindow(date: Date): boolean {
   const { hour, weekday } = kyivClock(date);
@@ -83,7 +83,7 @@ export function isSendWindow(date: Date): boolean {
   return hour >= QUIET_HOUR_END && hour < QUIET_HOUR_START;
 }
 
-/** Скільки листів дозволено сьогодні з урахуванням прогріву. */
+/** How many letters are allowed today, taking warmup into account. */
 export function dailyLimit(daysSinceFirstSend: number): number {
   const day = Math.max(1, daysSinceFirstSend);
   for (const step of WARMUP_STEPS) {
@@ -92,7 +92,7 @@ export function dailyLimit(daysSinceFirstSend: number): number {
   return DAILY_SEND_LIMIT;
 }
 
-/** Різниця в календарних днях, а не в добах: прогрів рахується по датах. */
+/** Difference in calendar days, not in 24-hour periods: warmup counts by dates. */
 export function daysBetween(fromDay: string, toDay: string): number {
   const from = Date.parse(`${fromDay}T00:00:00Z`);
   const to = Date.parse(`${toDay}T00:00:00Z`);
@@ -103,7 +103,7 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-/** Розширення файлів і назв технологій, які виглядають як домен, але ним не є. */
+/** File extensions and technology names that look like a domain but are not. */
 const TECH_SUFFIXES = new Set([
   'js',
   'ts',
@@ -123,17 +123,17 @@ const TECH_SUFFIXES = new Set([
   'lock',
 ]);
 
-/** Посилання рахуються і як http, і як голий домен: в очах фільтра це те саме. */
+/** Links count both as http and as a bare domain: to a spam filter they are the same. */
 export function countLinks(text: string): number {
-  // Пошта в підписі це не посилання, тому адреси прибираються до підрахунку:
-  // інакше you@example.com дає одразу дві "зайві" згадки домену.
+  // An email in the signature is not a link, so addresses are removed before counting:
+  // otherwise olena@example.com would give two "extra" domain mentions at once.
   const withoutEmails = text.replace(/[^\s<>()]+@[^\s<>()]+/g, ' ');
   const matches = withoutEmails.match(/(https?:\/\/\S+|\b[a-z0-9-]+\.[a-z]{2,}(?:\/\S*)?)/gi) ?? [];
   const unique = new Set(
     matches
       .map((item) => item.replace(/^https?:\/\//i, '').replace(/[.,);]+$/, '').toLowerCase())
-      // next.js, node.js і сусіди це назви технологій, а не посилання. Без цього
-      // лист, де згадано стек, блокувався б за "два посилання" на порожньому місці.
+      // next.js, node.js and friends are technology names, not links. Without this a letter that
+      // mentions the stack would be blocked for "two links" out of nothing.
       .filter((item) => item.startsWith('http') || !TECH_SUFFIXES.has(item.split('/')[0]!.split('.').pop()!)),
   );
   return unique.size;
@@ -150,21 +150,21 @@ export function bounceRate(rows: { bounceType: string | null; status: string }[]
 }
 
 /**
- * Текст листа сам по собі, без бази. Ці три перевірки потрібні і в редакторі
- * шаблонів, і перед відправкою, і саме тому вони окремо.
+ * The letter text on its own, without the database. These three checks are needed both in the
+ * template editor and before sending, which is exactly why they stand apart.
  */
 export function letterBlockers(subject: string, body: string): Blocker[] {
   const blockers: Blocker[] = [];
-  if (!subject.trim()) blockers.push({ code: 'subject', message: 'порожня тема' });
-  if (!body.trim()) blockers.push({ code: 'body', message: 'порожнє тіло листа' });
+  if (!subject.trim()) blockers.push({ code: 'subject', message: 'empty subject' });
+  if (!body.trim()) blockers.push({ code: 'body', message: 'empty letter body' });
   if (hasUnfilledPlaceholder(`${subject}\n${body}`)) {
-    blockers.push({ code: 'placeholder', message: 'у листі лишився незаповнений плейсхолдер' });
+    blockers.push({ code: 'placeholder', message: 'the letter still has an unfilled placeholder' });
   }
   if (wordCount(body) > MAX_WORDS) {
-    blockers.push({ code: 'length', message: `лист довший за ${MAX_WORDS} слів` });
+    blockers.push({ code: 'length', message: `the letter is longer than ${MAX_WORDS} words` });
   }
   if (countLinks(body) > MAX_LINKS) {
-    blockers.push({ code: 'links', message: `більше ніж ${MAX_LINKS} посилання в тілі` });
+    blockers.push({ code: 'links', message: `more than ${MAX_LINKS} links in the body` });
   }
   return blockers;
 }
@@ -173,16 +173,16 @@ export interface SendCounters {
   day: string;
   sentToday: number;
   limit: number;
-  /** Коли мине пауза в три хвилини. null означає, що можна слати вже. */
+  /** When the three minute pause ends. null means sending is allowed right now. */
   nextAllowedAt: number | null;
   bounceRate: number;
-  /** Чи відправка взагалі відкрита зараз: час, ліміт, баунси. */
+  /** Whether sending is open at all right now: time, limit, bounces. */
   windowOpen: boolean;
 }
 
 /**
- * Лічильники для шапки сторінки. Окремо від перевірки конкретного листа, бо
- * інтерфейс має показувати "надіслано 7 з 20" ще до того, як щось вибрали.
+ * Counters for the page header. Separate from checking a specific letter, because the interface
+ * has to show "sent 7 of 20" before anything is selected.
  */
 export async function sendCounters(now = new Date()): Promise<SendCounters> {
   const db = getDb();
@@ -218,21 +218,21 @@ export async function sendCounters(now = new Date()): Promise<SendCounters> {
 }
 
 /**
- * Повний перелік причин, чому цей лист зараз не піде. Саме перелік, а не перша
- * знайдена: власник має бачити всі три проблеми одразу, а не по одній на клік.
+ * The full list of reasons this letter will not go out now. A list, not the first found: the
+ * owner has to see all three problems at once, not one per click.
  */
 export async function checkSend(draftId: number, now = new Date()): Promise<Blocker[]> {
   const db = getDb();
   const [draft] = await db.select().from(outreach).where(eq(outreach.id, draftId));
-  if (!draft) return [{ code: 'missing', message: `чернетки ${draftId} немає` }];
+  if (!draft) return [{ code: 'missing', message: `no draft ${draftId}` }];
 
   const blockers: Blocker[] = [];
 
   if (draft.status !== 'draft' && draft.status !== 'approved') {
-    blockers.push({ code: 'status', message: `лист уже в стані ${draft.status}` });
+    blockers.push({ code: 'status', message: `the letter is already ${draft.status}` });
   }
   if (!draft.contactEmail) {
-    blockers.push({ code: 'address', message: 'немає адреси одержувача' });
+    blockers.push({ code: 'address', message: 'no recipient address' });
   }
   blockers.push(...letterBlockers(draft.subjectFinal ?? '', draft.bodyFinal ?? ''));
 
@@ -242,13 +242,13 @@ export async function checkSend(draftId: number, now = new Date()): Promise<Bloc
     .where(eq(companyState.companyId, draft.companyId));
 
   if (state && BLOCKED_STATUSES.includes(state.status)) {
-    blockers.push({ code: 'company_status', message: `компанія в стані ${state.status}` });
+    blockers.push({ code: 'company_status', message: `the company is ${state.status}` });
   }
 
   /*
-   * Повторний лист тій самій компанії. Через квартал це нормально, через тиждень
-   * ні, і різниця тут не в ввічливості: другий холодний лист поспіль найчастіше
-   * летить у спам разом з усією подальшою перепискою.
+   * A repeat letter to the same company. After a quarter that is fine, after a week it is not,
+   * and the difference is not about politeness: a second cold letter in a row most often lands in
+   * spam along with all further correspondence.
    */
   const [lastSent] = await db
     .select()
@@ -262,30 +262,30 @@ export async function checkSend(draftId: number, now = new Date()): Promise<Bloc
     if (days < RECONTACT_DAYS && lastSent.id !== draft.followupOf) {
       blockers.push({
         code: 'recontact',
-        message: `цій компанії писали ${days} днів тому, повтор дозволений через ${RECONTACT_DAYS}`,
+        message: `this company was contacted ${days} days ago, a repeat is allowed after ${RECONTACT_DAYS}`,
         retryAt: lastSent.sentAt + RECONTACT_DAYS * 86_400_000,
       });
     }
   }
 
-  // Адреса, яка вже дала hard bounce, мертва назавжди, скільки в неї не пиши.
+  // An address that already hard bounced is dead for good, however often you write to it.
   if (draft.contactEmail) {
     const [dead] = await db
       .select({ id: outreach.id })
       .from(outreach)
       .where(and(eq(outreach.contactEmail, draft.contactEmail), eq(outreach.bounceType, 'hard')))
       .limit(1);
-    if (dead) blockers.push({ code: 'hard_bounce', message: 'ця адреса вже дала hard bounce' });
+    if (dead) blockers.push({ code: 'hard_bounce', message: 'this address already hard bounced' });
   }
 
-  // Фолоу-ап рівно один. Другий це вже наполегливість, яка працює проти.
+  // Exactly one follow-up. A second one is persistence that works against you.
   if (draft.followupOf) {
     const [existing] = await db
       .select({ n: sql<number>`count(*)` })
       .from(outreach)
       .where(and(eq(outreach.followupOf, draft.followupOf), isNotNull(outreach.sentAt)));
     if ((existing?.n ?? 0) > 0) {
-      blockers.push({ code: 'followup', message: 'фолоу-ап цій компанії вже пішов' });
+      blockers.push({ code: 'followup', message: 'a follow-up to this company has already gone out' });
     }
   }
 
@@ -293,33 +293,33 @@ export async function checkSend(draftId: number, now = new Date()): Promise<Bloc
   if (counters.sentToday >= counters.limit) {
     blockers.push({
       code: 'daily_limit',
-      message: `денний ліміт вичерпано: ${counters.sentToday} з ${counters.limit}`,
+      message: `daily limit reached: ${counters.sentToday} of ${counters.limit}`,
     });
   }
   if (counters.nextAllowedAt) {
     blockers.push({
       code: 'gap',
-      message: 'від попереднього листа має минути 3 хвилини',
+      message: '3 minutes must pass since the previous letter',
       retryAt: counters.nextAllowedAt,
     });
   }
   if (!isSendWindow(now)) {
     blockers.push({
       code: 'quiet_hours',
-      message: 'зараз ніч або вихідний за Києвом, лист виглядатиме як бот',
+      message: 'it is night or a weekend in Kyiv, the letter would look like a bot',
     });
   }
   if (counters.bounceRate > BOUNCE_RATE_LIMIT) {
     blockers.push({
       code: 'bounce_rate',
-      message: `баунси ${Math.round(counters.bounceRate * 100)} відсотків за останні ${BOUNCE_WINDOW} листів, відправка зупинена до ручного розблокування`,
+      message: `bounces at ${Math.round(counters.bounceRate * 100)} percent over the last ${BOUNCE_WINDOW} letters, sending is paused until unblocked by hand`,
     });
   }
 
   return blockers;
 }
 
-/** Фіксація факту відправки: денний лічильник і час останнього листа. */
+/** Record the fact of sending: the daily counter and the time of the last letter. */
 export async function noteSent(now = new Date()): Promise<void> {
   const db = getDb();
   const day = kyivDay(now);

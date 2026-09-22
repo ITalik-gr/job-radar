@@ -11,22 +11,22 @@ import {
 } from 'lucide-react';
 
 /**
- * Один опис статусу на весь застосунок: підпис, колір крапки і іконка.
- * Іконка потрібна в дропдауні: сім схожих українських слів поспіль розрізняються
- * погано, а форма іконки читається швидше за текст.
+ * One description of each status for the whole application: label, dot colour and icon.
+ * The icon matters in the dropdown: seven similar words in a row are hard to tell
+ * apart, and the shape of an icon reads faster than text.
  */
 export const STATUS_META: Record<
   string,
   { label: string; color: string; icon: typeof Circle; hint: string }
 > = {
-  new: { label: 'нова', color: 'gray', icon: Circle, hint: 'ще нічого не вирішено' },
-  interesting: { label: 'цікава', color: 'brand', icon: Star, hint: 'відкладена на потім, лишається у списках' },
-  contacted: { label: 'написали', color: 'yellow', icon: Send, hint: 'лист надіслано, чекаємо відповідь' },
-  replied: { label: 'відповіли', color: 'green', icon: CornerDownLeft, hint: 'відповідь отримана' },
-  rejected_by_me: { label: 'відкинув сам', color: 'gray', icon: ThumbsDown, hint: 'не цікаво, зі списків прибрана' },
-  rejected_by_them: { label: 'відмовили', color: 'red', icon: XCircle, hint: 'компанія відмовила' },
-  blacklist: { label: 'блокліст', color: 'red', icon: Ban, hint: 'ніколи не показувати' },
-  snoozed: { label: 'відкладена', color: 'gray', icon: Clock, hint: 'прихована до вказаної дати' },
+  new: { label: 'new', color: 'gray', icon: Circle, hint: 'nothing decided yet' },
+  interesting: { label: 'interesting', color: 'brand', icon: Star, hint: 'kept for later, stays in the lists' },
+  contacted: { label: 'contacted', color: 'yellow', icon: Send, hint: 'letter sent, waiting for an answer' },
+  replied: { label: 'replied', color: 'green', icon: CornerDownLeft, hint: 'an answer came in' },
+  rejected_by_me: { label: 'rejected by me', color: 'gray', icon: ThumbsDown, hint: 'not interesting, removed from the lists' },
+  rejected_by_them: { label: 'rejected by them', color: 'red', icon: XCircle, hint: 'the company said no' },
+  blacklist: { label: 'blacklist', color: 'red', icon: Ban, hint: 'never show again' },
+  snoozed: { label: 'snoozed', color: 'gray', icon: Clock, hint: 'hidden until the given date' },
 };
 
 export const STATUS_ORDER = [
@@ -46,7 +46,7 @@ export const STATUS_OPTIONS = STATUS_ORDER.map((value) => ({
 }));
 
 export function statusLabel(status: string | null): string {
-  return STATUS_META[status ?? 'new']?.label ?? status ?? 'нова';
+  return STATUS_META[status ?? 'new']?.label ?? status ?? 'new';
 }
 
 export function statusColor(status: string | null): string {
@@ -54,9 +54,9 @@ export function statusColor(status: string | null): string {
 }
 
 /**
- * Крапка стану власним span, а не через Mantine Indicator. Indicator виносить
- * крапку окремим позиціонованим шаром, і в таблиці з липкою шапкою вона лізла
- * поверх заголовка колонки при скролі.
+ * The status dot is a plain span rather than a Mantine Indicator. Indicator renders the
+ * dot as a separately positioned layer, and in a table with a sticky header it slid over
+ * the column heading while scrolling.
  */
 export function Dot({ color }: { color: string }) {
   return (
@@ -87,14 +87,14 @@ export function StatusCell({ status }: { status: string | null }) {
   );
 }
 
-/** Іконка поточного статусу для тригера селекта. */
+/** Icon of the current status for the select trigger. */
 export function StatusIcon({ status, size = 15 }: { status: string | null; size?: number }) {
   const meta = STATUS_META[status ?? 'new'];
   const Icon = meta?.icon ?? Circle;
   return <Icon size={size} color={`var(--mantine-color-${meta?.color ?? 'gray'}-6)`} />;
 }
 
-/** Рядок дропдауна: іконка, підпис і коротке пояснення, що статус означає. */
+/** A dropdown row: icon, label and a short note on what the status means. */
 export function renderStatusOption({ option }: { option: { value: string; label: string } }) {
   const meta = STATUS_META[option.value];
   const Icon = meta?.icon ?? Circle;

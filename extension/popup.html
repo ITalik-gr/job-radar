@@ -26,6 +26,28 @@
     </header>
 
     <main>
+      <!--
+        Setup gate. Until the radar address is filled in, the extension has
+        nowhere to send anything, and every other control here is a dead end.
+        Shown first and on its own so that it cannot be missed.
+      -->
+      <section id="setup" class="card" hidden>
+        <b>Спершу вкажи адресу свого радара</b>
+        <span class="hint">
+          Локально це http://localhost:3000, або адреса твого воркера на Cloudflare.
+          Поки поле порожнє, збір вимкнений: розширенню нема куди слати дані.
+        </span>
+        <div class="field">
+          <span class="field-label">Адреса радара</span>
+          <input type="text" id="setupUrl" spellcheck="false" placeholder="http://localhost:3000" />
+        </div>
+        <div class="field">
+          <span class="field-label">Токен, якщо задеплоєно</span>
+          <input type="password" id="setupToken" />
+        </div>
+        <button id="setupSave" class="btn wide primary">Зберегти</button>
+      </section>
+
       <section class="card">
         <div class="card-head">
           <span class="label">Ця сторінка</span>

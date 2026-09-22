@@ -13,15 +13,15 @@ import { upsertCompany } from './companies.js';
 import { hasStopWord, scoreVacancy, STOP_WORD_SCORE } from './score.js';
 import { rules } from './rules.js';
 
-/** Максимум, який модель може додати: llm_relevance 100 ділиться на 20. */
+/** The most the model can add: llm_relevance 100 divided by 20. */
 export const LLM_MAX_BOOST = 5;
 
 export interface IngestOptions extends ClassifyOptions {
-  /** Не викликати модель узагалі: корисно для сухого прогону і тестів. */
+  /** Do not call the model at all: useful for a dry run and for tests. */
   skipLlm?: boolean;
-  /** Довантажити повний текст сторінки вакансії, якщо в блоці його мало. */
+  /** Fetch the full vacancy page text if the block has too little. */
   fetchDetail?: (vacancy: RawVacancy) => Promise<string | null>;
-  /** Нижче цієї довжини блок вважається надто коротким для класифікації. */
+  /** Below this length a block counts as too short for classification. */
   detailThreshold?: number;
 }
 
@@ -33,9 +33,9 @@ export interface IngestStats {
   classified: number;
   needsReview: number;
   detailed: number;
-  /** Сторінка відкрилась, але опису в ній не було: SPA або редірект. */
+  /** The page opened, but had no description: an SPA or a redirect. */
   emptyDetail: number;
-  /** Скільки записів не пішли в модель, бо їх відсіяли безкоштовні правила. */
+  /** How many records did not go to the model because the free rules filtered them out. */
   skippedByFilter: number;
 }
 
@@ -48,19 +48,19 @@ async function resolveCompany(item: RawVacancy, fallback?: Company): Promise<Com
     if (byDomain) return byDomain;
   }
   if (item.companyName) {
-    // RSS дає лише назву без домену, тому зводимо тільки на точний збіг назви.
+    // RSS gives only a name without a domain, so only an exact name match is used.
     const [byName] = await db.select().from(companies).where(eq(companies.name, item.companyName));
     if (byName) return byName;
   }
 
   /*
-   * Компанії ще немає в базі. Раніше вакансія тут мовчки відкидалась, і це з'їдало
-   * всю видачу джерел, які приносять нові компанії разом з вакансіями: борди
-   * акселераторів, DOU, Djinni. У логах було лише debug "компанію не впізнано".
+   * The company is not in the database yet. The vacancy used to be silently dropped here, which ate
+   * the whole output of sources that bring new companies along with vacancies: accelerator boards,
+   * DOU, Djinni. The logs had only a debug "company not recognised".
    *
-   * Створюємо тільки коли є і назва, і домен: без домену запис однаково не
-   * зберігся б, а вигадувати домен з адреси борду не можна, бо тоді всі вакансії
-   * з Djinni стали б однією компанією "djinni.co".
+   * A company is created only when there is both a name and a domain: without a domain the record
+   * would not be stored anyway, and a domain must not be invented from the board URL, otherwise
+   * every Djinni vacancy would become one company "djinni.co".
    */
   if (domain && item.companyName) {
     const { company } = await upsertCompany({
@@ -69,7 +69,7 @@ async function resolveCompany(item: RawVacancy, fallback?: Company): Promise<Com
       source: item.source,
       sourceUrl: item.url,
     });
-    log.info({ domain, name: item.companyName, source: item.source }, 'нова компанія з вакансії');
+    log.info({ domain, name: item.companyName, source: item.source }, 'new company from a vacancy');
     return company;
   }
 
@@ -83,8 +83,8 @@ async function isBlacklisted(companyId: number): Promise<boolean> {
 }
 
 /**
- * Один прохід: стоп-слова, довантаження опису, класифікація, скоринг, дедуп, запис.
- * Все, що нижче порогу, теж зберігається, просто не показується у черзі.
+ * One pass: stop words, description fetch, classification, scoring, dedupe, storage.
+ * Everything below the threshold is stored too, it is just not shown in the queue.
  */
 export async function ingestVacancies(
   items: RawVacancy[],
@@ -108,7 +108,7 @@ export async function ingestVacancies(
   for (const item of items) {
     const owner = await resolveCompany(item, company);
     if (!owner) {
-      log.debug({ url: item.url, name: item.companyName }, 'компанію не впізнано, пропускаю');
+      log.debug({ url: item.url, name: item.companyName }, 'company not recognised, skipping');
       continue;
     }
 
@@ -128,7 +128,7 @@ export async function ingestVacancies(
       continue;
     }
 
-    // Шар 1 по короткому тексту блока: безкоштовно і до будь-яких мережевих витрат.
+    // Layer 1 on the short block text: free and before any network cost.
     let text = `${item.title ?? ''}\n${item.rawText}`;
     if (hasStopWord(text)) {
       await db.insert(vacancies).values({
@@ -148,26 +148,26 @@ export async function ingestVacancies(
       continue;
     }
 
-    // Блок зі списку короткий, з нього не витягти вилку і рівень англійської.
+    // A list block is short, neither the salary nor the English level can be extracted from it.
     let rawText = item.rawText;
     if (options.fetchDetail && rawText.length < threshold) {
       const detail = await options.fetchDetail(item);
       /*
-       * Довша сторінка ще не означає кращий текст. У SPA-бордів у HTML лежить
-       * лише навігація, і без перевірки на прозу радар зберігав меню як опис
-       * вакансії, а потім платив за його класифікацію.
+       * A longer page does not mean better text. SPA boards keep only navigation in the HTML, and
+       * without a prose check the radar stored the menu as the vacancy description and then paid
+       * to classify it.
        */
       if (detail && detail.length > rawText.length && isUsefulDetail(detail)) {
         rawText = detail;
         text = `${item.title ?? ''}\n${rawText}`;
         stats.detailed += 1;
       } else if (detail) {
-        log.debug({ url: item.url }, 'сторінка вакансії без опису, лишаю короткий текст');
+        log.debug({ url: item.url }, 'vacancy page without a description, keeping the short text');
         stats.emptyDetail += 1;
       }
     }
 
-    // Шар 1 повторно, вже по повному тексту: слово angular частіше в описі, ніж у назві.
+    // Layer 1 again, on the full text: the word angular appears in descriptions more often than in titles.
     if (hasStopWord(text)) {
       await db.insert(vacancies).values({
         companyId: owner.id,
@@ -186,9 +186,9 @@ export async function ingestVacancies(
       continue;
     }
 
-    // Детерміновані фільтри ганяються ДО моделі. Вони безкоштовні і відсіюють
-    // більшість: роль не та, гео не те, рахунок такий, що навіть максимальні
-    // 5 балів від моделі не витягнуть його до порогу.
+    // Deterministic filters run BEFORE the model. They are free and filter out most records: wrong
+    // role, wrong geo, or a score so low that even the maximum 5 points from the model cannot
+    // lift it to the threshold.
     const preliminary = scoreVacancy({
       text: rawText,
       title: item.title,
@@ -219,9 +219,9 @@ export async function ingestVacancies(
     }
 
     /*
-     * Перед моделлю вирізаємо блок "про компанію": у всіх вакансій однієї компанії
-     * він однаковий, і на живих даних це половина тексту. Скоринг і збереження
-     * працюють з повним текстом, урізаний іде **тільки** в модель.
+     * The "about the company" block is cut out before the model: it is identical across all
+     * vacancies of one company, and on live data it is half the text. Scoring and storage work with
+     * the full text, the trimmed one goes **only** to the model.
      */
     const affixes = await affixesForCompany(owner.id);
     const forModel = stripBoilerplate(text, affixes).slice(0, config.llm.maxInputChars);
@@ -279,14 +279,14 @@ export async function ingestVacancies(
 }
 
 /**
- * Скільки ідентифікаторів іде в один `in (...)`. Ліміт D1 це сто параметрів на запит,
- * і один з них зайнятий позначкою часу, тому запас лишається навмисно широким.
+ * How many ids go into one `in (...)`. The D1 limit is a hundred parameters per query, and one is
+ * taken by the timestamp, so the margin is kept deliberately wide.
  */
 const CLOSE_BATCH = 90;
 
 /**
- * Вакансії, яких більше немає у відповіді джерела, закриваються.
- * Дані не видаляються ніколи: різниця first_seen і closed_at це майбутній датасет.
+ * Vacancies no longer present in the source response are closed.
+ * Data is never deleted: the difference between first_seen and closed_at is a future dataset.
  */
 export async function closeMissing(
   companyId: number,
@@ -304,22 +304,22 @@ export async function closeMissing(
   if (stale.length === 0) return 0;
 
   /*
-   * Закриття йде партіями, бо D1 приймає не більше ста звʼязаних параметрів на запит.
-   * Дошки на кшталт Greenhouse у великої компанії дають сотні вакансій за раз, і один
-   * `in (?, ?, ...)` на весь список падав з "Failed query" рівно там, де джерело
-   * працює найкраще. Локальний SQLite витримує більше, але межа береться найнижча:
-   * той самий код виконується і в Node, і на Workers.
+   * Closing happens in batches, because D1 accepts no more than a hundred bound parameters per
+   * query. Boards like Greenhouse give hundreds of vacancies at once for a large company, and a
+   * single `in (?, ?, ...)` over the whole list failed with "Failed query" exactly where the source
+   * works best. Local SQLite handles more, but the lowest limit is used: the same code runs both
+   * in Node and on Workers.
    */
   const closedAt = Date.now();
   for (let i = 0; i < stale.length; i += CLOSE_BATCH) {
     const batch = stale.slice(i, i + CLOSE_BATCH);
     await db.update(vacancies).set({ closedAt }).where(inArray(vacancies.id, batch));
   }
-  log.info({ companyId, source, closed: stale.length }, 'вакансії закрито');
+  log.info({ companyId, source, closed: stale.length }, 'vacancies closed');
   return stale.length;
 }
 
-/** Черга на день: поріг за конфігом, виключення побаченого, ліміт карток. */
+/** The daily queue: the threshold from config, excluding what was seen, the card limit. */
 export async function queue(limit = config.pipeline.queueDailyLimit) {
   const db = getDb();
   const rows = await db

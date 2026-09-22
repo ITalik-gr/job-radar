@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { companyState, outreach } from '../db/schema.js';
-import { sendMessage } from '../lib/gmail.js';
+import { deliver } from '../lib/mailer.js';
 import { log } from '../lib/log.js';
 import { checkSend, noteSent, type Blocker } from './send-guards.js';
 
@@ -46,7 +46,7 @@ export async function sendDraft(id: number, now = new Date()): Promise<SendOutco
   }
 
   try {
-    const result = await sendMessage({
+    const result = await deliver({
       to: draft.contactEmail!,
       subject: draft.subjectFinal ?? '',
       body: draft.bodyFinal ?? '',

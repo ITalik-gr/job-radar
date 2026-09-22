@@ -6,16 +6,16 @@ import { Mail, Pencil, Trash2 } from 'lucide-react';
 import { api, type CompanyContact } from '../lib/api';
 
 /**
- * Рядок контакту з правкою на місці.
+ * A contact row with in-place editing.
  *
- * Збір приносить половинки: зі сторінки команди імʼя з посадою без адреси, зі
- * сторінки контактів адресу без імені, а частину адрес видно тільки очима. Без
- * цієї правки звести половинки докупи можна було лише заведенням ще одного рядка,
- * тобто з двох половинок виходило три, і жодна з них не була контактом.
+ * Collection brings halves: a team page gives a name and a title with no address, a
+ * contact page gives an address with no name, and some addresses are only visible to
+ * the eye. Without this edit the only way to join the halves was to add yet another
+ * row, so two halves became three, and none of them was a contact.
  *
- * Поле лишається порожнім, поки в нього не вписали: порожнє означає "немає", а не
- * "не чіпати", і стерте поле стирається. Сервер зливає рядки, якщо після правки
- * адреса збіглася з наявною, тому дублікат тут зробити важко.
+ * A field stays empty until something is typed in: empty means "none", not "leave it",
+ * and a cleared field is cleared. The server merges rows when the edited address matches
+ * an existing one, so making a duplicate here is hard.
  */
 export function ContactRow({ companyId, contact }: { companyId: number; contact: CompanyContact }) {
   const client = useQueryClient();
@@ -24,7 +24,7 @@ export function ContactRow({ companyId, contact }: { companyId: number; contact:
   const [role, setRole] = useState(contact.role ?? '');
   const [email, setEmail] = useState(contact.email ?? '');
 
-  /* Той самий рядок стоїть і в картці студії, і в картці компанії, тому оновлюються обидва списки. */
+  /* The same row appears on the studio card and on the company card, so both lists are refreshed. */
   const invalidate = () => {
     void client.invalidateQueries({ queryKey: ['studios'] });
     void client.invalidateQueries({ queryKey: ['company', companyId] });
@@ -44,25 +44,25 @@ export function ContactRow({ companyId, contact }: { companyId: number; contact:
       invalidate();
       notifications.show({
         color: 'green',
-        title: result.contact.name ?? result.contact.email ?? 'контакт',
+        title: result.contact.name ?? result.contact.email ?? 'contact',
         message:
           result.merged > 0
-            ? `збережено, злито з наявним рядком (${result.merged})`
-            : 'збережено',
+            ? `saved, merged with an existing row (${result.merged})`
+            : 'saved',
       });
     },
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не збереглось', message: error.message }),
+      notifications.show({ color: 'red', title: 'not saved', message: error.message }),
   });
 
   const remove = useMutation({
     mutationFn: () => api.deleteContact(companyId, contact.id),
     onSuccess: () => {
       invalidate();
-      notifications.show({ color: 'gray', title: 'контакт видалено', message: contact.name ?? contact.email ?? '' });
+      notifications.show({ color: 'gray', title: 'contact deleted', message: contact.name ?? contact.email ?? '' });
     },
     onError: (error: Error) =>
-      notifications.show({ color: 'red', title: 'не видалилось', message: error.message }),
+      notifications.show({ color: 'red', title: 'not deleted', message: error.message }),
   });
 
   if (!editing) {
@@ -80,18 +80,18 @@ export function ContactRow({ companyId, contact }: { companyId: number; contact:
             {contact.email}
           </Anchor>
         )}
-        {/* Половинка видно одразу: інакше незрозуміло, чого цьому контакту бракує. */}
+        {/* Show a half contact as such right away: otherwise it is unclear what this contact lacks. */}
         {contact.name && !contact.email && (
           <Text size="xs" c="dimmed">
-            адреси немає
+            no address
           </Text>
         )}
         {!contact.emailValid && (
           <Badge color="red" size="sm" variant="light">
-            адреса мертва
+            dead address
           </Badge>
         )}
-        <Tooltip label="правити: дописати пошту людині або імʼя до адреси">
+        <Tooltip label="edit: add an address to a person or a name to an address">
           <UnstyledButton
             onClick={() => setEditing(true)}
             style={{ display: 'flex', alignItems: 'center', color: 'var(--mantine-color-dimmed)' }}
@@ -108,15 +108,15 @@ export function ContactRow({ companyId, contact }: { companyId: number; contact:
       <TextInput
         size="xs"
         w={150}
-        label="імʼя"
-        placeholder="порожньо означає немає"
+        label="name"
+        placeholder="empty means none"
         value={name}
         onChange={(event) => setName(event.currentTarget.value)}
       />
       <TextInput
         size="xs"
         w={130}
-        label="посада"
+        label="title"
         placeholder="CTO"
         value={role}
         onChange={(event) => setRole(event.currentTarget.value)}
@@ -124,7 +124,7 @@ export function ContactRow({ companyId, contact }: { companyId: number; contact:
       <TextInput
         size="xs"
         w={220}
-        label="пошта"
+        label="email"
         placeholder="anna@studio.com"
         value={email}
         onChange={(event) => setEmail(event.currentTarget.value)}
@@ -134,12 +134,12 @@ export function ContactRow({ companyId, contact }: { companyId: number; contact:
         }}
       />
       <Button size="xs" loading={save.isPending} onClick={() => save.mutate()}>
-        Зберегти
+        Save
       </Button>
       <Button size="xs" variant="subtle" onClick={reset}>
-        Скасувати
+        Cancel
       </Button>
-      <Tooltip label="видалити: у збір регулярно потрапляє інвестор з відгуку або клієнт з кейсу">
+      <Tooltip label="delete: collection regularly picks up an investor from a testimonial or a client from a case study">
         <Button size="xs" variant="subtle" color="red" loading={remove.isPending} onClick={() => remove.mutate()}>
           <Trash2 size={13} />
         </Button>

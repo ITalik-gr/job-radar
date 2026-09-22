@@ -3,16 +3,15 @@ import { log } from './log.js';
 import { encodeMessage, type MimeMessage } from './mime.js';
 
 /**
- * Gmail через OAuth2 і чистий REST, без клієнтської бібліотеки Google.
+ * Gmail through OAuth2 and plain REST, without Google's client library.
  *
- * Навіщо без бібліотеки: потрібні рівно три виклики (обмін коду, оновлення
- * токена, відправка) плюс читання треду на Етапі 5. Пакет `googleapis` тягне
- * десятки мегабайт і не працює на Workers, а тут усе вміщується в один файл,
- * який видно очима цілком.
+ * Why no library: exactly three calls are needed (code exchange, token refresh, sending) plus
+ * reading a thread for reply detection. The `googleapis` package pulls in dozens of megabytes
+ * and does not run on Workers, while here everything fits into one file you can read whole.
  *
- * Чому OAuth, а не SMTP з app password: SMTP не віддає ні `threadId`, ні вхідні
- * листи, тобто з ним неможливі ні детекція відповідей, ні фолоу-ап у тому самому
- * треді. Плюс app passwords Google поступово прикриває.
+ * Why OAuth rather than SMTP with an app password: SMTP returns neither `threadId` nor incoming
+ * mail, so it allows neither reply detection nor a follow-up in the same thread. And Google is
+ * gradually closing app passwords.
  */
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -20,9 +19,9 @@ const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
 /**
- * `gmail.send` для відправки, `gmail.readonly` виключно для детекції відповідей
- * і баунсів. Ні `gmail.modify`, ні повний `mail.google.com` не запитуються:
- * інструмент не має права нічого змінювати в пошті власника.
+ * `gmail.send` for sending, `gmail.readonly` only for detecting replies and bounces. Neither
+ * `gmail.modify` nor full `mail.google.com` is requested: the tool has no right to change
+ * anything in the owner's mailbox.
  */
 export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
@@ -32,7 +31,7 @@ export const GMAIL_SCOPES = [
 export interface StoredToken {
   refreshToken: string;
   accessToken?: string;
-  /** unix-мілісекунди. Оновлюємо за хвилину до кінця, а не в останню секунду. */
+  /** Unix milliseconds. Refreshed a minute before expiry, not at the last second. */
   expiresAt?: number;
   email?: string;
   scopes?: string[];
@@ -44,12 +43,12 @@ export function redirectUri(): string {
 }
 
 /**
- * Адреса відправника мусить бути адресою.
+ * The sender address has to be an address.
  *
- * Перевірка не зайва: значення приходить із секрету, який набирають руками в
- * терміналі, і помилка розкладки перетворює його на "шефдшлювум", після чого
- * лист або не піде, або піде з нечитабельним From. Мовчазний From гірший за
- * помилку на екрані, бо його бачить тільки одержувач.
+ * The check is not redundant: the value comes from a secret typed by hand in a terminal, and a
+ * keyboard layout slip turns it into gibberish, after which the letter either does not go or
+ * goes with an unreadable From. A silent From is worse than an error on screen, because only
+ * the recipient sees it.
  */
 export function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
@@ -60,12 +59,11 @@ export function isConfigured(): boolean {
 }
 
 /**
- * Сховище токена підставляється ззовні, так само як драйвер бази.
+ * The token store is injected from outside, just like the database driver.
  *
- * Причина та сама: цей файл потрапляє в бандл Cloudflare Worker разом з роутами
- * API, а `node:fs` там ні на що не здатний. Файлову реалізацію ставить
- * `gmail-store.node.ts`, і на Workers розсилки просто немає, що чесно: листи
- * йдуть з ноутбука власника, а не з воркера.
+ * Same reason: this file ends up in the Cloudflare Worker bundle along with the API routes, and
+ * `node:fs` can do nothing there. The file-based implementation is installed by
+ * `gmail-store.node.ts`; on Workers the Gmail token comes from an environment secret instead.
  */
 export interface TokenStore {
   load(): StoredToken | null;
@@ -88,13 +86,13 @@ export function loadToken(): StoredToken | null {
   try {
     return store.load();
   } catch (error) {
-    log.warn({ error: String(error) }, 'токен Gmail не читається');
+    log.warn({ error: String(error) }, 'Gmail token cannot be read');
     return null;
   }
 }
 
 export function saveToken(token: StoredToken): void {
-  if (!store) throw new Error('сховище токена не підключене: імпортуй lib/gmail-store.node.js');
+  if (!store) throw new Error('token store not attached: import lib/gmail-store.node.js');
   store.save(token);
 }
 
@@ -103,9 +101,9 @@ export function forgetToken(): void {
 }
 
 /**
- * `access_type=offline` і `prompt=consent` разом потрібні, щоб Google віддав
- * refresh token. Без `prompt=consent` на повторному підключенні приходить лише
- * access token на годину, і наступного дня розсилка мовчки перестає працювати.
+ * `access_type=offline` and `prompt=consent` are both needed for Google to return a refresh
+ * token. Without `prompt=consent` a reconnect yields only an access token for an hour, and the
+ * next day sending silently stops working.
  */
 export function authUrl(state = ''): string {
   const params = new URLSearchParams({
@@ -143,7 +141,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
   return data;
 }
 
-/** Обмін коду з браузера на токени. Викликається один раз, командою `auth:gmail`. */
+/** Exchange the browser code for tokens. Called once, by the `auth:gmail` command. */
 export async function exchangeCode(code: string): Promise<StoredToken> {
   const data = await tokenRequest({
     code,
@@ -155,7 +153,7 @@ export async function exchangeCode(code: string): Promise<StoredToken> {
 
   if (!data.refresh_token) {
     throw new Error(
-      'Google не віддав refresh token. Відкликати доступ у налаштуваннях акаунта і повторити',
+      'Google did not return a refresh token. Revoke access in the account settings and try again',
     );
   }
 
@@ -186,24 +184,23 @@ async function profileEmail(accessToken: string): Promise<string | null> {
 }
 
 /**
- * Живий access token. Оновлюється сам за 60 секунд до кінця життя.
+ * A live access token. Refreshes itself 60 seconds before it expires.
  *
- * Протухлий refresh token не мовчить: він кидає зрозумілу помилку з підказкою,
- * бо мовчазний відмовник тут означає, що листи просто перестали йти, а власник
- * дізнається про це через тиждень.
+ * An expired refresh token is not silent: it throws a clear error with a hint, because a silent
+ * failure here means letters just stopped going out, and the owner finds out a week later.
  */
 export async function accessToken(): Promise<string> {
   if (!isConfigured()) {
-    throw new Error('Gmail не налаштований: потрібні GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_FROM_EMAIL');
+    throw new Error('Gmail is not configured: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_FROM_EMAIL are required');
   }
 
   if (!hasTokenStore()) {
-    throw new Error('розсилка працює локально: на Workers немає де тримати токен Gmail');
+    throw new Error('Gmail sending runs locally: Workers has nowhere to keep the Gmail token');
   }
 
   const token = loadToken();
   if (!token?.refreshToken) {
-    throw new Error('Gmail не підключений, виконати: pnpm cli auth:gmail');
+    throw new Error('Gmail is not connected, run: pnpm cli auth:gmail');
   }
 
   if (token.accessToken && token.expiresAt && token.expiresAt > Date.now() + 60_000) {
@@ -219,7 +216,7 @@ export async function accessToken(): Promise<string> {
       grant_type: 'refresh_token',
     });
   } catch (error) {
-    throw new Error(`${String(error)}. Refresh token протух, повторити: pnpm cli auth:gmail`);
+    throw new Error(`${String(error)}. The refresh token expired, run again: pnpm cli auth:gmail`);
   }
 
   const next: StoredToken = {
@@ -235,24 +232,24 @@ export interface GmailStatus {
   configured: boolean;
   connected: boolean;
   email: string | null;
-  /** Адреса з налаштувань, як є. Показується, навіть коли вона зіпсована. */
+  /** The address from settings, as is. Shown even when it is broken. */
   fromEmail: string | null;
   emailValid: boolean;
   scopes: string[];
   connectedAt: number | null;
-  /** Коли протухає поточний access token. Refresh token живе довше і дати не має. */
+  /** When the current access token expires. The refresh token lives longer and has no date. */
   expiresAt: number | null;
   hint: string | null;
 }
 
-/** Стан підключення для інтерфейсу і для CLI. Мовчазних станів тут бути не має. */
+/** Connection status for the interface and the CLI. There must be no silent states here. */
 export function gmailStatus(): GmailStatus {
   const configured = isConfigured();
   const local = hasTokenStore();
   /*
-   * Токен читається незалежно від решти налаштувань. Інакше зіпсована адреса
-   * відправника вдавала б, що пошта взагалі не підключена, і власник ішов би
-   * проходити OAuth заново замість того, щоб виправити один секрет.
+   * The token is read independently of the other settings. Otherwise a broken sender address
+   * would pretend mail is not connected at all, and the owner would go through OAuth again
+   * instead of fixing one secret.
    */
   const token = loadToken();
   const connected = Boolean(token?.refreshToken);
@@ -268,14 +265,14 @@ export function gmailStatus(): GmailStatus {
     connectedAt: token?.connectedAt ?? null,
     expiresAt: token?.expiresAt ?? null,
     hint: !local
-      ? 'розсилка запускається локально, не на Workers'
+      ? 'Gmail sending runs locally, not on Workers'
       : config.gmail.fromEmail && !emailValid
-        ? `GMAIL_FROM_EMAIL це не адреса: "${config.gmail.fromEmail}". Схоже на помилку розкладки, задати секрет заново`
+        ? `GMAIL_FROM_EMAIL is not an address: "${config.gmail.fromEmail}". Looks like a keyboard layout slip, set the secret again`
         : !configured
-          ? 'заповнити GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GMAIL_FROM_EMAIL'
+          ? 'set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_FROM_EMAIL'
           : connected
             ? null
-            : 'натиснути "підключити" і підтвердити доступ у Google',
+            : 'press "connect" and grant access in Google',
   };
 }
 
@@ -283,7 +280,7 @@ export interface SendInput {
   to: string;
   subject: string;
   body: string;
-  /** Тред оригіналу. Обовʼязковий для фолоу-апу, інакше він піде окремим листом. */
+  /** The original thread. Required for a follow-up, otherwise it goes out as a separate letter. */
   threadId?: string | null;
   inReplyTo?: string | null;
   references?: string[];
@@ -292,42 +289,41 @@ export interface SendInput {
 export interface SendResult {
   messageId: string;
   threadId: string;
-  /** RFC-заголовок Message-Id. Потрібен, щоб фолоу-ап послався саме на цей лист. */
+  /** The RFC Message-Id header. Needed so a follow-up references exactly this letter. */
   rfcMessageId: string | null;
 }
 
 /**
- * Em dash ріжеться тут, на останньому рубежі перед відправкою.
+ * Em dashes are stripped here, at the last line of defence before sending.
  *
- * Правило заборонає його всюди, але єдине місце, де порушення вже неможливо
- * виправити, це надісланий лист. Тому перевірка стоїть саме на виході, а не
- * лише в редакторі шаблонів.
+ * The rule forbids them everywhere, but the only place where a violation can no longer be fixed
+ * is a sent letter. So the check sits exactly at the exit, not only in the template editor.
  */
 export function stripEmDash(text: string): string {
   return text.replace(/\s*—\s*/g, ', ').replace(/,\s*,/g, ',');
 }
 
 /**
- * Помилки Gmail приходять абзацом англійського тексту з посиланням на консоль.
- * Найчастіші з них означають одну конкретну дію, і сказати її одразу дешевше,
- * ніж змушувати читати абзац і здогадуватись.
+ * Gmail errors arrive as a paragraph of text with a link to the console. The most common ones
+ * mean one specific action, and naming it right away is cheaper than making someone read the
+ * paragraph and guess.
  */
 export function explainSendError(message: string | undefined, status: number): string {
-  const text = message ?? `код ${status}`;
+  const text = message ?? `code ${status}`;
 
   if (/has not been used in project|is disabled/i.test(text)) {
-    return 'Gmail API вимкнений у проєкті Google. Увімкнути його в Google Cloud Console (APIs and Services, Enable APIs, Gmail API) і повторити за хвилину';
+    return 'The Gmail API is disabled in the Google project. Enable it in Google Cloud Console (APIs and Services, Enable APIs, Gmail API) and retry in a minute';
   }
   if (/insufficient|scope/i.test(text)) {
-    return 'бракує дозволів: підключити пошту заново, щоб видати gmail.send і gmail.readonly';
+    return 'missing permissions: reconnect mail to grant gmail.send and gmail.readonly';
   }
   if (/invalid_grant|unauthorized|401/i.test(text)) {
-    return 'токен Gmail протух або відкликаний, підключити пошту заново';
+    return 'the Gmail token expired or was revoked, reconnect mail';
   }
   if (/rate|quota|429/i.test(text)) {
-    return 'Gmail тимчасово обмежив відправку, спробувати за кілька хвилин';
+    return 'Gmail temporarily limited sending, try again in a few minutes';
   }
-  return `Gmail не прийняв лист: ${text}`;
+  return `Gmail rejected the letter: ${text}`;
 }
 
 export async function sendMessage(input: SendInput): Promise<SendResult> {
@@ -361,7 +357,7 @@ export async function sendMessage(input: SendInput): Promise<SendResult> {
     throw new Error(explainSendError(data.error?.message, response.status));
   }
 
-  log.info({ to: input.to, messageId: data.id }, 'лист надіслано');
+  log.info({ to: input.to, messageId: data.id }, 'letter sent');
   return {
     messageId: data.id,
     threadId: data.threadId ?? data.id,
@@ -370,9 +366,9 @@ export async function sendMessage(input: SendInput): Promise<SendResult> {
 }
 
 /**
- * Message-Id, який Gmail проставив уже після відправки. Без нього фолоу-ап нема
- * на що послатись: `id` з відповіді API це внутрішній ідентифікатор, а заголовки
- * `In-Reply-To` і `References` чекають саме RFC-значення в кутових дужках.
+ * The Message-Id Gmail set after sending. Without it a follow-up has nothing to reference: the
+ * `id` in the API response is an internal identifier, while `In-Reply-To` and `References`
+ * expect exactly the RFC value in angle brackets.
  */
 async function rfcMessageId(messageId: string, token: string): Promise<string | null> {
   const response = await fetch(
@@ -392,16 +388,16 @@ export interface ThreadMessage {
   from: string;
   subject: string;
   date: string;
-  /** Перші рядки листа. Більше для класифікації відповіді не потрібно. */
+  /** The first lines of the letter. Nothing more is needed to classify a reply. */
   snippet: string;
-  /** Заголовок автовідповідача. Його наявність знімає потребу питати модель. */
+  /** The auto-responder header. Its presence removes the need to ask a model. */
   autoSubmitted: string | null;
 }
 
 /**
- * Повідомлення треду з мінімумом заголовків. `format=metadata` навмисно: тіло
- * листа для класифікації не потрібне, а не читати зайве це і швидше, і чесніше
- * щодо скоупа `gmail.readonly`.
+ * Thread messages with minimal headers. `format=metadata` on purpose: the body is not needed for
+ * classification, and not reading more than needed is both faster and more honest towards the
+ * `gmail.readonly` scope.
  */
 export async function threadMessages(threadId: string): Promise<ThreadMessage[]> {
   const token = await accessToken();
@@ -413,7 +409,7 @@ export async function threadMessages(threadId: string): Promise<ThreadMessage[]>
   const response = await fetch(`${GMAIL_API}/threads/${threadId}?${params.toString()}`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw new Error(`Gmail: тред ${threadId} не читається, ${response.status}`);
+  if (!response.ok) throw new Error(`Gmail: thread ${threadId} cannot be read, ${response.status}`);
 
   const data = (await response.json()) as {
     messages?: {

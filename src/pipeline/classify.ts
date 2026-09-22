@@ -8,9 +8,13 @@ import { log } from '../lib/log.js';
 import { hash } from './normalize.js';
 import { runWorkersAi, textFromAi } from '../lib/workers-ai.js';
 
-export const PROMPT_VERSION = 'v1';
+/**
+ * Part of the cache key. v2 switched the prompt to English, so `why` comes back in English
+ * rather than Ukrainian; answers cached under v1 stay readable but are not reused.
+ */
+export const PROMPT_VERSION = 'v2';
 
-/** Схема відповіді. Невалідний JSON означає один ретрай, потім ручний перегляд. */
+/** Response schema. Invalid JSON means one retry, then manual review. */
 export const classificationSchema = z.object({
   is_vacancy: z.boolean(),
   title: z.string().nullable(),
@@ -28,28 +32,28 @@ export const classificationSchema = z.object({
 
 export type Classification = z.infer<typeof classificationSchema>;
 
-const SYSTEM_PROMPT = `Ти класифікуєш текст вакансії. Відповідай СТРОГО одним JSON-обʼєктом.
-Без преамбули, без пояснень, без markdown-огорожі.
+const SYSTEM_PROMPT = `You classify the text of a job posting. Reply STRICTLY with a single JSON object.
+No preamble, no explanations, no markdown fence.
 
-Формат:
+Format:
 {"is_vacancy":true,"title":"...","stack":["react"],"seniority":"senior","remote":true,
 "location":"Berlin, hybrid","salary_min":null,"salary_max":null,"currency":null,
-"english_level_required":"B2","relevance":0,"why":"одне речення українською"}
+"english_level_required":"B2","relevance":0,"why":"one sentence in English"}
 
-Правила:
-- Класифікуй тільки той текст, який дано. Нічого не додумуй.
-- Чого немає в тексті, те null. Не вгадуй вилку, не вгадуй локацію, не вгадуй рівень англійської.
-- stack це технології з тексту в нижньому регістрі, порожній масив якщо їх немає.
-- seniority одне з: intern, junior, middle, senior, lead, або null.
-- salary_min і salary_max цілі числа на місяць або рік так, як указано в тексті, інакше null.
-- relevance ціле від 0 до 100: наскільки це вакансія фронтенд або full-stack розробника
-  на TypeScript, React, Next.js, Node. Це твоя думка, вона не є фінальним рахунком.
-- why одне коротке речення українською.
-- Якщо текст це не вакансія (новина, опис компанії, навігація), поверни is_vacancy false
-  і relevance 0.`;
+Rules:
+- Classify only the text you are given. Do not invent anything.
+- Whatever is not in the text is null. Do not guess the salary, the location or the English level.
+- stack is the technologies from the text in lower case, an empty array if there are none.
+- seniority is one of: intern, junior, middle, senior, lead, or null.
+- salary_min and salary_max are integers per month or per year exactly as stated in the text, otherwise null.
+- relevance is an integer from 0 to 100: how much this is a front end or full-stack developer
+  role on TypeScript, React, Next.js, Node. This is your opinion, not the final score.
+- why is one short sentence in English.
+- If the text is not a job posting (news, company description, navigation), return is_vacancy false
+  and relevance 0.`;
 
 export interface ClassifyOptions {
-  /** Підміна виклику моделі у тестах. */
+  /** Replaces the model call in tests. */
   caller?: (text: string) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
   skipCache?: boolean;
 }
@@ -64,15 +68,15 @@ export interface ClassifyResult {
 let client: Anthropic | null = null;
 
 function anthropic(): Anthropic {
-  if (!config.llm.apiKey) throw new Error('немає ANTHROPIC_API_KEY у .env');
+  if (!config.llm.apiKey) throw new Error('ANTHROPIC_API_KEY is missing from .env');
   client ??= new Anthropic({
     apiKey: config.llm.apiKey,
-    // Порожній baseUrl означає прямий виклик. Заданий це шлюз AI Gateway.
+    // An empty baseUrl means a direct call. A set one is the AI Gateway.
     ...(config.llm.baseUrl ? { baseURL: config.llm.baseUrl } : {}),
     /*
-     * Authenticated Gateway відбиває запит без цього заголовка з 401, і збоку
-     * це виглядає як мовчазна відмова моделі: ключ Anthropic правильний, ліміти
-     * цілі, а відповіді немає. Тому заголовок ставиться завжди, коли токен є.
+     * An authenticated Gateway rejects a request without this header with 401, and from
+     * the outside it looks like the model silently refusing: the Anthropic key is right,
+     * the limits are fine, and there is no answer. So the header is always set when a token exists.
      */
     ...(config.cloudflare.gatewayToken
       ? { defaultHeaders: { 'cf-aig-authorization': `Bearer ${config.cloudflare.gatewayToken}` } }
@@ -82,16 +86,16 @@ function anthropic(): Anthropic {
 }
 
 /**
- * Кешований системний промпт.
+ * Cached system prompt.
  *
- * Anthropic тримає розібраний початок запиту кілька хвилин і бере за нього
- * десяту частину ціни. Сенс є там, де цей початок довгий і однаковий підряд:
- * вердикт по компанії возить у системному блоці всі шаблони листів, і при
- * перегляді десятка студій поспіль цей блок незмінний.
+ * Anthropic keeps the parsed start of a request for a few minutes and charges a tenth of
+ * the price for it. It pays off where that start is long and repeats: the company verdict
+ * carries every letter template in its system block, and when going through a dozen
+ * studios in a row that block does not change.
  *
- * Мінімальна довжина блоку залежить від моделі: на Haiku 4.5 це 4096 токенів,
- * і коротший блок не кешується взагалі, мовчки. Тому прапорець це прохання, а
- * не гарантія, і код на нього не спирається.
+ * The minimum block length depends on the model: on Haiku 4.5 it is 4096 tokens, and a
+ * shorter block is silently not cached at all. So the flag is a request, not a guarantee,
+ * and the code does not rely on it.
  */
 function systemBlocks(system: string, cached: boolean) {
   return cached
@@ -127,9 +131,9 @@ async function callAnthropic(
 }
 
 /**
- * Той самий промпт через Workers AI. Модель менша за Haiku, тому вимога до JSON
- * дублюється в самому запиті полем `response_format`: без нього llama регулярно
- * додає пояснення перед обʼєктом, і кожна така відповідь коштувала б ретрай.
+ * The same prompt through Workers AI. The model is smaller than Haiku, so the JSON
+ * requirement is repeated in the request itself through `response_format`: without it llama
+ * regularly adds an explanation before the object, and each such answer would cost a retry.
  */
 async function callWorkersAi(text: string, system = SYSTEM_PROMPT, temperature = 0) {
   const payload = await runWorkersAi(config.llm.workersModel, {
@@ -145,7 +149,7 @@ async function callWorkersAi(text: string, system = SYSTEM_PROMPT, temperature =
   return textFromAi(payload);
 }
 
-/** Виклик моделі за поточним провайдером. */
+/** Model call through the current provider. */
 async function callModel(text: string) {
   return config.llm.provider === 'workers-ai' ? callWorkersAi(text) : callAnthropic(text);
 }
@@ -157,17 +161,17 @@ export interface RawCall {
 }
 
 /**
- * Виклик з довільним системним промптом. Потрібен персоналізації листів: там
- * інший промпт і температура 0.7, але той самий провайдер, той самий облік
- * витрат і та сама денна стеля, тому другого клієнта заводити нема сенсу.
+ * A call with an arbitrary system prompt. Letter personalisation needs it: a different
+ * prompt and temperature 0.7, but the same provider, the same spend tracking and the same
+ * daily cap, so a second client would make no sense.
  */
 export async function callModelWith(
   system: string,
   user: string,
   temperature = 0,
-  /** Модель на цей виклик. Порожнє означає ту, якою класифікуються вакансії. */
+  /** Model for this call. Empty means the one that classifies vacancies. */
   model?: string,
-  /** Попросити Anthropic кешувати системний блок. У Workers AI кешу немає, там прапорець мовчить. */
+  /** Ask Anthropic to cache the system block. Workers AI has no cache, the flag does nothing there. */
   cacheSystem = false,
 ): Promise<RawCall> {
   return config.llm.provider === 'workers-ai'
@@ -175,7 +179,7 @@ export async function callModelWith(
     : callAnthropic(user, system, temperature, model, cacheSystem);
 }
 
-/** Облік витрат для викликів поза класифікацією. */
+/** Spend tracking for calls outside classification. */
 export async function noteLlmCall(input: number, output: number, failed = false): Promise<void> {
   await recordUsage(today(), input, output, failed);
 }
@@ -211,7 +215,7 @@ async function recordUsage(day: string, input: number, output: number, failed: b
     .where(eq(llmUsage.day, day));
 }
 
-/** Модель іноді все ж обгортає JSON у ```json, це дешевше зняти, ніж ретраїти. */
+/** The model sometimes still wraps JSON in ```json, stripping it is cheaper than a retry. */
 export function extractJson(raw: string): unknown {
   const cleaned = raw
     .trim()
@@ -221,7 +225,7 @@ export function extractJson(raw: string): unknown {
 
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end === -1) throw new Error('у відповіді немає JSON-обʼєкта');
+  if (start === -1 || end === -1) throw new Error('no JSON object in the response');
 
   return JSON.parse(cleaned.slice(start, end + 1));
 }
@@ -245,14 +249,14 @@ export async function classifyText(text: string, options: ClassifyOptions = {}):
 
   const day = today();
   if ((await remainingBudget(day)) <= 0) {
-    log.warn({ day, limit: config.llm.dailyCallLimit }, 'денний ліміт викликів моделі вичерпано');
+    log.warn({ day, limit: config.llm.dailyCallLimit }, 'daily model call limit reached');
     return { classification: null, reason: 'budget', needsReview: true };
   }
 
   const caller = options.caller ?? callModel;
   let lastError = '';
 
-  // Один ретрай, як вимагає CLAUDE.md: невалідний JSON це не привід ганяти модель по колу.
+  // One retry, as CLAUDE.md requires: invalid JSON is no reason to run the model in circles.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     let raw: Awaited<ReturnType<typeof callAnthropic>>;
     try {
@@ -260,7 +264,7 @@ export async function classifyText(text: string, options: ClassifyOptions = {}):
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       await recordUsage(day, 0, 0, true);
-      log.warn({ attempt, err: lastError }, 'виклик моделі впав');
+      log.warn({ attempt, err: lastError }, 'model call failed');
       continue;
     }
 
@@ -275,10 +279,10 @@ export async function classifyText(text: string, options: ClassifyOptions = {}):
       return { classification: parsed, reason: 'llm', needsReview: false };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
-      log.warn({ attempt, err: lastError }, 'відповідь моделі не пройшла валідацію');
+      log.warn({ attempt, err: lastError }, 'model response failed validation');
     }
   }
 
-  log.warn({ err: lastError }, 'класифікація не вдалась, запис піде на ручний перегляд');
+  log.warn({ err: lastError }, 'classification failed, the record goes to manual review');
   return { classification: null, reason: 'invalid', needsReview: true };
 }

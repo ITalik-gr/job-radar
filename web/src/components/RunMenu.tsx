@@ -24,15 +24,15 @@ interface Task {
 }
 
 /**
- * Усі довгі операції під однією кнопкою в шапці. Раніше це була панель на чотири
- * кнопки, яка займала рядок на кожній сторінці і виглядала однаково важливою,
- * хоча запускається раз на день.
+ * Every long operation under one button in the header. It used to be a four-button bar
+ * that took a row on every page and looked equally important, although it runs once
+ * a day.
  */
 const TASKS: Task[] = [
   {
     id: 'sources',
-    label: 'Оновити вакансії',
-    hint: 'усі борди і ATS по черзі',
+    label: 'Refresh vacancies',
+    hint: 'every board and ATS in turn',
     icon: RefreshCw,
     run: async () => {
       const sources = await api.sources();
@@ -43,59 +43,59 @@ const TASKS: Task[] = [
       return results;
     },
     describe: (result: { id: string; itemsFound: number }[]) =>
-      `${result.length} джерел, знайдено ${result.reduce((sum, item) => sum + (item.itemsFound ?? 0), 0)}`,
+      `${result.length} sources, found ${result.reduce((sum, item) => sum + (item.itemsFound ?? 0), 0)}`,
   },
   {
     id: 'dou',
-    label: 'Зібрати DOU',
-    hint: 'каталог компаній',
+    label: 'Collect DOU',
+    hint: 'company catalog',
     icon: Building2,
     run: () => api.runDou(),
     describe: (result: { itemsFound: number; itemsNew: number }) =>
-      `знайдено ${result.itemsFound}, нових ${result.itemsNew}`,
+      `found ${result.itemsFound}, new ${result.itemsNew}`,
   },
   {
     id: 'top-up',
-    label: 'Добрати картки в чергу',
-    hint: 'коли зріз зафіксувався до прогону джерел',
+    label: 'Top up the queue',
+    hint: 'when the daily slice was fixed before the sources ran',
     icon: Inbox,
     run: () => api.topUpQueue(),
     describe: (result: { added: number; total: number }) =>
-      result.added > 0 ? `додано ${result.added}, у зрізі ${result.total}` : 'нових кандидатів немає',
+      result.added > 0 ? `added ${result.added}, ${result.total} in the slice` : 'no new candidates',
   },
   {
     id: 'enrich',
-    label: 'Зібрати контакти',
-    hint: 'імена і пошта зі сторінок команди',
+    label: 'Collect contacts',
+    hint: 'names and emails from team pages',
     icon: Users,
     run: () => api.enrich(25),
     describe: (result: { checked: number; withPeople: number; contactsAdded: number }) =>
-      `обійдено ${result.checked}, з іменами ${result.withPeople}, контактів ${result.contactsAdded}`,
+      `checked ${result.checked}, with names ${result.withPeople}, contacts ${result.contactsAdded}`,
   },
   {
     id: 'embed',
-    label: 'Порахувати схожість',
-    hint: 'вектори компаній через Workers AI',
+    label: 'Compute similarity',
+    hint: 'company vectors through Workers AI',
     icon: Sparkles,
     run: () => api.embed(200),
     describe: (result: { itemsFound: number; itemsNew: number; errors: string[] }) =>
       result.errors.length > 0
-        ? `порахувано ${result.itemsNew}, помилок ${result.errors.length}: ${result.errors[0]}`
-        : `порахувано ${result.itemsNew} з ${result.itemsFound}`,
+        ? `computed ${result.itemsNew}, errors ${result.errors.length}: ${result.errors[0]}`
+        : `computed ${result.itemsNew} of ${result.itemsFound}`,
   },
   {
     id: 'discover',
-    label: 'Знайти career-сторінки',
-    hint: 'обхід сайтів компаній',
+    label: 'Find career pages',
+    hint: 'crawl company sites',
     icon: Compass,
     run: () => api.discover(40),
     describe: (result: { checked: number; withAts: number; withHtml: number }) =>
-      `обійдено ${result.checked}, ATS ${result.withAts}, html ${result.withHtml}`,
+      `checked ${result.checked}, ATS ${result.withAts}, html ${result.withHtml}`,
   },
   {
     id: 'recalc',
-    label: 'Перерахувати рахунки',
-    hint: 'після правки ваг у конфізі',
+    label: 'Rescore',
+    hint: 'after changing the weights',
     icon: Calculator,
     run: () => api.recalc(),
     describe: (result: Record<string, number>) =>
@@ -133,12 +133,12 @@ export function RunMenu() {
           leftSection={<Play size={14} />}
           rightSection={<ChevronDown size={14} />}
         >
-          {running ? running.label : 'Запустити'}
+          {running ? running.label : 'Run'}
         </Button>
       </Menu.Target>
 
       <Menu.Dropdown>
-        <Menu.Label>ручний запуск</Menu.Label>
+        <Menu.Label>manual run</Menu.Label>
         {TASKS.map((task) => (
           <Menu.Item
             key={task.id}

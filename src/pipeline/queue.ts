@@ -40,13 +40,13 @@ export interface QueueCard {
   domain: string;
   careersUrl: string | null;
   companyStatus: string;
-  /** Заповнене, якщо компанії вже писали давно і показ дозволений як виняток. */
+  /** Set when the company was contacted long ago and showing it is an allowed exception. */
   contactedNote: string | null;
-  /** Коли картку показали вперше. Відрізняється від сьогодні, якщо її перенесли. */
+  /** When the card was first shown. Differs from today if it was carried over. */
   firstShownAt: number;
 }
 
-/** Кандидати на чергу: відкриті, вище порогу, компанія не в списку прихованих статусів. */
+/** Queue candidates: open, above the threshold, company not in a hidden status. */
 async function candidates(limit: number, day: string) {
   const db = getDb();
   const alreadyQueued = db
@@ -84,7 +84,7 @@ async function candidates(limit: number, day: string) {
     if (row.snoozedUntil && row.snoozedUntil > now) return false;
     if (!HIDDEN_STATUSES.includes(status)) return true;
 
-    // Єдиний виняток: писали давно, а вакансія нова. Через квартал це нормально.
+    // The only exception: contacted long ago, and the vacancy is new. After a quarter that is fine.
     if (status !== 'contacted') return false;
     const contactedAgo = now - (row.stateUpdatedAt ?? 0);
     return contactedAgo > recontactAfter && row.vacancy.firstSeen > (row.stateUpdatedAt ?? 0);
@@ -94,18 +94,17 @@ async function candidates(limit: number, day: string) {
 }
 
 /**
- * Нерозібрані картки з попередніх днів переїжджають у сьогоднішній зріз.
+ * Undecided cards from previous days move into today's slice.
  *
- * Навіщо: раніше картка, на якій власник не натиснув нічого, наступного дня просто
- * зникала, і захист від повторів не давав їй вернутись 30 днів. Тобто пропустив день,
- * втратив вакансію.
+ * Why: a card the owner did not act on used to vanish the next day, and the repeat guard
+ * kept it from coming back for 30 days. Skip a day, lose a vacancy.
  *
- * Рядок саме переїжджає, а не копіюється. Копія створила б другий запис на ту саму
- * вакансію: `stats.shown` рахує рядки і показав би завищене число, а `created_at`
- * перестав би означати дату першого показу. При переїзді не втрачається нічого.
+ * The row moves rather than being copied. A copy would create a second record for the same
+ * vacancy: `stats.shown` counts rows and would report an inflated number, and `created_at`
+ * would stop meaning the date of first display. Moving loses nothing.
  *
- * Порядок FIFO, найдовше очікувані першими: інакше свіжа вакансія з вищим рахунком
- * щодня відтісняла б стару, і та не дочекалась би рішення ніколи.
+ * FIFO order, longest waiting first: otherwise a fresh vacancy with a higher score would push
+ * the old one back every day, and it would never get a decision.
  */
 async function carryOver(day: string, limit: number): Promise<number> {
   if (limit <= 0) return 0;
@@ -127,8 +126,8 @@ async function carryOver(day: string, limit: number): Promise<number> {
   const now = Date.now();
   const threshold = rules().threshold;
 
-  // Умови ті самі, що для нових кандидатів: за час очікування вакансію могли закрити,
-  // компанію заблокувати чи відкласти, а ваги в конфізі могли змінитись.
+  // The same conditions as for new candidates: while waiting, the vacancy may have closed,
+  // the company may have been blocked or snoozed, and the config weights may have changed.
   const eligible = rows
     .filter((row) => {
       if (row.vacancy.closedAt) return false;
@@ -145,13 +144,13 @@ async function carryOver(day: string, limit: number): Promise<number> {
       .where(eq(queueItems.id, row.item.id));
   }
 
-  if (eligible.length > 0) log.info({ day, carried: eligible.length }, 'нерозібрані картки перенесено');
+  if (eligible.length > 0) log.info({ day, carried: eligible.length }, 'undecided cards carried over');
   return eligible.length;
 }
 
 /**
- * Черга на день. Перший виклик за добу фіксує зріз, наступні повертають той самий
- * порядок. Рішення прибирає картку, але місце не переобирається: ліміт на день це ліміт.
+ * The queue for the day. The first call of the day fixes the slice, later calls return the
+ * same order. A decision removes a card, but the slot is not refilled: a daily limit is a limit.
  */
 export async function getQueue(
   day = todayKey(),
@@ -165,7 +164,7 @@ export async function getQueue(
     .orderBy(asc(queueItems.position));
 
   if (items.length === 0) {
-    // Перенесені займають місця в ліміті першими, нові добирають решту.
+    // Carried cards take limit slots first, new ones fill the rest.
     const carried = await carryOver(day, limit);
     const picks = await candidates(limit - carried, day);
     if (picks.length > 0) {
@@ -177,7 +176,7 @@ export async function getQueue(
           scoreAtPick: pick.vacancy.score,
         })),
       );
-      log.info({ day, picked: picks.length, carried }, 'зріз черги зафіксовано');
+      log.info({ day, picked: picks.length, carried }, 'queue slice fixed');
     }
     items = await db
       .select()
@@ -216,7 +215,7 @@ export async function getQueue(
       const status = row.status ?? 'new';
       const contactedNote =
         status === 'contacted' && row.stateUpdatedAt
-          ? `писали ${new Date(row.stateUpdatedAt).toLocaleDateString('uk-UA')}, відповіді не було`
+          ? `contacted ${new Date(row.stateUpdatedAt).toLocaleDateString('en-GB')}, no reply`
           : null;
 
       return {
@@ -247,21 +246,21 @@ export async function getQueue(
       } satisfies QueueCard;
     })
     .filter((card): card is QueueCard => card !== null)
-    // Зріз фіксує порядок і склад на добу, але якщо після правки config/scoring.json
-    // картка більше не проходить поріг, показувати її нечесно. Рішення лишаються.
+    // The slice fixes order and contents for the day, but if a card no longer clears the
+    // threshold after a rules edit, showing it would be dishonest. Decisions stay.
     .filter((card) => card.decision !== null || (card.score ?? -100) >= threshold);
 }
 
 /**
- * Добрати картки в сьогоднішній зріз до денного ліміту.
+ * Top up today's slice to the daily limit.
  *
- * Навіщо окрема дія, а не автоматика: зріз навмисно фіксований, це задокументоване
- * рішення в STATUS.md. Без фіксації нова вакансія з вищим рахунком витісняла б ту,
- * яку ще не встигли подивитись. Але буває й протилежне: вранці кандидатів було троє,
- * зріз зафіксувався на трьох, а прогін джерел удень приніс ще двадцять, і власник
- * бачить три картки при повній базі. Тому поповнення є, але тільки коли його попросили.
+ * Why a separate action rather than automatic: the slice is fixed on purpose, a decision
+ * documented in STATUS.md. Without it a new vacancy with a higher score would push out one
+ * not yet looked at. But the opposite happens too: in the morning there were three
+ * candidates, the slice fixed at three, then a daytime source run brought twenty more, and
+ * the owner sees three cards over a full database. So topping up exists, but only on request.
  *
- * Уже наявні картки не чіпаються: ні позиції, ні рішення.
+ * Cards already in the slice are left alone: neither position nor decision changes.
  */
 export async function topUpQueue(
   day = todayKey(),
@@ -285,11 +284,11 @@ export async function topUpQueue(
     })),
   );
 
-  log.info({ day, added: picks.length }, 'зріз черги поповнено вручну');
+  log.info({ day, added: picks.length }, 'queue slice topped up by hand');
   return { added: picks.length, total: existing.length + picks.length };
 }
 
-/** Скільки карток ще чекають рішення сьогодні. */
+/** How many cards still await a decision today. */
 export async function pendingCount(day = todayKey()): Promise<number> {
   const db = getDb();
   const [row] = await db

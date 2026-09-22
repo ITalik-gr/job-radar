@@ -3,13 +3,14 @@ import { Anchor, Badge, Box, Group, Text } from '@mantine/core';
 import { api } from '../lib/api';
 
 /**
- * Схожі компанії за описом, а не за тегами.
+ * Similar companies by description, not by tags.
  *
- * Навіщо: коли власник знайшов студію, якій варто написати, найдешевший спосіб
- * знайти ще таких це не перебирати теги руками, а взяти сусідів за змістом опису.
+ * Why: once the owner has found a studio worth writing to, the cheapest way to
+ * find more of them is not sifting through tags by hand but taking the neighbours
+ * by the meaning of the description.
  *
- * Блок мовчить, якщо векторів ще немає: порожній заголовок "Схожі" без списку
- * виглядав би як поломка, хоча просто не запускали розрахунок.
+ * The block stays silent when there are no vectors yet: an empty "Similar" heading
+ * with no list would look like a fault, when in fact nobody ran the calculation.
  */
 export function SimilarBlock({ companyId, onSelect }: { companyId: number; onSelect?: (id: number) => void }) {
   const { data } = useQuery({
@@ -22,7 +23,7 @@ export function SimilarBlock({ companyId, onSelect }: { companyId: number; onSel
   return (
     <Box mt="lg">
       <Text size="xs" tt="uppercase" fw={500} c="dimmed" mb="xs" style={{ letterSpacing: '0.04em' }}>
-        схожі за описом
+        similar by description
       </Text>
       <Group gap={6}>
         {data.map((item) => (
@@ -31,14 +32,14 @@ export function SimilarBlock({ companyId, onSelect }: { companyId: number; onSel
             color="gray"
             style={{ cursor: onSelect ? 'pointer' : 'default' }}
             onClick={() => onSelect?.(item.companyId)}
-            title={`близькість ${item.similarity}`}
+            title={`closeness ${item.similarity}`}
           >
             {item.name}
           </Badge>
         ))}
       </Group>
       <Text size="xs" c="dimmed" mt={6}>
-        Порахувала модель за описом і стеком. Якщо ця студія підійшла, ці теж варті листа.
+        Computed by the model from the description and the stack. If this studio fits, these are worth a letter too.
       </Text>
     </Box>
   );

@@ -8,8 +8,8 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-// Часові мітки зберігаються як unix-мілісекунди (integer), щоб переїзд у Postgres
-// був заміною типу колонки, а не переписуванням логіки.
+// Timestamps are stored as unix milliseconds (integer), so that moving to Postgres is a
+// column type change rather than a logic rewrite.
 const now = sql`(unixepoch() * 1000)`;
 
 export const companies = sqliteTable(
@@ -27,63 +27,62 @@ export const companies = sqliteTable(
     careersKind: text('careers_kind').notNull().default('unknown'),
     careersSlug: text('careers_slug'),
     techHints: text('tech_hints', { mode: 'json' }).$type<string[]>().notNull().default([]),
-    // Теги з каталогів: тип бізнесу, домен, послуги. Не стек, стек живе в tech_hints.
+    // Catalog tags: business type, domain, services. Not the stack, the stack lives in tech_hints.
     tags: text('tags', { mode: 'json' }).$type<string[]>().notNull().default([]),
     /**
-     * Тип компанії: studio | design | startup | product | outstaff | unknown.
-     * Потрібен, щоб розвести сторінки Студії і Стартапи і щоб шаблон листа
-     * підбирався сам: дизайн-студії пишеться зовсім не те, що стартапу.
+     * Company kind: studio | design | startup | product | outstaff | unknown.
+     * Needed to separate the Studios and Startups pages and to let the letter template pick
+     * itself: a design studio gets a very different letter from a startup.
      */
     kind: text('kind').notNull().default('unknown'),
     /**
-     * Ознаки живості сайту, зібрані enrichment. Агенція з копірайтом 2019 року
-     * і мертвим блогом не наймає і не відповідає на листи, і це видно ще до того,
-     * як власник витратить вечір на лист.
+     * Signs of life on the site, collected by enrichment. An agency with a 2019 copyright and
+     * a dead blog neither hires nor answers letters, and that shows before the owner spends
+     * an evening on a letter.
      */
     copyrightYear: integer('copyright_year'),
     lastPostAt: integer('last_post_at'),
     /**
-     * Сайт малює вміст скриптом, і серверний обхід із нього нічого не дістав.
+     * The site renders its content with script, and the server-side crawl got nothing from it.
      *
-     * Такі домени збираються в окрему чергу для розширення: воно відкриває сторінку
-     * у справжньому браузері власника, де вона вже намальована, і читає з готового
-     * DOM. Прапорець знімається, щойно з браузера прийшли дані.
+     * Such domains go into a separate queue for the extension: it opens the page in the owner's
+     * real browser, where it is already rendered, and reads the finished DOM. The flag is
+     * cleared as soon as data arrives from the browser.
      */
     needsBrowser: integer('needs_browser', { mode: 'boolean' }).notNull().default(false),
     /**
-     * Вектор опису компанії для пошуку схожих. JSON-масив, а не окрема база
-     * векторів: компаній сотні, повний перебір у памʼяті займає мілісекунди,
-     * і Vectorize тут був би зайвою залежністю.
+     * The company description vector for finding similar ones. A JSON array rather than a
+     * separate vector database: there are hundreds of companies, a full in-memory scan takes
+     * milliseconds, and Vectorize would be an extra dependency here.
      */
     embedding: text('embedding'),
     embeddedAt: integer('embedded_at'),
     description: text('description'),
     /**
-     * Репутація з каталогу. Оцінка і кількість відгуків це найшвидший спосіб
-     * зрозуміти, жива студія чи порожня картка: агенція з 40 відгуками і 4.9
-     * працює з клієнтами постійно, картка без жодного відгуку часто мертва.
-     * Обидва поля перезаписуються свіжими значеннями, бо це поточний факт,
-     * а не те, що було при першій зустрічі.
+     * Catalog reputation. Rating and review count are the fastest way to tell a living studio
+     * from an empty profile: an agency with 40 reviews and 4.9 works with clients all the time,
+     * a profile without a single review is often dead. Both fields are overwritten with fresh
+     * values, because this is a current fact, not what it was at first sight.
      */
     rating: real('rating'),
     reviewsCount: integer('reviews_count'),
-    /** "$5,000+", "$50 - $99 / hr", 2015. Рядком, бо каталоги пишуть їх по-різному. */
+    /** "$5,000+", "$50 - $99 / hr", 2015. Strings, because catalogs write them differently. */
     minProject: text('min_project'),
     hourlyRate: text('hourly_rate'),
     foundedYear: integer('founded_year'),
     /**
-     * Блок "Інше": усе, що каталог показав, але під що немає колонки. Нагороди,
-     * мови, галузі, відсоток повторних клієнтів, перевірений профіль.
+     * The "Other" block: everything the catalog showed that has no column. Awards, languages,
+     * industries, share of repeat clients, verified profile.
      *
-     * Навіщо мішком, а не колонками: кожен каталог має свій набір полів, і
-     * заводити колонку під кожне означало б міграцію на кожен новий каталог.
-     * Тут дані просто зберігаються і показуються людині, скоринг їх не читає.
+     * Why a bag rather than columns: every catalog has its own set of fields, and a column for
+     * each would mean a migration per new catalog. The data is simply stored and shown to a
+     * person, scoring does not read it.
      */
     extra: text('extra', { mode: 'json' })
       .$type<Record<string, string>>()
       .notNull()
       .default({}),
-    // Сторінка компанії в каталозі, звідки вона прийшла: Clutch, DOU тощо.
+    // The company page in the catalog it came from: Clutch, DOU and so on.
     sourceUrl: text('source_url'),
     firstSeen: integer('first_seen').notNull().default(now),
     lastChecked: integer('last_checked'),
@@ -126,9 +125,9 @@ export const contacts = sqliteTable(
     role: text('role'),
     email: text('email'),
     /**
-     * Адреса, яка дала hard bounce, лишається в базі, але позначається мертвою:
-     * видаляти її не можна, бо тоді enrichment знайде її знову і лист піде
-     * вдруге на ту саму скриньку.
+     * An address that hard bounced stays in the database but is marked dead: it cannot be
+     * deleted, because enrichment would find it again and a letter would go to the same
+     * mailbox a second time.
      */
     emailValid: integer('email_valid', { mode: 'boolean' }).notNull().default(true),
     telegram: text('telegram'),
@@ -151,7 +150,7 @@ export const snapshots = sqliteTable(
     fetchedAt: integer('fetched_at').notNull().default(now),
     contentHash: text('content_hash').notNull(),
     textNormalized: text('text_normalized').notNull(),
-    // хеші окремих блоків, для блочного дифу (Етап 3)
+    // hashes of individual blocks, for the block diff
     blockHashes: text('block_hashes', { mode: 'json' }).$type<string[]>().notNull().default([]),
   },
   (t) => [index('snapshots_company_fetched_idx').on(t.companyId, t.fetchedAt)],
@@ -182,7 +181,7 @@ export const vacancies = sqliteTable(
     closedAt: integer('closed_at'),
     llmRelevance: integer('llm_relevance'),
     llmWhy: text('llm_why'),
-    // null означає, що класифікація не вдалась і запис чекає ручного перегляду
+    // null means classification failed and the record awaits manual review
     isVacancy: integer('is_vacancy', { mode: 'boolean' }),
     needsReview: integer('needs_review', { mode: 'boolean' }).notNull().default(false),
     score: real('score'),
@@ -205,67 +204,67 @@ export const outreach = sqliteTable(
       .references(() => companies.id, { onDelete: 'cascade' }),
     vacancyId: integer('vacancy_id').references(() => vacancies.id, { onDelete: 'set null' }),
     /**
-     * Контакт, якому пишемо. На відміну від `contact_name` і `contact_email`,
-     * це живий звʼязок: він потрібен, щоб позначити адресу невалідною після
-     * hard bounce. Знімок імені і пошти лишається поруч і переживає видалення.
+     * The contact written to. Unlike `contact_name` and `contact_email`, this is a live link:
+     * it is needed to mark the address invalid after a hard bounce. The name and email
+     * snapshot stays alongside and survives deletion.
      */
     contactId: integer('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
     channel: text('channel').notNull(),
     /**
-     * Порожнє означає, що лист ще не пішов. Чернетка живе в цій же таблиці,
-     * а не в окремій: інакше при відправці довелось би переносити рядок і
-     * гарантувати, що знімок тексту не зміниться дорогою.
+     * Empty means the letter has not gone out yet. A draft lives in this same table rather
+     * than a separate one: otherwise sending would have to move the row and guarantee the
+     * text snapshot does not change on the way.
      */
     sentAt: integer('sent_at'),
     templateUsed: text('template_used'),
     templateId: integer('template_id').references(() => templates.id, { onDelete: 'set null' }),
-    /** uk | en. Знімок на момент чернетки, шаблон потім можуть перекласти. */
+    /** uk | en. A snapshot at draft time, the template may be translated later. */
     language: text('language'),
-    /** Те, що реально пішло, після всіх правок людини. Не перегенеровується. */
+    /** What actually went out, after all human edits. Never regenerated. */
     subjectFinal: text('subject_final'),
     bodyFinal: text('body_final'),
     /**
-     * Перший абзац від моделі зберігається окремо від тіла листа навмисно:
-     * через сотню листів це єдиний спосіб порівняти конверсію з персоналізацією
-     * і без неї, не розбираючи текст назад на абзаци.
+     * The model's first paragraph is stored apart from the letter body on purpose: after a
+     * hundred letters it is the only way to compare conversion with and without
+     * personalisation without parsing the text back into paragraphs.
      */
     aiUsed: integer('ai_used', { mode: 'boolean' }).notNull().default(false),
     aiParagraph: text('ai_paragraph'),
     /**
-     * Чому абзац від моделі не використали. Порожнє при `ai_used` означає, що все
-     * пройшло. Потрібне для статистики відкатів: якщо їх понад 30 відсотків,
-     * поганий промпт, і без розбивки по причинах цього не видно.
+     * Why the model paragraph was not used. Empty with `ai_used` means everything passed.
+     * Needed for fallback statistics: above 30 percent means a bad prompt, and without a
+     * breakdown by reason that does not show.
      */
     aiFallbackReason: text('ai_fallback_reason'),
     /** draft | approved | sent | failed | bounced | replied */
     status: text('status').notNull().default('sent'),
     gmailMessageId: text('gmail_message_id'),
     /**
-     * Заголовок Message-Id самого листа. Не те саме, що `gmail_message_id`:
-     * той внутрішній для API, а фолоу-ап у `In-Reply-To` чекає саме RFC-значення
-     * у кутових дужках. Без цього поля ланцюжок треду не збирається.
+     * The Message-Id header of the letter itself. Not the same as `gmail_message_id`: that one
+     * is internal to the API, while a follow-up's `In-Reply-To` expects exactly the RFC value in
+     * angle brackets. Without this field the thread chain does not hold together.
      */
     rfcMessageId: text('rfc_message_id'),
     gmailThreadId: text('gmail_thread_id'),
     queuedAt: integer('queued_at'),
     /**
-     * Кому саме писали. Не звʼязок із `contacts`, а знімок імені і пошти на момент
-     * листа: контакт може змінитись або зникнути з сайту, а історія має лишитись
-     * читабельною через рік.
+     * Who exactly was written to. Not a link to `contacts` but a snapshot of the name and email
+     * at send time: the contact may change or disappear from the site, and the history has to
+     * stay readable a year later.
      */
     contactName: text('contact_name'),
     contactEmail: text('contact_email'),
     replyAt: integer('reply_at'),
     // positive | rejection | autoreply | ooo | unclear
     replyType: text('reply_type'),
-    /** hard | soft. Hard означає, що адреса мертва і більше не використовується. */
+    /** hard | soft. Hard means the address is dead and no longer used. */
     bounceType: text('bounce_type'),
-    /** Лист, продовженням якого є цей. Фолоу-ап рівно один, тому ланцюжок короткий. */
+    /** The letter this one continues. There is exactly one follow-up, so the chain is short. */
     followupOf: integer('followup_of'),
     followupDueAt: integer('followup_due_at'),
     /**
-     * Чому чернетка не готова: порожній обовʼязковий плейсхолдер, немає адреси,
-     * порожній шаблон. Такі лежать окремою вкладкою, а не тихо зникають.
+     * Why the draft is not ready: an empty required placeholder, no address, an empty template.
+     * Such drafts sit in their own tab rather than silently disappearing.
      */
     error: text('error'),
     note: text('note'),
@@ -279,11 +278,11 @@ export const outreach = sqliteTable(
 );
 
 /**
- * Whitelist фактів про власника, які модель має право згадати в першому абзаці.
+ * A whitelist of facts about the owner that the model may mention in the first paragraph.
  *
- * Навіщо в базі, а не в промпті: список правиться з інтерфейсу, і кожен факт
- * можна вимкнути, не чіпаючи код. Модель не має права сказати нічого, чого тут
- * немає, і валідатор це перевіряє.
+ * Why in the database rather than the prompt: the list is edited from the interface, and any
+ * fact can be switched off without touching code. The model may not say anything that is not
+ * here, and the validator checks that.
  */
 export const facts = sqliteTable(
   'facts',
@@ -299,9 +298,9 @@ export const facts = sqliteTable(
 );
 
 /**
- * Лічильник відправок за добу. Живе окремо від `outreach`, бо на ньому тримаються
- * і денний ліміт, і пауза між листами, і прогрів: рахувати це кожного разу
- * агрегатом по історії означає залежати від того, що історію ніхто не чистив.
+ * The daily send counter. It lives apart from `outreach`, because the daily limit, the pause
+ * between letters and the warmup all rest on it: computing it each time as an aggregate over
+ * history would mean depending on nobody ever cleaning the history.
  */
 export const sendLog = sqliteTable('send_log', {
   day: text('day').primaryKey(),
@@ -326,9 +325,9 @@ export const runs = sqliteTable(
 );
 
 /**
- * Денний зріз черги. Без нього список щодня перемішується під тим, хто його читає:
- * нова вакансія з вищим рахунком витісняє ту, яку власник ще не встиг подивитись.
- * Порядок фіксується один раз на добу, рішення записується сюди ж.
+ * The daily queue slice. Without it the list reshuffles every day under the reader: a new
+ * vacancy with a higher score pushes out one the owner has not looked at yet. The order is
+ * fixed once a day, and the decision is written here too.
  */
 export const queueItems = sqliteTable(
   'queue_items',
@@ -352,9 +351,9 @@ export const queueItems = sqliteTable(
 );
 
 /**
- * Кеш класифікацій. Ключ це хеш тексту, який реально пішов у модель, плюс модель і
- * версія промпта. Редизайн верстки міняє хеш блока, але не текст вакансії, тому
- * повторний виклик моделі не потрібен.
+ * Classification cache. The key is a hash of the text actually sent to the model, plus the
+ * model and the prompt version. A layout redesign changes the block hash but not the vacancy
+ * text, so no repeat model call is needed.
  */
 export const llmCache = sqliteTable(
   'llm_cache',
@@ -369,7 +368,7 @@ export const llmCache = sqliteTable(
   (t) => [uniqueIndex('llm_cache_key_uq').on(t.key)],
 );
 
-/** Денний лічильник викликів, щоб не спалити бюджет мовчки. */
+/** Daily call counter, so the budget is not burned silently. */
 export const llmUsage = sqliteTable('llm_usage', {
   day: text('day').primaryKey(),
   calls: integer('calls').notNull().default(0),
@@ -379,11 +378,11 @@ export const llmUsage = sqliteTable('llm_usage', {
 });
 
 /**
- * Налаштування, які власник править з інтерфейсу. `config/scoring.json` лишається
- * значенням за замовчуванням, а запис тут його перекриває.
+ * Settings the owner edits from the interface. `config/scoring.json` stays the default, and a
+ * record here overrides it.
  *
- * Навіщо окрема таблиця, а не файл: на Workers файлової системи немає, конфіг вшитий
- * у бандл. Без цієї таблиці правила на проді можна змінити лише новим деплоєм.
+ * Why a separate table rather than a file: Workers has no filesystem, the config is bundled.
+ * Without this table production rules could only be changed by a new deploy.
  */
 export const settings = sqliteTable('settings', {
   key: text('key').primaryKey(),
@@ -392,51 +391,51 @@ export const settings = sqliteTable('settings', {
 });
 
 /**
- * Шаблони листів і резюме. Тексти пише власник, інструмент їх лише зберігає
- * і підставляє в історію контактів. Генерувати листи тут заборонено, розділ 11
- * у CLAUDE.md, тому жодного звернення до моделі в цій таблиці не передбачено.
+ * Letter and resume templates. The owner writes the texts, the tool only stores them and
+ * records them in the contact history. Generating letters here is forbidden, section 11 of
+ * CLAUDE.md, so no model call is planned for this table.
  */
 export const templates = sqliteTable(
   'templates',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    /** Стабільний ключ, який лягає в outreach.template_used. */
+    /** A stable key that lands in outreach.template_used. */
     slug: text('slug').notNull(),
     name: text('name').notNull(),
-    /** vacancy | studio | resume. Визначає, де шаблон пропонується. */
+    /** vacancy | studio | resume. Decides where the template is offered. */
     kind: text('kind').notNull().default('vacancy'),
     /**
-     * Мова тексту: uk | en. Один шаблон не буває двомовним, бо переклад це інший
-     * текст, а не те саме іншими словами. Вибір мови детермінований: країна UA
-     * означає uk, решта en.
+     * Text language: uk | en. One template is never bilingual, because a translation is a
+     * different text, not the same one in other words. The language choice is deterministic:
+     * country UA means uk, everything else en.
      *
-     * За замовчуванням en: українських компаній у базі меншість, тому новий шаблон
-     * частіше пишеться англійською, і саме цей варіант має стояти без зайвого кліку.
+     * Defaults to en: Ukrainian companies are a minority in the database, so a new template is
+     * more often written in English, and that option should need no extra click.
      */
     language: text('language').notNull().default('en'),
     /**
-     * Під який випадок розсилки заточений шаблон:
+     * The sending case the template is written for:
      * vacancy | studio_named | studio_generic | followup.
      *
-     * Саме за цим полем чернетка вибирає шаблон, і вибір робить код, не модель.
-     * Порожнє означає, що шаблон у розсилці не бере участі і лежить для ручного
-     * копіювання зі сторінки Шаблони.
+     * This is the field a draft picks its template by, and code makes the choice, not a model.
+     * Empty means the template takes no part in sending and is kept for manual copying from
+     * the Templates page.
      */
     targetType: text('target_type'),
     /**
-     * Тип компанії, під який заточений текст: design | startup | studio | outstaff.
-     * Порожнє означає універсальний. Дизайн-студії і стартапу пишеться зовсім різне,
-     * і вибирати шаблон руками щоразу це те саме тертя, через яке листи не пишуться.
+     * The company kind the text is written for: design | startup | studio | outstaff.
+     * Empty means universal. A design studio and a startup get very different letters, and
+     * picking a template by hand every time is the same friction that keeps letters unwritten.
      */
     forKind: text('for_kind'),
     subject: text('subject'),
     /**
-     * Статичний перший абзац. Тіло листа підставляє його через `{{intro}}`.
+     * Static first paragraph. The letter body inserts it through `{{intro}}`.
      *
-     * Розділений навмисно: перший абзац це єдине, що персоналізується моделлю,
-     * а другий і третій містять факти про власника і генеруватись не мають.
-     * Відкат валідації означає підстановку саме цього тексту, тому лист ніколи
-     * не лишається без першого абзацу і ніколи не блокується через модель.
+     * Split out on purpose: the first paragraph is the only thing the model personalises,
+     * while the second and third hold facts about the owner and must not be generated. A
+     * validation fallback means substituting exactly this text, so a letter is never left
+     * without a first paragraph and never blocked by the model.
      */
     intro: text('intro'),
     body: text('body').notNull().default(''),

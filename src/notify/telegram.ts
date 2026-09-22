@@ -10,8 +10,8 @@ import { listDrafts } from '../pipeline/outreach.js';
 import { dueFollowups } from '../pipeline/followups.js';
 
 /**
- * Телеграм тут допоміжний канал: тільки алерти і нагадування.
- * Ніяких інлайн-кнопок і керування станом через бота, всі дії робляться у вебі.
+ * Telegram is a secondary channel here: alerts and reminders only.
+ * No inline buttons and no state changes through the bot, every action happens on the web.
  */
 
 export type Sender = (text: string) => Promise<void>;
@@ -24,7 +24,7 @@ export function isConfigured(): boolean {
 
 async function send(text: string): Promise<void> {
   if (!isConfigured()) {
-    log.warn('телеграм не налаштований, повідомлення не надіслано');
+    log.warn('telegram is not configured, message not sent');
     return;
   }
   bot ??= new Bot(config.telegram.token);
@@ -34,13 +34,14 @@ async function send(text: string): Promise<void> {
   });
 }
 
-export const WEB_URL = envValue('WEB_URL') ?? 'https://job-radar.example.workers.dev';
+/** Where notification links point. Local interface unless the radar is deployed. */
+export const WEB_URL = envValue('WEB_URL') ?? 'http://localhost:5173';
 
 function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Ранковий дайджест: скільки нового у черзі і посилання на веб. */
+/** Morning digest: how much is new in the queue, plus a link to the web. */
 export async function digestMessage(day = todayKey()): Promise<string | null> {
   const cards = await getQueue(day);
   const pending = cards.filter((card) => !card.decision);
@@ -51,9 +52,9 @@ export async function digestMessage(day = todayKey()): Promise<string | null> {
     .map((card) => `• <b>${escape(card.company)}</b> ${escape(card.title ?? '')} (${card.score?.toFixed(1)})`);
 
   return [
-    `<b>Черга на ${day}</b>: ${pending.length} карток`,
+    `<b>Queue for ${day}</b>: ${pending.length} cards`,
     ...lines,
-    pending.length > 5 ? `і ще ${pending.length - 5}` : '',
+    pending.length > 5 ? `and ${pending.length - 5} more` : '',
     WEB_URL,
   ]
     .filter(Boolean)
@@ -61,10 +62,10 @@ export async function digestMessage(day = todayKey()): Promise<string | null> {
 }
 
 /**
- * Дайджест розсилки о 10:00: скільки чернеток готово і скільки фолоу-апів настало.
+ * Sending digest at 10:00: how many drafts are ready and how many follow-ups are due.
  *
- * Окремим повідомленням від черги вакансій навмисно: це різні дії. Черга це
- * рішення "цікаво чи ні", розсилка це "сісти і надіслати".
+ * A separate message from the vacancy queue on purpose: these are different actions. The
+ * queue is deciding "interesting or not", sending is "sit down and send".
  */
 export async function outreachMessage(): Promise<string | null> {
   const drafts = await listDrafts();
@@ -75,17 +76,17 @@ export async function outreachMessage(): Promise<string | null> {
   if (ready.length === 0 && stuck === 0 && due.length === 0) return null;
 
   return [
-    '<b>Розсилка</b>',
-    `готових чернеток: ${ready.length}`,
-    stuck > 0 ? `потребують уваги: ${stuck}` : '',
-    due.length > 0 ? `настав фолоу-ап: ${due.length}` : '',
+    '<b>Sending</b>',
+    `ready drafts: ${ready.length}`,
+    stuck > 0 ? `need attention: ${stuck}` : '',
+    due.length > 0 ? `follow-ups due: ${due.length}` : '',
     WEB_URL,
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-/** Алерт про рідкісну дуже релевантну вакансію. Поріг вищий за поріг черги. */
+/** Alert about a rare, highly relevant vacancy. The threshold is above the queue threshold. */
 export async function highScoreMessage(minScore = 12, sinceHours = 24): Promise<string | null> {
   const db = getDb();
   const since = Date.now() - sinceHours * 3_600_000;
@@ -107,7 +108,7 @@ export async function highScoreMessage(minScore = 12, sinceHours = 24): Promise<
   if (rows.length === 0) return null;
 
   return [
-    `<b>Знахідки зі score ${minScore}+</b>`,
+    `<b>Finds with score ${minScore}+</b>`,
     ...rows.map(
       (row) =>
         `• <b>${escape(row.company)}</b> ${escape(row.vacancy.title ?? '')} (${row.vacancy.score?.toFixed(1)})\n${row.vacancy.url}`,
@@ -115,21 +116,21 @@ export async function highScoreMessage(minScore = 12, sinceHours = 24): Promise<
   ].join('\n');
 }
 
-/** Нагадування про фолоу-апи: кому писали давно і відповіді немає. */
+/** Follow-up reminder: who was written to long ago with no reply. */
 export async function followUpMessage(days = 7): Promise<string | null> {
   const rows = await followUps(days);
   if (rows.length === 0) return null;
 
   return [
-    `<b>Без відповіді понад ${days} днів</b>: ${rows.length}`,
+    `<b>No reply for over ${days} days</b>: ${rows.length}`,
     ...rows
       .slice(0, 10)
-      .map((row) => `• ${escape(row.company)}, писали ${row.waitingDays} дн тому${row.templateUsed ? `, ${escape(row.templateUsed)}` : ''}`),
+      .map((row) => `• ${escape(row.company)}, contacted ${row.waitingDays}d ago${row.templateUsed ? `, ${escape(row.templateUsed)}` : ''}`),
     `${WEB_URL}`,
   ].join('\n');
 }
 
-/** Алерт про поламаний адаптер: статус warn або error в останньому запуску. */
+/** Alert about a broken adapter: warn or error status on the last run. */
 export async function brokenSourcesMessage(): Promise<string | null> {
   const db = getDb();
   const rows = await db.select().from(runs).orderBy(desc(runs.startedAt)).limit(100);
@@ -141,16 +142,41 @@ export async function brokenSourcesMessage(): Promise<string | null> {
   if (broken.length === 0) return null;
 
   return [
-    '<b>Проблемні джерела</b>',
+    '<b>Problem sources</b>',
     ...broken.map(
       (row) =>
-        `• ${escape(row.source)}: ${row.status}, знайдено ${row.itemsFound}${row.errors.length > 0 ? `, ${escape(row.errors[0] ?? '')}` : ''}`,
+        `• ${escape(row.source)}: ${row.status}, found ${row.itemsFound}${row.errors.length > 0 ? `, ${escape(row.errors[0] ?? '')}` : ''}`,
     ),
   ].join('\n');
 }
 
+/** Look-back for the summary: the longest gap between two sends (Thursday to Monday). */
+export const SUMMARY_WINDOW_HOURS = 4 * 24;
+
+/**
+ * The only scheduled message: twice a week, everything in one text.
+ *
+ * Separate pushes (queue, sending, follow-ups, finds, broken sources) used to arrive daily and
+ * several at a time, so the bot turned into noise. Now each part is a section of one message,
+ * and an empty section is simply left out.
+ */
+export async function summaryMessage(): Promise<string | null> {
+  const strip = (text: string | null): string | null => text?.replace(`\n${WEB_URL}`, '') ?? null;
+
+  const sections = [
+    strip(await digestMessage()),
+    strip(await highScoreMessage(12, SUMMARY_WINDOW_HOURS)),
+    strip(await outreachMessage()),
+    strip(await followUpMessage()),
+    await brokenSourcesMessage(),
+  ].filter((section): section is string => Boolean(section));
+
+  if (sections.length === 0) return null;
+  return [...sections, WEB_URL].join('\n\n');
+}
+
 export interface NotifyOptions {
-  /** Підміна відправника у тестах і для сухого прогону. */
+  /** Replaces the sender in tests and for a dry run. */
   sender?: Sender;
 }
 
@@ -169,8 +195,8 @@ export interface ChatProbe {
 }
 
 /**
- * Телеграм не дозволяє боту писати першим: поки людина не натисне Start у чаті з ботом,
- * будь-який sendMessage повертає "chat not found". Ця перевірка це і пояснює.
+ * Telegram does not let a bot write first: until the person presses Start in the chat with the
+ * bot, every sendMessage returns "chat not found". This check explains exactly that.
  */
 export async function probe(): Promise<ChatProbe> {
   if (!config.telegram.token) {
@@ -179,7 +205,7 @@ export async function probe(): Promise<ChatProbe> {
       chats: [],
       configuredChatId: config.telegram.chatId,
       reachable: false,
-      hint: 'немає TELEGRAM_BOT_TOKEN у .env',
+      hint: 'TELEGRAM_BOT_TOKEN is missing from .env',
     };
   }
 
@@ -204,66 +230,68 @@ export async function probe(): Promise<ChatProbe> {
     try {
       await probeBot.api.getChat(config.telegram.chatId);
       reachable = true;
-      hint = 'чат доступний, можна надсилати';
+      hint = 'the chat is reachable, messages can be sent';
     } catch (error) {
-      hint = `чат недоступний: ${error instanceof Error ? error.message : String(error)}. Відкрий https://t.me/${me.username} і натисни Start`;
+      hint = `the chat is unreachable: ${error instanceof Error ? error.message : String(error)}. Open https://t.me/${me.username} and press Start`;
     }
   } else {
-    hint = `немає TELEGRAM_CHAT_ID. Відкрий https://t.me/${me.username}, натисни Start і запусти цю команду ще раз`;
+    hint = `TELEGRAM_CHAT_ID is missing. Open https://t.me/${me.username}, press Start and run this command again`;
   }
 
   return { botUsername: me.username, chats: [...chats.values()], configuredChatId: config.telegram.chatId, reachable, hint };
 }
 
 /**
- * Довідка в боті. Це єдина інтерактивна частина телеграма: тільки читання,
- * жодних змін стану. Всі дії над компаніями і вакансіями робляться у вебі.
+ * Help inside the bot. This is the only interactive part of Telegram: read only, no state
+ * changes. Every action on companies and vacancies happens on the web.
  */
-export const HELP_TEXT = `<b>Job Radar</b>, особистий радар вакансій.
+export const HELP_TEXT = `<b>Job Radar</b>, a personal job radar.
 
-<b>Як це працює</b>
-1. <b>Джерела</b>. ATS (Greenhouse, Lever, Ashby) віддають вакансії чистим JSON, RSS-фіди
-   (WeWorkRemotely, Himalayas, Remotive) і RemoteOK дають потік віддалених позицій.
-   Компанії без ATS обходяться по власних career-сторінках.
-2. <b>Каталоги компаній</b>. DOU збирається автоматично, Clutch і TechBehemoths за
-   Cloudflare, тому імпортуються збереженими сторінками з браузера.
-3. <b>Виявлення змін</b>. Для ATS порівнюються id вакансій. Для звичайних сторінок текст
-   чиститься від дат, лічильників і хешів, потім порівнюються хеші окремих блоків.
-   Тому щоденні косметичні зміни не рахуються за нові вакансії.
-4. <b>Фільтр</b>. Спершу стоп-слова (angular, .net, qa, casino і решта), вони ріжуть
-   вакансію ще до звернення до моделі. Потім Claude Haiku витягує стек, грейд, локацію,
-   вилку і рівень англійської строгим JSON.
-5. <b>Скоринг</b> детермінований, списки лежать у config/scoring.json:
-   • роль перевіряється за назвою, інакше бухгалтер з описом про Next.js лізе в чергу
-   • гео: "Remote (US)", "San Francisco, hybrid" і будь-яке місто без ознак віддаленості
-     не підходять, бо переїзд неможливий
-   • мінуси за 5+ років (-4), 7+ (-8), лідську позицію, equity only, C1 плюс відеозвінок
-   • назва важить утричі більше за текст, бали з тексту обмежені стелею
-6. <b>Черга</b>. Щодня фіксується зріз з 10 карток, він не перемішується протягом дня.
-   Показане за останні 30 днів більше не повертається.
+<b>How it works</b>
+1. <b>Sources</b>. ATS boards (Greenhouse, Lever, Ashby) return vacancies as clean JSON, RSS feeds
+   (WeWorkRemotely, Himalayas, Remotive) and RemoteOK give a stream of remote roles.
+   Companies without an ATS are crawled through their own careers pages.
+2. <b>Company catalogs</b>. DOU is collected automatically, Clutch and TechBehemoths sit behind
+   Cloudflare, so they are imported as pages saved from the browser.
+3. <b>Change detection</b>. For ATS boards vacancy ids are compared. For ordinary pages the text
+   is stripped of dates, counters and hashes, then the hashes of individual blocks are compared.
+   So daily cosmetic changes do not count as new vacancies.
+4. <b>Filter</b>. Stop words first (angular, .net, qa, casino and the rest), they cut a vacancy
+   before any model call. Then Claude Haiku extracts stack, seniority, location, salary and
+   English level as strict JSON.
+5. <b>Scoring</b> is deterministic, the lists live in config/scoring.json:
+   • the role is checked by title, otherwise an accountant with a description about Next.js gets into the queue
+   • geo: "Remote (US)", "San Francisco, hybrid" and any city without signs of remote work
+     do not fit, because relocation is not an option
+   • penalties for 5+ years (-4), 7+ (-8), lead roles, equity only, C1 plus a video call
+   • the title weighs three times more than the text, text points are capped
+6. <b>Queue</b>. A slice of 10 cards is fixed every day and does not reshuffle during the day.
+   Anything shown in the last 30 days does not come back.
 
-<b>Що робити у вебі</b> ${WEB_URL}
-• <b>Черга</b>: вакансії. Цікаво, Не цікаво, Написав (з вибором шаблона), Блок, Відкласти
-• <b>Студії</b>: агенції і веб-студії, яким варто запропонувати послуги. Вакансія їм не потрібна,
-  рахунок рахується з розміру, профілю послуг, стеку сайту і країни
-• <b>Компанії</b>: пошук і фільтри, історія вакансій, листування і знімків сторінок
-• <b>Контакти</b>: кому писали, коли, чи відповіли. Позначки: позитивна, відмова, автовідповідь
-• <b>Статистика</b>: топ технологій, медіанні вилки, час життя вакансій, підозри на ghost jobs, воронка
-• <b>Джерела</b>: стан кожного адаптера, кнопки запуску вручну
+<b>What to do on the web</b> ${WEB_URL}
+• <b>Queue</b>: vacancies. Interesting, Not interesting, Contacted (with a template choice), Block, Snooze
+• <b>Studios</b>: agencies and web studios worth offering services to. They need no vacancy,
+  the score comes from size, service profile, site stack and country
+• <b>Companies</b>: search and filters, vacancy history, correspondence and page snapshots
+• <b>Contacts</b>: who was written to, when, and whether they replied. Marks: positive, rejection, auto-reply
+• <b>Stats</b>: top technologies, median salaries, vacancy lifetime, suspected ghost jobs, funnel
+• <b>Sources</b>: the state of each adapter, manual run buttons
 
-<b>Що приходить сюди</b>
-• 10:00 дайджест черги
-• 18:00 нагадування про тих, кому писали понад 7 днів тому без відповіді
-• алерт про рідкісну знахідку зі score 12+
-• алерт про поламане джерело (нуль результатів там, де раніше було більше)
+<b>What arrives here</b>
+One summary on Monday and Thursday at 10:00, nothing in between:
+• the queue for the day
+• rare finds with score 12+ since the previous summary
+• ready drafts and follow-ups due
+• those contacted over 7 days ago with no reply
+• broken sources (zero results where there used to be more)
 
-<b>Команди бота</b>
-/help довідка
-/status що зараз у базі і в черзі
-/queue топ карток на сьогодні
-/followups кому час нагадати
+<b>Bot commands</b>
+/help this help
+/status what is in the database and the queue right now
+/queue top cards for today
+/followups who is due a reminder
 
-Дії над вакансіями через бота навмисно не робляться, для цього є веб.`;
+Actions on vacancies are deliberately not available through the bot, that is what the web is for.`;
 
 export async function statusText(): Promise<string> {
   const db = getDb();
@@ -282,19 +310,19 @@ export async function statusText(): Promise<string> {
   const waiting = await followUps(7);
 
   return [
-    `<b>Стан</b>`,
-    `компаній: ${counts?.companies ?? 0}`,
-    `відкритих вакансій: ${counts?.open ?? 0}, з них вище порогу: ${counts?.above ?? 0}`,
-    `у черзі сьогодні: ${pending} з ${cards.length}`,
-    `чекають відповіді понад 7 днів: ${waiting.length}`,
-    `на ручний перегляд: ${counts?.review ?? 0}`,
+    `<b>Status</b>`,
+    `companies: ${counts?.companies ?? 0}`,
+    `open vacancies: ${counts?.open ?? 0}, above threshold: ${counts?.above ?? 0}`,
+    `in today's queue: ${pending} of ${cards.length}`,
+    `awaiting reply over 7 days: ${waiting.length}`,
+    `for manual review: ${counts?.review ?? 0}`,
     WEB_URL,
   ].join('\n');
 }
 
 let running: Bot | null = null;
 
-/** Довгий полінг для команд довідки. Вимикається змінною TELEGRAM_BOT=off. */
+/** Long polling for the help commands. Disabled with TELEGRAM_BOT=off. */
 function registerCommands(instance: Bot): void {
   instance.command(['start', 'help'], (ctx) =>
     ctx.reply(HELP_TEXT, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }),
@@ -303,32 +331,32 @@ function registerCommands(instance: Bot): void {
     ctx.reply(await statusText(), { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }),
   );
   instance.command('queue', async (ctx) =>
-    ctx.reply((await digestMessage()) ?? 'черга порожня', {
+    ctx.reply((await digestMessage()) ?? 'the queue is empty', {
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: true },
     }),
   );
   instance.command('followups', async (ctx) =>
-    ctx.reply((await followUpMessage()) ?? 'усім відповіли або нікому не писали', {
+    ctx.reply((await followUpMessage()) ?? 'everyone replied or nobody was contacted', {
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: true },
     }),
   );
 
-  instance.catch((error) => log.warn({ err: String(error.error) }, 'бот спіткнувся на оновленні'));
+  instance.catch((error) => log.warn({ err: String(error.error) }, 'the bot stumbled on an update'));
 }
 
-/** Довгий полінг для Node. На Workers замість нього вебхук. */
+/** Long polling for Node. On Workers a webhook is used instead. */
 export async function startBot(): Promise<void> {
   if (!isConfigured() || running) return;
   const instance = buildBot();
   running = instance;
-  void instance.start({ onStart: (info) => log.info({ bot: info.username }, 'телеграм-бот слухає команди') });
+  void instance.start({ onStart: (info) => log.info({ bot: info.username }, 'telegram bot is listening for commands') });
 }
 
 /**
- * На Cloudflare довгий полінг неможливий, тому команди приходять вебхуком.
- * Обробник той самий, що і в полінгу, тільки викликається з роуту API.
+ * Long polling is impossible on Cloudflare, so commands arrive through a webhook.
+ * The handler is the same as for polling, it is just called from an API route.
  */
 export function buildBot(): Bot {
   const instance = new Bot(config.telegram.token);
@@ -348,5 +376,6 @@ export const notify = {
   followUps: (options: NotifyOptions = {}) => followUpMessage().then((text) => deliver(text, options)),
   broken: (options: NotifyOptions = {}) => brokenSourcesMessage().then((text) => deliver(text, options)),
   outreach: (options: NotifyOptions = {}) => outreachMessage().then((text) => deliver(text, options)),
+  summary: (options: NotifyOptions = {}) => summaryMessage().then((text) => deliver(text, options)),
   raw: (text: string, options: NotifyOptions = {}) => deliver(text, options),
 };

@@ -1,19 +1,19 @@
 import { StudiosPage } from './Studios';
 
 /**
- * Стартапи це той самий екран, що Студії, але інший зріз бази. Сценарій той самий:
- * холодний лист із пропозицією допомогти, а не подача на вакансію.
+ * Startups are the same screen as Studios over a different slice of the database.
+ * The scenario is the same: a cold letter offering help, not an application.
  *
- * Чи потрібен їм розробник, видно двома способами, обидва вже в базі: скільки
- * відкритих вакансій знайшли адаптери і чи взагалі знайшовся ATS на сайті.
+ * Whether they need a developer shows up two ways, both already in the database:
+ * how many open vacancies the adapters found, and whether the site has an ATS at all.
  */
 export function StartupsPage() {
   return (
     <StudiosPage
       kind="startup"
       section="startups"
-      emptyTitle="Стартапів поки немає"
-      emptyHint="Запусти джерело getro у розділі Джерела: воно приносить вакансії стартапів з дошок акселераторів, а разом з ними і самі компанії."
+      emptyTitle="No startups yet"
+      emptyHint="Run the getro source on the Sources page: it brings in startup vacancies from accelerator boards, and the companies behind them."
     />
   );
 }

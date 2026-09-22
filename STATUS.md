@@ -9,7 +9,7 @@
 
 ## Де воно зараз
 
-**Прод:** https://job-radar.example.workers.dev
+**Прод:** https://<your-worker>.workers.dev
 
 Інструмент придатний до щоденного використання. Запуск:
 
@@ -272,7 +272,7 @@ Console, увімкнути Gmail API і вписати в `.env`:
 ```
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GMAIL_FROM_EMAIL=example.dev@gmail.com
+GMAIL_FROM_EMAIL=<your-gmail>
 ```
 
 Redirect URI в консолі: `http://127.0.0.1:53682/callback`. Далі `pnpm cli auth:gmail`

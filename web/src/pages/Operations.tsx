@@ -19,15 +19,15 @@ import { Play, Square } from 'lucide-react';
 import { api } from '../lib/api';
 
 /**
- * Операції: те саме, що робить CLI, але кнопками.
+ * Operations: what the CLI does, but with buttons.
  *
- * Раніше половина роботи жила лише в терміналі, і на проді її не було взагалі:
- * ноутбук з репозиторієм не завжди під рукою, а радар живе у воркері. Тут кожна
- * кнопка це один POST, і відповідь показується як є, без переказу своїми словами.
+ * Half the work used to live only in the terminal and did not exist in production at
+ * all: the laptop with the repository is not always at hand, while the radar lives on
+ * the worker. Here every button is one POST, and the response is shown as is, without
+ * retelling it in other words.
  *
- * Чого тут немає навмисно: міграції, імпорт файлів, вивантаження бази і
- * підключення пошти. Це або одноразові речі, або такі, що потребують файлів на
- * диску, тобто кнопка в браузері їх не виконає.
+ * Deliberately missing: migrations, file imports, database export and connecting mail.
+ * Those are either one-off tasks or need files on disk, which a browser button cannot do.
  */
 
 type Field = { name: string; label: string; kind: 'number' | 'select'; def: number | string; options?: string[] };
@@ -37,17 +37,17 @@ interface Operation {
   label: string;
   hint: string;
   path: string;
-  /** Довгі операції попереджають про себе: воркер має ліміт часу на запит. */
+  /** Long operations warn about themselves: the worker has a per-request time limit. */
   slow?: boolean;
   fields?: Field[];
   /**
-   * Операція виконується партіями: за один запит обробляється `size` записів,
-   * і так поки не набереться замовлена кількість або поки на сервері не закінчаться
-   * кандидати. Інакше сотня компаній за один запит не встигає, і воркер знімає його
-   * з відповіддю 503, не зробивши нічого.
+   * The operation runs in batches: one request processes `size` records, repeated until
+   * the requested count is reached or the server runs out of candidates. Otherwise a
+   * hundred companies in one request do not finish in time, and the worker kills it with
+   * a 503 having done nothing.
    */
   batch?: { field: string; size: number };
-  /** Прохід по мережах Getro: одна мережа це один запит. */
+  /** A pass over the Getro networks: one network is one request. */
   networks?: boolean;
 }
 
@@ -59,229 +59,229 @@ interface OperationGroup {
 
 const GROUPS: OperationGroup[] = [
   {
-    title: 'Збір',
-    note: 'звідки беруться компанії і вакансії',
+    title: 'Collection',
+    note: 'where companies and vacancies come from',
     items: [
       {
         id: 'catalog-yc',
-        label: 'Каталог YC',
-        hint: 'стартапи, які зараз наймають. Вакансій не дає, дає входи для discovery',
+        label: 'YC catalog',
+        hint: 'startups hiring right now. Gives no vacancies, gives entry points for discovery',
         path: '/catalogs/yc/run',
         slow: true,
       },
       {
         id: 'hn-hiring',
         label: 'HN: Who is hiring',
-        hint: 'щомісячна гілка Hacker News: дві сотні стартапів з прямим контактом засновника',
+        hint: 'the monthly Hacker News thread: a couple of hundred startups with a direct founder contact',
         path: '/sources/hn%3Ahiring/run',
         slow: true,
       },
       {
         id: 'getro',
-        label: 'Дошки акселераторів',
-        hint: 'Techstars, Accel, Underscore і решта мереж Getro',
+        label: 'Accelerator boards',
+        hint: 'Techstars, Accel, Underscore and the other Getro networks',
         path: '/sources/getro/run',
         slow: true,
         networks: true,
       },
       {
         id: 'catalog-dou',
-        label: 'Каталог DOU',
-        hint: 'компанії з jobs.dou.ua за фільтрами',
+        label: 'DOU catalog',
+        hint: 'companies from jobs.dou.ua by filters',
         path: '/catalogs/dou/run',
         slow: true,
-        fields: [{ name: 'limit', label: 'скільки', kind: 'number', def: 40 }],
+        fields: [{ name: 'limit', label: 'how many', kind: 'number', def: 40 }],
       },
       {
         id: 'catalog-awwwards',
-        label: 'Каталог Awwwards',
-        hint: 'дизайн-студії з каталогу нагород',
+        label: 'Awwwards catalog',
+        hint: 'design studios from the awards directory',
         path: '/catalogs/awwwards/run',
         slow: true,
       },
       {
         id: 'discover',
-        label: 'Знайти career-сторінки',
-        hint: 'обходить компанії без ATS: /careers, /jobs, футер. Знайдене більше не шукається',
+        label: 'Find career pages',
+        hint: 'crawls companies without an ATS: /careers, /jobs, the footer. Once found, never searched again',
         path: '/discover',
         slow: true,
         batch: { field: 'limit', size: 5 },
-        fields: [{ name: 'limit', label: 'компаній', kind: 'number', def: 40 }],
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 40 }],
       },
       {
         id: 'enrich',
-        label: 'Зібрати контакти і стек',
-        hint: 'сторінки /team і /about: імена, ролі, пошта, ознаки живості сайту',
+        label: 'Collect contacts and stack',
+        hint: '/team and /about pages: names, roles, email, signs the site is alive',
         path: '/enrich',
         slow: true,
         batch: { field: 'limit', size: 5 },
-        fields: [{ name: 'limit', label: 'компаній', kind: 'number', def: 25 }],
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 25 }],
       },
     ],
   },
   {
-    title: 'Обробка',
-    note: 'що робити з тим, що вже зібрано',
+    title: 'Processing',
+    note: 'what to do with what is already collected',
     items: [
       {
         id: 'classify',
-        label: 'Догнати класифікацію',
-        hint: 'вакансії без думки моделі, зверху за рахунком. Витрачає денний бюджет',
+        label: 'Catch up on classification',
+        hint: 'vacancies without a model opinion, highest score first. Spends the daily budget',
         path: '/classify/pending',
         slow: true,
-        fields: [{ name: 'limit', label: 'вакансій', kind: 'number', def: 50 }],
+        fields: [{ name: 'limit', label: 'vacancies', kind: 'number', def: 50 }],
       },
       {
         id: 'recalc',
-        label: 'Перерахувати рахунки',
-        hint: 'після зміни правил. Модель не викликається, це чиста арифметика',
+        label: 'Rescore',
+        hint: 'after changing the rules. No model calls, plain arithmetic',
         path: '/score/recalc',
       },
       {
         id: 'top-up',
-        label: 'Добрати чергу',
-        hint: 'долити картки в сьогоднішній зріз до денного ліміту',
+        label: 'Top up the queue',
+        hint: 'add cards to today\'s slice up to the daily limit',
         path: '/queue/top-up',
       },
       {
         id: 'kinds',
-        label: 'Проставити типи компаній',
-        hint: 'студія, дизайн, стартап, продукт, аутстаф. За тегами і описом',
+        label: 'Assign company kinds',
+        hint: 'studio, design, startup, product, outstaff. From tags and description',
         path: '/maintenance/kinds',
       },
       {
         id: 'backfill',
-        label: 'Розкласти поля каталогів',
-        hint: 'ставка, мінімальний проєкт і рік заснування з тегів по колонках',
+        label: 'Split catalog fields',
+        hint: 'hourly rate, minimum project and founding year from tags into columns',
         path: '/maintenance/backfill-catalog',
       },
       {
         id: 'fix-detail',
-        label: 'Перечитати описи вакансій',
-        hint: 'для бордів на Next.js, де замість опису зберігалось меню сайту',
+        label: 'Re-read vacancy descriptions',
+        hint: 'for Next.js boards where the site menu was stored instead of the description',
         path: '/maintenance/fix-detail',
         slow: true,
         fields: [
-          { name: 'limit', label: 'сторінок', kind: 'number', def: 25 },
-          { name: 'source', label: 'джерело', kind: 'select', def: 'getro', options: ['getro', 'djinni', 'dou:vacancies'] },
+          { name: 'limit', label: 'pages', kind: 'number', def: 25 },
+          { name: 'source', label: 'source', kind: 'select', def: 'getro', options: ['getro', 'djinni', 'dou:vacancies'] },
         ],
       },
       {
         id: 'embed',
-        label: 'Порахувати вектори',
-        hint: 'для пошуку схожих компаній, через Workers AI',
+        label: 'Compute vectors',
+        hint: 'for finding similar companies, through Workers AI',
         path: '/embed',
         slow: true,
-        fields: [{ name: 'limit', label: 'компаній', kind: 'number', def: 50 }],
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 50 }],
       },
     ],
   },
   {
-    title: 'Розсилка',
-    note: 'листи готуються тут, відправляються на сторінці До відправки',
+    title: 'Sending',
+    note: 'letters are prepared here and sent from the Outbox page',
     items: [
       {
         id: 'outreach-seed',
-        label: 'Долити шаблони розсилки',
-        hint: 'додає відсутні каркаси: чотири випадки на двох мовах',
+        label: 'Seed sending templates',
+        hint: 'adds missing skeletons: four cases in two languages',
         path: '/outreach/seed',
       },
       {
         id: 'templates-seed',
-        label: 'Долити стартові шаблони',
-        hint: 'ті, що були в списку спочатку. Видалені самі більше не повертаються',
+        label: 'Seed starter templates',
+        hint: 'the ones the list started with. Deleted ones do not come back on their own',
         path: '/templates/seed',
       },
       {
         id: 'outreach-prepare',
-        label: 'Зібрати чернетки',
-        hint: 'вибір шаблона, мови і контакту. Нічого не відправляє',
+        label: 'Prepare drafts',
+        hint: 'picks template, language and contact. Sends nothing',
         path: '/outreach/prepare',
         slow: true,
-        fields: [{ name: 'limit', label: 'компаній', kind: 'number', def: 20 }],
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 20 }],
       },
       {
         id: 'outreach-followups',
-        label: 'Зібрати фолоу-апи',
-        hint: 'кому час писати вдруге: 7-9 днів без відповіді, той самий тред',
+        label: 'Prepare follow-ups',
+        hint: 'who is due a second letter: 7-9 days without a reply, same thread',
         path: '/outreach/followups',
       },
       {
         id: 'outreach-replies',
-        label: 'Перевірити відповіді',
-        hint: 'обхід тредів: відповіді, автовідповіді, баунси. Крон робить це щогодини',
+        label: 'Check replies',
+        hint: 'walks the threads: replies, auto-replies, bounces. Cron does this hourly',
         path: '/outreach/replies',
         slow: true,
       },
     ],
   },
   {
-    title: 'Перевірки',
-    note: 'коли щось мовчить, починати звідси',
+    title: 'Checks',
+    note: 'when something goes quiet, start here',
     items: [
       {
         id: 'llm-ping',
-        label: 'Перевірити модель',
-        hint: 'живий виклик: ключ, провайдер, AI Gateway. Коштує кілька токенів',
+        label: 'Check the model',
+        hint: 'a live call: key, provider, AI Gateway. Costs a few tokens',
         path: '/llm/ping',
       },
       {
         id: 'gmail-test',
-        label: 'Тестовий лист собі',
-        hint: 'кирилиця в темі навмисно, на ній ламається кодування',
+        label: 'Test letter to yourself',
+        hint: 'the subject has Cyrillic on purpose, that is where encoding breaks',
         path: '/gmail/test',
       },
       {
         id: 'notify-digest',
-        label: 'Телеграм: дайджест',
-        hint: 'те саме, що приходить о 10:00',
+        label: 'Telegram: digest',
+        hint: 'the same message that arrives at 10:00',
         path: '/notify/digest',
       },
       {
         id: 'notify-outreach',
-        label: 'Телеграм: розсилка',
-        hint: 'скільки чернеток готово і скільки фолоу-апів настало',
+        label: 'Telegram: sending',
+        hint: 'how many drafts are ready and how many follow-ups are due',
         path: '/notify/outreach',
       },
       {
         id: 'notify-broken',
-        label: 'Телеграм: поламані джерела',
-        hint: 'адаптери, що повернули нуль або помилку',
+        label: 'Telegram: broken sources',
+        hint: 'adapters that returned zero or an error',
         path: '/notify/broken',
       },
     ],
   },
 ];
 
-/** Ключі, які майже завжди є у відповіді. Показуємо їх людськими словами. */
+/** Keys that are almost always in a response. Shown in plain words. */
 const LABELS: Record<string, string> = {
-  itemsFound: 'знайдено',
-  itemsNew: 'нових',
-  created: 'створено',
-  updated: 'оновлено',
-  seen: 'переглянуто',
-  classified: 'класифіковано',
-  skipped: 'пропущено',
-  stopped: 'відсіяно стоп-словами',
-  needsReview: 'на ручний перегляд',
-  detailed: 'довантажено описів',
-  emptyDetail: 'сторінок без опису',
-  checked: 'перевірено',
-  fixed: 'виправлено',
-  unchanged: 'без змін',
-  stillEmpty: 'без опису',
-  candidates: 'кандидатів',
-  drafts: 'чернеток',
-  due: 'настало',
-  replies: 'відповідей',
-  bounces: 'баунсів',
-  added: 'додано',
-  total: 'усього',
-  taken: 'узято',
-  sent: 'надіслано',
-  ok: 'працює',
-  remaining: 'лишилось у черзі',
-  batches: 'партій',
+  itemsFound: 'found',
+  itemsNew: 'new',
+  created: 'created',
+  updated: 'updated',
+  seen: 'seen',
+  classified: 'classified',
+  skipped: 'skipped',
+  stopped: 'filtered by stop words',
+  needsReview: 'for manual review',
+  detailed: 'descriptions loaded',
+  emptyDetail: 'pages without description',
+  checked: 'checked',
+  fixed: 'fixed',
+  unchanged: 'unchanged',
+  stillEmpty: 'still no description',
+  candidates: 'candidates',
+  drafts: 'drafts',
+  due: 'due',
+  replies: 'replies',
+  bounces: 'bounces',
+  added: 'added',
+  total: 'total',
+  taken: 'taken',
+  sent: 'sent',
+  ok: 'working',
+  remaining: 'left in the queue',
+  batches: 'batches',
 };
 
 function Result({ value }: { value: Record<string, unknown> }) {
@@ -305,9 +305,9 @@ function Result({ value }: { value: Record<string, unknown> }) {
 type Totals = Record<string, unknown>;
 
 /**
- * Складання підсумку з кількох партій. Числа додаються, решта береться з останньої
- * відповіді: інакше після десяти запитів на екрані лишалась би статистика останніх
- * пʼятьох компаній, наче решти проходу не було.
+ * Combines the totals of several batches. Numbers add up, everything else comes from the
+ * last response: otherwise after ten requests the screen would show only the last five
+ * companies, as if the rest of the pass never happened.
  */
 function merge(into: Totals, part: Record<string, unknown>): Totals {
   const out: Totals = { ...into };
@@ -321,8 +321,8 @@ function merge(into: Totals, part: Record<string, unknown>): Totals {
 }
 
 /**
- * Партіями до замовленої кількості. Зупиняється раніше, якщо сервер каже, що
- * кандидатів більше немає: без цієї умови цикл ганяв би порожні запити до кінця числа.
+ * In batches up to the requested count. Stops early when the server says there are no
+ * candidates left: without that the loop would keep sending empty requests to the end.
  */
 async function runInBatches(
   operation: Operation,
@@ -339,7 +339,7 @@ async function runInBatches(
 
   while (done < total && !stop.current) {
     const take = Math.min(size, total - done);
-    report(`партія ${(totals.batches as number) + 1}, оброблено ${done} з ${total}`);
+    report(`batch ${(totals.batches as number) + 1}, processed ${done} of ${total}`);
 
     const data = await api.run(operation.path, { ...values, [field]: take });
     totals = merge(totals, data);
@@ -348,7 +348,7 @@ async function runInBatches(
     const processed = Number(data.checked ?? data.itemsFound ?? take) || 0;
     done += processed;
 
-    // Нуль оброблених означає, що брати більше нема кого, і наступна партія буде така сама.
+    // Zero processed means nobody is left to take, and the next batch would be the same.
     if (processed === 0 || Number(data.remaining ?? 0) === 0) break;
   }
 
@@ -357,8 +357,9 @@ async function runInBatches(
 }
 
 /**
- * Прохід по мережах Getro: одна мережа це один запит. Курсор дає сервер, тому
- * порядок і склад списку живуть в одному місці, а не дублюються у фронті.
+ * A pass over the Getro networks: one network is one request. The server provides the
+ * cursor, so the order and contents of the list live in one place instead of being
+ * duplicated in the front end.
  */
 async function runByNetworks(
   operation: Operation,
@@ -370,7 +371,7 @@ async function runByNetworks(
 
   for (const [index, network] of networks.entries()) {
     if (stop.current) break;
-    report(`мережа ${network}, ${index + 1} з ${networks.length}`);
+    report(`network ${network}, ${index + 1} of ${networks.length}`);
 
     const data = await api.run(operation.path, { slug: network });
     totals = merge(totals, data);
@@ -402,8 +403,8 @@ function OperationCard({ operation }: { operation: Operation }) {
     onSuccess: (data) => {
       setProgress(null);
       setResult(data);
-      notifications.show({ color: 'green', title: operation.label, message: 'готово' });
-      // Після будь-якої операції цифри в інтерфейсі застарілі, тому перечитуємо все.
+      notifications.show({ color: 'green', title: operation.label, message: 'done' });
+      // After any operation the numbers in the interface are stale, so everything is refetched.
       void client.invalidateQueries();
     },
     onError: (error: Error) => {
@@ -422,9 +423,9 @@ function OperationCard({ operation }: { operation: Operation }) {
               {operation.label}
             </Text>
             {operation.slow && (
-              <Tooltip label="довга операція, воркер має ліміт часу на запит">
+              <Tooltip label="long operation, the worker has a per-request time limit">
                 <Badge size="xs" color="yellow" variant="light">
-                  довга
+                  long
                 </Badge>
               </Tooltip>
             )}
@@ -466,10 +467,10 @@ function OperationCard({ operation }: { operation: Operation }) {
             loading={run.isPending}
             onClick={() => run.mutate()}
           >
-            Запустити
+            Run
           </Button>
 
-          {/* Партії йдуть довго, і зупинити їх має бути можливо не закриваючи вкладку. */}
+          {/* Batches take a while, and stopping them must be possible without closing the tab. */}
           {run.isPending && (operation.batch || operation.networks) && (
             <Button
               size="xs"
@@ -478,10 +479,10 @@ function OperationCard({ operation }: { operation: Operation }) {
               leftSection={<Square size={14} />}
               onClick={() => {
                 stop.current = true;
-                setProgress('зупиняю після поточної партії');
+                setProgress('stopping after the current batch');
               }}
             >
-              Зупинити
+              Stop
             </Button>
           )}
         </Group>
@@ -504,9 +505,28 @@ export function OperationsPage() {
   return (
     <ScrollArea.Autosize mah="calc(100dvh - 60px)">
       <Stack gap="lg" p="lg">
-        {gmail && !gmail.connected && (
-          <Alert color="yellow" title="Пошта не підключена">
-            Операції розсилки працюватимуть, але надіслати лист буде нічим.
+        {gmail && gmail.provider === 'gmail' && !gmail.connected && (
+          <Alert color="yellow" title="Mail is not connected">
+            Sending operations will run, but there is nothing to send a letter with.
+          </Alert>
+        )}
+
+        {/*
+          A silent difference between providers. Resend can only send: replies land in a
+          mailbox the radar cannot access, and "nobody replied" on the Contacts page would
+          only mean that nobody looked.
+        */}
+        {gmail && !gmail.readsReplies && (
+          <Alert color="yellow" title={`Sending through ${gmail.provider}, replies are not tracked`}>
+            This provider only sends letters. Checking replies and bounces reads the mailbox,
+            and there is no access to it here, so replies have to be marked by hand on the
+            Contacts page. For replies to be noticed automatically, use MAIL_PROVIDER=gmail.
+          </Alert>
+        )}
+
+        {gmail && gmail.provider !== 'gmail' && !gmail.providers.find((row) => row.id === gmail.provider)?.connected && (
+          <Alert color="red" title={`${gmail.provider} is not configured`}>
+            {gmail.providers.find((row) => row.id === gmail.provider)?.hint ?? 'check the environment variables'}
           </Alert>
         )}
 
@@ -525,9 +545,9 @@ export function OperationsPage() {
         ))}
 
         <Text size="xs" c="dimmed">
-          Лишились у терміналі тільки ті команди, яким потрібні файли на диску або
-          одноразове налаштування: міграції, імпорт CSV і збережених сторінок,
-          вивантаження бази в D1, підключення Gmail.
+          Only the commands that need files on disk or one-off setup stay in the
+          terminal: migrations, importing CSV and saved pages, exporting the database
+          to D1, connecting Gmail.
         </Text>
       </Stack>
     </ScrollArea.Autosize>
