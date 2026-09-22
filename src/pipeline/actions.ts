@@ -7,7 +7,7 @@ import { todayKey } from './queue.js';
 export const ACTIONS = ['interesting', 'not_interesting', 'contacted', 'blacklist', 'snooze'] as const;
 export type Action = (typeof ACTIONS)[number];
 
-/** Дія на картці означає стан компанії, а не вакансії: пишемо ж компанії, не вакансії. */
+/** An action on a card means the company's status, not the vacancy's: we write to the company, not the vacancy. */
 const STATUS_BY_ACTION: Record<Action, string> = {
   interesting: 'interesting',
   not_interesting: 'rejected_by_me',
@@ -20,12 +20,12 @@ export interface ActionInput {
   vacancyId: number;
   action: Action;
   note?: string | null;
-  /** Тільки для snooze, за замовчуванням 30 днів. */
+  /** Only for snooze, defaults to 30 days. */
   days?: number;
-  /** Тільки для contacted. */
+  /** Only for contacted. */
   channel?: string;
   templateUsed?: string | null;
-  /** Знімок контакту на момент листа: через рік має бути видно, кому саме писали. */
+  /** Snapshot of the contact at the time of the letter: a year later it should still be clear who exactly was written to. */
   contactName?: string | null;
   contactEmail?: string | null;
 }
@@ -39,11 +39,11 @@ export interface ActionResult {
 export async function applyAction(input: ActionInput): Promise<ActionResult> {
   const db = getDb();
   const [vacancy] = await db.select().from(vacancies).where(eq(vacancies.id, input.vacancyId));
-  if (!vacancy) throw new Error(`вакансії ${input.vacancyId} немає`);
+  if (!vacancy) throw new Error(`vacancy ${input.vacancyId} does not exist`);
 
-  // Валідація тут, а не тільки в API: функцію викликає ще CLI і майбутній cron.
+  // Validation here, not only in the API: the CLI and a future cron also call this function.
   const status = STATUS_BY_ACTION[input.action];
-  if (!status) throw new Error(`невідома дія: ${input.action}`);
+  if (!status) throw new Error(`unknown action: ${input.action}`);
   const snoozedUntil =
     input.action === 'snooze' ? Date.now() + (input.days ?? 30) * 86_400_000 : null;
 
@@ -71,8 +71,8 @@ export async function applyAction(input: ActionInput): Promise<ActionResult> {
         companyId: vacancy.companyId,
         vacancyId: vacancy.id,
         channel: input.channel ?? 'email',
-        // Кнопка "Написав" це запис про вже надісланий лист, тому одразу sent.
-        // Чернетки розсилки живуть у цій же таблиці зі status = draft.
+        // The "Wrote" button records a letter that was already sent, so it's sent right away.
+        // Outreach drafts live in this same table with status = draft.
         status: 'sent',
         sentAt: Date.now(),
         templateUsed: input.templateUsed ?? null,
@@ -89,14 +89,14 @@ export async function applyAction(input: ActionInput): Promise<ActionResult> {
     .set({ decision: input.action, decidedAt: Date.now() })
     .where(and(eq(queueItems.vacancyId, input.vacancyId), isNull(queueItems.decision)));
 
-  log.info({ vacancyId: input.vacancyId, action: input.action, status }, 'дія застосована');
+  log.info({ vacancyId: input.vacancyId, action: input.action, status }, 'action applied');
   return { companyId: vacancy.companyId, status, outreachId };
 }
 
 export const REPLY_TYPES = ['positive', 'rejection', 'auto'] as const;
 export type ReplyType = (typeof REPLY_TYPES)[number];
 
-/** Відповідь змінює і стан компанії, інакше вона назавжди лишиться contacted. */
+/** A reply also changes the company's status, otherwise it would stay contacted forever. */
 const STATUS_BY_REPLY: Record<ReplyType, string | null> = {
   positive: 'replied',
   rejection: 'rejected_by_them',
@@ -110,7 +110,7 @@ export async function markReply(
 ): Promise<void> {
   const db = getDb();
   const [row] = await db.select().from(outreach).where(eq(outreach.id, outreachId));
-  if (!row) throw new Error(`контакту ${outreachId} немає`);
+  if (!row) throw new Error(`outreach entry ${outreachId} does not exist`);
 
   await db
     .update(outreach)
@@ -140,18 +140,18 @@ export interface OutreachRow {
   language: string | null;
   aiUsed: boolean;
   bounceType: string | null;
-  /** Текст того, що реально пішло. Інтерфейс показує його на розкритті рядка. */
+  /** The text that actually went out. The UI shows it when the row is expanded. */
   subject: string | null;
   body: string | null;
   isFollowup: boolean;
   templateUsed: string | null;
-  /** Кому писали. Знімок на момент листа, а не звʼязок із таблицею контактів. */
+  /** Who was written to. A snapshot at the time of the letter, not a link to the contacts table. */
   contactName: string | null;
   contactEmail: string | null;
   replyAt: number | null;
   replyType: string | null;
   note: string | null;
-  /** Днів без відповіді. null, якщо відповідь уже є. */
+  /** Days without a reply. null if there already is one. */
   waitingDays: number | null;
 }
 
@@ -168,7 +168,7 @@ export async function listOutreach(): Promise<OutreachRow[]> {
     .from(outreach)
     .innerJoin(companies, eq(companies.id, outreach.companyId))
     .leftJoin(vacancies, eq(vacancies.id, outreach.vacancyId))
-    // Чернетка це ще не лист. Її місце на сторінці "До відправки", а не в історії.
+    // A draft is not a letter yet. Its place is on the "To send" page, not in the history.
     .where(sql`${outreach.sentAt} is not null`)
     .orderBy(desc(outreach.sentAt));
 
@@ -201,7 +201,7 @@ export async function listOutreach(): Promise<OutreachRow[]> {
   }));
 }
 
-/** Кому писали понад N днів тому і відповіді немає. Основа нагадувань. */
+/** Who was written to more than N days ago with no reply. The basis for reminders. */
 export async function followUps(days = 7): Promise<OutreachRow[]> {
   const rows = await listOutreach();
   return rows.filter((row) => row.waitingDays !== null && row.waitingDays >= days);
@@ -222,7 +222,7 @@ export async function funnel(): Promise<FunnelStats> {
   const db = getDb();
   const count = async (query: Promise<{ n: number }[]>) => (await query)[0]?.n ?? 0;
   const n = sql<number>`count(*)`;
-  // Воронка міряє надіслані листи. Чернетка ще нікуди не пішла і в неї не входить.
+  // The funnel measures sent letters. A draft hasn't gone anywhere yet and isn't counted.
   const sent = sql`${outreach.sentAt} is not null`;
 
   return {

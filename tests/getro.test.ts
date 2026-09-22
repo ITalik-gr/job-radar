@@ -6,13 +6,13 @@ const listing = readFileSync('fixtures/getro/techstars-frontend.html', 'utf8');
 const featured = readFileSync('fixtures/getro/techstars-jobs.html', 'utf8');
 
 describe('getro', () => {
-  it('розбирає сторінку пошуку і не повертає нуль', () => {
+  it('parses the search page and does not return zero', () => {
     const rows = parseGetro(listing, 'jobs.techstars.com');
-    // Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх.
+    // Rule 3 in CLAUDE.md: an empty result is an error, not a success.
     expect(rows.length).toBeGreaterThan(5);
   });
 
-  it('бере назву, посилання і зовнішній id', () => {
+  it('takes the title, link and external id', () => {
     const rows = parseGetro(listing, 'jobs.techstars.com');
     const row = rows[0]!;
 
@@ -23,46 +23,46 @@ describe('getro', () => {
     expect(row.companySlug).toBeTruthy();
   });
 
-  it('витягає назву компанії і локацію з підписаних полів', () => {
+  it('extracts the company name and location from labeled fields', () => {
     const rows = parseGetro(listing, 'jobs.techstars.com');
     expect(rows.some((row) => row.companyName)).toBe(true);
     expect(rows.some((row) => row.location)).toBe(true);
   });
 
-  it('позначає віддалені вакансії за текстом локації', () => {
+  it('marks remote vacancies from the location text', () => {
     const rows = parseGetro(listing, 'jobs.techstars.com');
     for (const row of rows) {
       if (row.location && /remote/i.test(row.location)) expect(row.remote).toBe(true);
     }
   });
 
-  it('домен компанії зі списку невідомий і чесно лишається null', () => {
-    // Getro не показує сайт у списку. Домен доважується окремим запитом у fetch,
-    // і вигадувати його з домену борду не можна: це зламало б дедуп.
+  it('the company domain from the list is unknown and honestly stays null', () => {
+    // Getro does not show the site in the list. The domain is added later by a separate fetch,
+    // and it cannot be guessed from the board's own domain: that would break dedup.
     const rows = parseGetro(listing, 'jobs.techstars.com');
     expect(rows.every((row) => row.companyDomain === null)).toBe(true);
   });
 
-  it('одна вакансія не дублюється, навіть якщо посилання трапилось двічі', () => {
+  it('one vacancy is not duplicated even if the link appears twice', () => {
     const rows = parseGetro(listing + listing, 'jobs.techstars.com');
     const urls = rows.map((row) => row.url);
     expect(new Set(urls).size).toBe(urls.length);
   });
 
-  it('сторінка без пошуку теж розбирається', () => {
+  it('a page without search also parses', () => {
     expect(parseGetro(featured, 'jobs.techstars.com').length).toBeGreaterThan(0);
   });
 
-  it('порожній html дає порожній список, а не падіння', () => {
-    expect(parseGetro('<html><body>нічого</body></html>', 'jobs.techstars.com')).toEqual([]);
+  it('empty html gives an empty list, not a crash', () => {
+    expect(parseGetro('<html><body>nothing</body></html>', 'jobs.techstars.com')).toEqual([]);
   });
 
-  it('мережі і запити описані конфігом, а не зашиті в код', () => {
+  it('the networks and queries are described by config, not hardcoded', () => {
     expect(GETRO_NETWORKS.length).toBeGreaterThan(1);
     expect(GETRO_QUERIES).toContain('frontend');
   });
 
-  it('усі мережі мають унікальні id і різні хости', () => {
+  it('all networks have unique ids and different hosts', () => {
     const ids = GETRO_NETWORKS.map((network) => network.id);
     const hosts = GETRO_NETWORKS.map((network) => network.host);
 
@@ -70,33 +70,34 @@ describe('getro', () => {
     expect(new Set(hosts).size).toBe(hosts.length);
   });
 
-  it('кількість запитів на прохід лишається розумною', () => {
+  it('the number of requests per pass stays reasonable', () => {
     /*
-     * Кожен запит це похід на чужий сайт. Стеля потрібна, щоб додавання мереж
-     * не перетворилось непомітно на сотню звернень за прохід. Домени компаній
-     * сюди не входять: вони лежать у постійному кеші і тягнуться один раз.
+     * Every request is a trip to someone else's site. The ceiling exists so that adding
+     * networks does not silently turn into a hundred requests per pass. Company domains
+     * are not counted here: they sit in a permanent cache and are fetched only once.
      */
     expect(GETRO_NETWORKS.length * GETRO_QUERIES.length).toBeLessThanOrEqual(40);
   });
 });
 
 /*
- * Мережі проходяться по одній: дванадцять за раз це три десятки запитів до чужих
- * сайтів плюс сторінка компанії на кожен новий домен, і воркер такий прохід знімає.
- * Курсор рахує сервер, щоб порядок мереж жив в одному місці, а не дублювався у фронті.
+ * Networks are gone through one at a time: twelve in one go would be three dozen requests
+ * to other people's sites plus a company page for every new domain, and the worker's
+ * time budget cannot take a pass like that. The cursor is tracked by the server so the
+ * network order lives in one place instead of being duplicated in the frontend.
  */
-describe('курсор по мережах', () => {
-  it('без поточної мережі починає з першої', () => {
+describe('network cursor', () => {
+  it('starts with the first network when there is no current one', () => {
     expect(nextGetroNetwork()).toBe(GETRO_NETWORKS[0]!.id);
     expect(nextGetroNetwork(null)).toBe(GETRO_NETWORKS[0]!.id);
   });
 
-  it('віддає наступну за списком і null у кінці', () => {
+  it('returns the next one in the list and null at the end', () => {
     expect(nextGetroNetwork(GETRO_NETWORKS[0]!.id)).toBe(GETRO_NETWORKS[1]!.id);
     expect(nextGetroNetwork(GETRO_NETWORKS.at(-1)!.id)).toBeNull();
   });
 
-  it('незнайома мережа не починає прохід спочатку', () => {
-    expect(nextGetroNetwork('не-мережа')).toBeNull();
+  it('an unfamiliar network does not restart the pass from the beginning', () => {
+    expect(nextGetroNetwork('not-a-network')).toBeNull();
   });
 });

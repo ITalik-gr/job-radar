@@ -6,36 +6,37 @@ import { discoverCompany } from './discover.js';
 import { enrichCompany, saveEnrichment } from './enrich.js';
 
 /**
- * Повний перегляд однієї компанії по кнопці.
+ * A full review of one company from a button press.
  *
- * Це те саме, що роблять нічні проходи, але для однієї компанії і **без умов**:
- * discovery і enrichment запускаються навіть тоді, коли компанію вже дивились.
- * Причина в тому, як влаштований збір: каталог дає лише картку, а на сам сайт
- * заходять окремі кроки за розкладом, тому конкретна студія, яку власник дивиться
- * прямо зараз, може чекати своєї черги днями.
+ * This is the same thing the nightly passes do, but for one company and **with no
+ * conditions**: discovery and enrichment run even when the company has already been
+ * looked at. The reason lies in how collection is built: a catalog only gives a card,
+ * and the site itself is visited by separate scheduled steps, so a specific studio the
+ * owner is looking at right now might sit in the queue for days.
  *
- * Звіт повертається докладний навмисно. Кнопкою перевіряють, чи працює пошук, а
- * "оновлено" без подробиць нічого не каже: незрозуміло, чи сайт відкрився, чи
- * знайшлась пошта, чи стек взявся з тексту сторінки послуг.
+ * The report is deliberately detailed. A button press is used to check whether the
+ * search works at all, and "updated" with no details says nothing: it's unclear
+ * whether the site even opened, whether an address was found, or whether the stack
+ * came from the text of the services page.
  */
 export interface RefreshReport {
   companyId: number;
   domain: string;
-  /** Головна відкрилась серверу. false означає 403 від захисту, таймаут або мертвий домен. */
+  /** The home page opened for the server. false means 403 from protection, a timeout, or a dead domain. */
   reachable: boolean;
-  /** Сторінка це порожній каркас: вміст малює скрипт уже в браузері. */
+  /** The page is an empty shell: the content is drawn by script already in the browser. */
   clientRendered: boolean;
-  /** Домен чекає на розширення: сервер сам його не прочитає. */
+  /** The domain is waiting on the extension: the server can't read it itself. */
   needsBrowser: boolean;
   pagesFetched: number;
   careersUrl: string | null;
   careersKind: string;
   careersSlug: string | null;
-  /** Увесь стек компанії після оновлення і те, що додалось саме зараз. */
+  /** The company's whole stack after the update, and what was added just now. */
   techHints: string[];
   techAdded: string[];
   contactsAdded: number;
-  /** Адреси, які видно на сайті. Показуються як є: власник має бачити, що знайшлось. */
+  /** Addresses visible on the site. Shown as is: the owner has to see what was found. */
   emails: string[];
   people: number;
 }
@@ -43,14 +44,14 @@ export interface RefreshReport {
 export async function refreshCompany(companyId: number): Promise<RefreshReport> {
   const db = getDb();
   const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-  if (!company) throw new Error(`компанії ${companyId} немає`);
+  if (!company) throw new Error(`company ${companyId} does not exist`);
 
   const techBefore = new Set(company.techHints);
 
   /*
-   * Спершу discovery: він знаходить career-сторінку і впізнає ATS, і саме він
-   * пише `careers_slug`, від якого залежить, чи прийдуть вакансії цієї компанії.
-   * Порядок важливий і в дрібниці: enrichment далі бере вже оновлену картку.
+   * Discovery first: it finds the careers page and recognizes the ATS, and it's the
+   * one that writes `careers_slug`, which decides whether this company's vacancies
+   * will come in at all. The order matters even in the details: enrichment next uses the already updated card.
    */
   const discovery = await discoverCompany(company);
   await db
@@ -90,7 +91,7 @@ export async function refreshCompany(companyId: number): Promise<RefreshReport> 
 
   log.info(
     { domain: company.domain, pages: report.pagesFetched, contacts: report.contactsAdded },
-    'компанію оновлено по кнопці',
+    'company refreshed from the button',
   );
 
   return report;

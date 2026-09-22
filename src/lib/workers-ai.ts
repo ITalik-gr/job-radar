@@ -1,12 +1,14 @@
 import { config } from '../config.js';
 
 /**
- * Один вхід у Workers AI для всього проєкту: і вектори компаній, і класифікація.
+ * One entry point into Workers AI for the whole project: both company vectors and
+ * classification.
  *
- * Два шляхи виклику навмисно. На Workers є біндінг `AI`, там ні токена, ні виходу
- * в мережу назовні не потрібно. Локально біндінга немає, тому REST і токен з `.env`.
- * Без жодного з них функція чесно кидає помилку, а не повертає порожню відповідь:
- * мовчазний нуль тут гірший за падіння.
+ * Two call paths on purpose. On Workers there is an `AI` binding, and it needs
+ * neither a token nor outbound network access. Locally there is no binding, so it is
+ * REST plus a token from `.env`. Without either of them, the function honestly
+ * throws an error instead of returning an empty response: a silent zero here is
+ * worse than a crash.
  */
 
 export interface AiBinding {
@@ -15,7 +17,7 @@ export interface AiBinding {
 
 let binding: AiBinding | null = null;
 
-/** Ставиться в `worker.ts` на кожен запит. Поза Workers лишається порожнім. */
+/** Set in `worker.ts` on every request. Stays empty outside of Workers. */
 export function setAiBinding(value: AiBinding | null): void {
   binding = value;
 }
@@ -24,7 +26,7 @@ export function hasAiBinding(): boolean {
   return binding !== null;
 }
 
-/** Чи є взагалі чим викликати Workers AI: біндінг або пара account + token. */
+/** Whether there is anything at all to call Workers AI with: a binding, or an account + token pair. */
 export function aiAvailable(): boolean {
   const { accountId, apiToken } = config.cloudflare;
   return binding !== null || Boolean(accountId && apiToken);
@@ -34,10 +36,10 @@ export async function runWorkersAi(model: string, input: unknown): Promise<unkno
   const { accountId, apiToken, gatewayId, gatewayToken, gatewayUrl } = config.cloudflare;
 
   /*
-   * Через біндінг шлюз вмикається третім аргументом. Без нього запит до моделі
-   * виконується, але в AI Gateway його не видно взагалі, і саме тому там нулі
-   * при живій класифікації. Токен тут не потрібен: біндінг уже автентифікований
-   * акаунтом воркера.
+   * Through the binding, the gateway is turned on via the third argument. Without
+   * it, the request to the model runs fine, but it is not visible in the AI Gateway
+   * at all, which is exactly why it shows zeros while classification is live. No
+   * token is needed here: the binding is already authenticated by the worker's account.
    */
   if (binding) {
     return gatewayId
@@ -47,7 +49,7 @@ export async function runWorkersAi(model: string, input: unknown): Promise<unkno
 
   if (!accountId || !apiToken) {
     throw new Error(
-      'немає CF_AI_ACCOUNT_ID або CF_AI_API_TOKEN у .env, а біндінга AI поза Workers не буває',
+      'no CF_AI_ACCOUNT_ID or CF_AI_API_TOKEN in .env, and there is no AI binding outside of Workers',
     );
   }
 
@@ -60,7 +62,7 @@ export async function runWorkersAi(model: string, input: unknown): Promise<unkno
     headers: {
       authorization: `Bearer ${apiToken}`,
       'content-type': 'application/json',
-      // Потрібен лише для Authenticated Gateway, без нього шлюз віддає 401.
+      // Needed only for an Authenticated Gateway, without it the gateway returns 401.
       ...(gatewayToken ? { 'cf-aig-authorization': `Bearer ${gatewayToken}` } : {}),
     },
     body: JSON.stringify(input),
@@ -70,15 +72,16 @@ export async function runWorkersAi(model: string, input: unknown): Promise<unkno
     const text = (await response.text()).slice(0, 200);
     const hint =
       response.status === 401 && gatewayUrl
-        ? '. Схоже на Authenticated Gateway: потрібен AI_GATEWAY_TOKEN або вимкнена автентифікація шлюзу'
+        ? '. Looks like an Authenticated Gateway: needs AI_GATEWAY_TOKEN or the gateway authentication turned off'
         : '';
     throw new Error(`Workers AI: ${response.status} ${text}${hint}`);
   }
 
   const body = (await response.json()) as { result?: unknown; success?: boolean; errors?: unknown[] };
   /*
-   * Шлюз віддає відповідь моделі без обгортки `success`, а прямий API з нею.
-   * Розрізняємо за наявністю поля, інакше через шлюз усе падало б на перевірці.
+   * The gateway returns the model's response without the `success` wrapper, while
+   * the direct API includes it. We tell them apart by whether the field is present,
+   * otherwise everything through the gateway would fail this check.
    */
   if (body.success === false) throw new Error(`Workers AI: ${JSON.stringify(body.errors).slice(0, 200)}`);
   return body.success === true ? body.result : body;
@@ -91,12 +94,13 @@ interface AiText {
 }
 
 /**
- * Витягти текст із відповіді генеративної моделі.
+ * Extract text from a generative model's response.
  *
- * Форма відповіді залежить від моделі: llama віддає `response`, сумісні з OpenAI
- * моделі віддають `choices[0].message.content`, а gpt-oss кладе текст у масив
- * `output`. Розбирати це в кожному місці виклику означало б мовчазний порожній
- * рядок при зміні моделі, тому розбір один і кидає помилку, коли тексту немає.
+ * The response shape depends on the model: llama returns `response`, OpenAI-compatible
+ * models return `choices[0].message.content`, and gpt-oss puts the text in the
+ * `output` array. Parsing this at every call site would mean a silent empty string
+ * whenever the model changes, so it is parsed in one place and throws when there is
+ * no text.
  */
 export function textFromAi(payload: unknown): AiText {
   const root = (payload ?? {}) as Record<string, unknown>;
@@ -119,7 +123,7 @@ export function textFromAi(payload: unknown): AiText {
         ? fromChoices
         : fromOutput;
 
-  if (!text) throw new Error('Workers AI повернув відповідь без тексту');
+  if (!text) throw new Error('Workers AI returned a response with no text');
 
   return {
     text,

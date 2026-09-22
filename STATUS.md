@@ -1,273 +1,278 @@
-# СТАН РОБОТИ: Job Radar
+# STATUS.md: Job Radar
 
-Робочий журнал проєкту: що зроблено, що в роботі, що далі, які рішення прийняті і чому.
-Оновлювати після кожної сесії. Стисло, без води.
+Working log of the project: what's done, what's in progress, what's next, what decisions
+were made and why. Update after every session. Keep it short, no filler.
 
-Останнє оновлення: 04.09.2026
+Last updated: 04.09.2026
 
 ---
 
-## Де воно зараз
+## Where it stands now
 
-**Прод:** https://<your-worker>.workers.dev
+**Prod:** https://<your-worker>.workers.dev
 
-Інструмент придатний до щоденного використання. Запуск:
+The tool is fit for daily use. Run it with:
 
 ```bash
-pnpm start      # API :3000, планувальник, телеграм-бот
-pnpm dev:web    # інтерфейс :5173
+pnpm start      # API :3000, scheduler, telegram bot
+pnpm dev:web    # UI :5173
 ```
 
-У базі: 249 компаній, 1665 вакансій, 6 вище порогу, 66 компаній із посиланням на профіль
-у каталозі. Тестів 204, усі зелені.
+In the database: 249 companies, 1665 vacancies, 6 above threshold, 66 companies with a
+catalog profile link. 204 tests, all green.
 
 ---
 
-## Готово
+## Done
 
-| Етап | Що всередині |
+| Stage | What's inside |
 | --- | --- |
-| 1. Каркас | БД на SQLite і Drizzle, `lib/http` з троттлінгом і robots, логи, CLI |
-| 2. Джерела вакансій | Greenhouse, Lever, Ashby, RemoteOK, три RSS-фіди, тести на реальних фікстурах |
-| 3. Зміни | Нормалізація сторінок, блочний діф, снапшоти, `diffByExternalId` для ATS |
-| 4. Класифікація | Haiku зі строгим JSON, Zod, кеш, денна стеля викликів, скоринг, дедуп |
-| 5. Інтерфейс | Hono API, React, сторінки Черга, Компанії, Контакти |
-| 6. Каталоги | DOU автоматично, Clutch через імпорт файлів |
-| 7. Решта | Статистика, Джерела, discovery, Telegram, cron |
-| 8. Точність | Гео-фільтр, роль за назвою, стеля балів з тексту, конфіг у `config/scoring.json` |
-| 9. Студії | Окрема черга агенцій, скоринг компаній, дії і листування без вакансії |
-| 10. Збирач | Розширення Chrome для каталогів під Cloudflare, панель дій в інтерфейсі |
+| 1. Scaffolding | SQLite + Drizzle DB, `lib/http` with throttling and robots, logs, CLI |
+| 2. Vacancy sources | Greenhouse, Lever, Ashby, RemoteOK, three RSS feeds, tests on real fixtures |
+| 3. Changes | Page normalization, block diff, snapshots, `diffByExternalId` for ATS |
+| 4. Classification | Haiku with strict JSON, Zod, cache, daily call ceiling, scoring, dedupe |
+| 5. UI | Hono API, React, Queue, Companies, Contacts pages |
+| 6. Catalogs | DOU automatic, Clutch via file import |
+| 7. The rest | Statistics, Sources, discovery, Telegram, cron |
+| 8. Accuracy | Geo filter, role-by-title check, score ceiling from text, config in `config/scoring.json` |
+| 9. Studios | Separate agency queue, company scoring, actions and outreach without a vacancy |
+| 10. Collector | Chrome extension for catalogs behind Cloudflare, action panel in the UI |
 
 ---
 
-## Витрати на AI в сесіях розробки
+## AI spend in dev sessions
 
-За одну сесію 04.09.2026 пішло приблизно **900 тисяч вхідних і 60 тисяч вихідних токенів**.
-Такими темпами це дорого, тому наступні сесії вести інакше:
+One session on 04.09.2026 cost roughly **900 thousand input and 60 thousand output tokens**.
+At this rate it's expensive, so the following sessions should be run differently:
 
-**Що робити:**
-- Не переписувати файли цілком заради двох рядків. Точкові правки замість `cat > file`
-- Не читати великі файли повторно, спиратись на вже прочитане в сесії
-- Скріншоти браузера тільки коли справді треба побачити верстку, не після кожної дії
-- Тести ганяти вибірково (`pnpm vitest run tests/x.test.ts`), повний прогін у кінці
-- Формулювати задачу пачкою, а не по одній дрібниці: кожен новий запит тягне весь контекст
-- Довгі вихлопи команд обрізати (`| tail -5`), а не вивалювати повністю
+**What to do:**
+- Don't rewrite whole files for two lines of change. Targeted edits instead of `cat > file`
+- Don't re-read large files repeatedly, rely on what's already been read this session
+- Browser screenshots only when you really need to see the layout, not after every action
+- Run tests selectively (`pnpm vitest run tests/x.test.ts`), full run at the end
+- Batch the task instead of asking piecemeal: every new request drags along the whole context
+- Truncate long command output (`| tail -5`) instead of dumping it in full
 
-**Що це дає:** основний обсяг це вхідні токени, тобто перечитування контексту і виводу команд.
-Саме на них і треба економити, вихідні 60 тисяч це дрібниця на тлі 900 тисяч.
+**What this achieves:** the bulk of the cost is input tokens, meaning re-reading context and
+command output. That's exactly what needs to be economized, the 60 thousand output tokens
+are trivial against the 900 thousand.
 
-**Окремо, витрати самого радара** (не сесій розробки): класифікація на Haiku, кеш за хешем
-тексту, денна стеля 500 викликів. Приблизно 200 викликів на добу при активному зборі,
-це центи. Тут проблеми немає.
+**Separately, the radar's own running costs** (not dev sessions): classification on Haiku,
+cache keyed by text hash, daily ceiling of 500 calls. Roughly 200 calls a day with active
+collection, that's cents. No problem there.
 
-## У роботі
+## In progress
 
-**Прод працює, база порожня.** Міграції застосовані, `/api/companies` віддає 200 і порожній
-масив. Лишилось налити дані: розширення, кнопки в інтерфейсі або перенос із локальної бази
-через `pnpm cli export:sql`.
+**Prod is running, the database is empty.** Migrations are applied, `/api/companies`
+returns 200 and an empty array. What's left is loading data in: the extension, buttons
+in the UI, or moving it over from the local database via `pnpm cli export:sql`.
 
-**Білд на Cloudflare висів** на компіляції `better-sqlite3`. Виправлено прапорцем
-`--ignore-scripts` у Build command, воркеру нативний драйвер не потрібен.
+**The Cloudflare build was hanging** on compiling `better-sqlite3`. Fixed with the
+`--ignore-scripts` flag in the Build command, the worker doesn't need the native driver.
 
-**У репозиторії працюють два агенти.** Перед змінами звіряти стан файлів, не переписувати
-цілі файли без потреби.
+**Two agents are working in this repository.** Check the state of files before making
+changes, don't rewrite whole files without a reason.
 
 ---
 
-## Розсилка, Етап 1 (OUTREACH.md)
+## Outreach, Stage 1 (OUTREACH.md)
 
-Готово: таблиці `facts` і `send_log`, `templates` отримали `language` і `target_type`,
-`outreach` розширений під чернетки (`status`, `subject_final`, `body_final`, `ai_paragraph`,
-gmail-ідентифікатори, `followup_of`, `error`). `sent_at` став необовʼязковим: чернетка
-живе в тій же таблиці, а історія і воронка рахують лише рядки з датою відправки.
+Done: tables `facts` and `send_log`, `templates` got `language` and `target_type`,
+`outreach` was extended for drafts (`status`, `subject_final`, `body_final`, `ai_paragraph`,
+gmail identifiers, `followup_of`, `error`). `sent_at` became optional: a draft lives in the
+same table, and history and the funnel only count rows that have a send date.
 
-Модуль `src/pipeline/outreach.ts`: детермінований вибір шаблона (вакансія, іменний
-контакт, загальна пошта), мова за країною, вибір контакту, складання листа, правка
-і видалення чернетки. Команди: `outreach:seed`, `outreach:prepare --dry-run --limit N`,
-`outreach:drafts`. Тестів на модуль 45, повний прогін 450 зелених.
+Module `src/pipeline/outreach.ts`: deterministic template selection (vacancy, named
+contact, general mailbox), language by country, contact selection, composing the email,
+editing and deleting a draft. Commands: `outreach:seed`, `outreach:prepare --dry-run --limit N`,
+`outreach:drafts`. 45 tests on the module, 450 green in the full run.
 
-Стартові вісім шаблонів (чотири випадки на двох мовах) приходять каркасом: привітання,
-підпис, плейсхолдери і мітки `[...]` замість абзаців. Текст листа пише власник, і поки
-мітки на місці, чернетка лежить у "Потребують уваги" і відправитись не може.
+The starting eight templates (four cases in two languages) arrive as scaffolding: greeting,
+signature, placeholders and `[...]` markers instead of paragraphs. The owner writes the
+email text himself, and while the markers are in place, the draft sits in "Needs attention"
+and cannot be sent.
 
-## Черга листів зі Студій і Стартапів
+## Studio and startup outreach queue
 
-Кнопка "У чергу листів" (гаряча клавіша `d`) тепер і на картці студії чи
-стартапа, не лише в Черзі вакансій. Це основний сценарій власника: вакансії він
-дивиться сам, а листи пише студіям і стартапам.
+The "To outreach queue" button (hotkey `d`) is now also on a studio or startup card,
+not just in the Vacancy queue. This is the owner's main scenario: he reviews vacancies
+himself, but writes to studios and startups.
 
-Якщо адреси в базі немає, кнопка не здається, а сама обходить сайт компанії
-(той самий enrichment, одна компанія) і пробує ще раз. Здається лише тоді, коли
-на сайті пошти справді немає, і каже про це прямо. Загальна скринька теж адреса,
-під неї є окремий шаблон, а вигадувати `hello@домен` радар не буде.
+If there's no address in the database, the button doesn't give up, it crawls the
+company's site itself (the same enrichment, one company) and tries again. It only gives
+up when there really is no email on the site, and says so directly. A general mailbox
+is still an address, it has its own template, and the radar won't invent `hello@domain`.
 
-## Таблиця компаній віртуалізована
+## Companies table virtualized
 
-1930 рядків малювались усі одразу, і сторінка думала на кожен клік. Тепер
-`@tanstack/react-virtual`: у DOM живуть тільки видимі рядки плюс дванадцять
-про запас, а місце над і під ними тримають два порожні рядки потрібної висоти.
+1930 rows were all rendered at once, and the page would freeze on every click. Now it's
+`@tanstack/react-virtual`: only the visible rows plus twelve extra live in the DOM, and
+two empty spacer rows of the right height hold the space above and below.
 
-## Шаблони більше не воскресають
+## Templates no longer come back from the dead
 
-Стартовий набір доливався сам при кожному відкритті сторінки, тому видалені
-шаблони поверталися після оновлення вкладки. Тепер це окрема кнопка на сторінці
-Операції, а порожній список лишається порожнім.
+The starter set was re-seeded on every page open, so deleted templates would reappear
+after a tab refresh. Now that's a separate button on the Operations page, and an empty
+list stays empty.
 
-Блок фактів для AI переїхав у модалку: під редактором він відкривався в нікуди,
-бо внизу сторінки немає куди рости.
+The facts block for AI moved into a modal: under the editor it opened into nowhere,
+because there's no room to grow at the bottom of the page.
 
-## Сторінка Операції
+## Operations page
 
-Усе, що робив CLI, тепер кнопками: каталоги (YC, DOU, Awwwards), discovery,
-enrichment, класифікація, перерахунок рахунків, добір черги, типи компаній,
-беквіл полів каталогу, перечитування описів, вектори, шаблони і чернетки
-розсилки, фолоу-апи, перевірка відповідей, живий пінг моделі, тестовий лист і
-три телеграм-сповіщення.
+Everything the CLI used to do is now buttons: catalogs (YC, DOU, Awwwards), discovery,
+enrichment, classification, score recalculation, queue building, company types,
+catalog field backfill, re-reading descriptions, vectors, templates and outreach drafts,
+follow-ups, reply checking, live model ping, test email, and three Telegram notifications.
 
-Роути навмисно однакової форми: POST, тіло з необовʼязковим `limit`, у відповіді
-те саме, що друкувала команда. Через це фронт не знає про кожну операцію окремо,
-а малює їх списком з опису, і нова операція це рядок у масиві.
+Routes are deliberately shaped the same: POST, body with an optional `limit`, response
+with the same thing the command used to print. Because of this the frontend doesn't
+need to know about each operation individually, it draws them as a list from a
+description, and a new operation is just a row in the array.
 
-У терміналі лишились тільки ті команди, яким потрібні файли на диску або
-одноразове налаштування: `db:migrate`, `import:csv`, `import:clutch`,
-`export:sql`, `auth:gmail`, `bookmarklet`.
+The terminal kept only the commands that need files on disk or a one-time setup:
+`db:migrate`, `import:csv`, `import:clutch`, `export:sql`, `auth:gmail`, `bookmarklet`.
 
-## Опис вакансій з бордів на Next.js
+## Vacancy descriptions from Next.js boards
 
-Борди Getro (Techstars, Underscore, Accel і решта мереж) віддають у HTML хедер
-і футер мережі на 70 тисяч символів, а сам опис лежить у `__NEXT_DATA__`. Радар
-зберігав як текст вакансії пункти меню ("startups, corporations, communities")
-і платив за їх класифікацію. Тепер `fetchDetail` спершу шукає опис у вбудованому
-JSON і лише потім розбирає розмітку.
+Getro boards (Techstars, Underscore, Accel, and the rest of the networks) return an HTML
+header and footer for the network weighing 70 thousand characters, while the actual
+description sits in `__NEXT_DATA__`. The radar was storing menu items ("startups,
+corporations, communities") as the vacancy text and paying to have them classified.
+Now `fetchDetail` first looks for the description in the embedded JSON and only then
+parses the markup.
 
-Спроба відрізняти сміття за виглядом тексту не працює: лендінг мережі має більше
-звʼязної прози, ніж коротка вакансія. Тому лишилась тільки перевірка "чи є хоч
-одне речення", а справжнє рішення це витяг із JSON.
+Trying to distinguish junk by the look of the text doesn't work: the network's landing
+page has more coherent prose than a short vacancy. So the only check left is "is there
+at least one sentence," and the real fix is extraction from the JSON.
 
-Наявні записи лікуються командою `pnpm cli fix:detail --source getro --limit 50`:
-вона перечитує сторінки і ставить `needs_review`, щоб модель склала думку заново.
+Existing records are healed with `pnpm cli fix:detail --source getro --limit 50`: it
+re-reads the pages and sets `needs_review` so the model forms an opinion again.
 
-## Стартапи: HN "Who is hiring"
+## Startups: HN "Who is hiring"
 
-Джерело `hn:hiring`, щомісячна гілка Hacker News через публічний Algolia API.
-Перший прогін дав **204 вакансії і 200 нових компаній**, майже всі маленькі
-стартапи з прямим контактом засновника. Формат оголошення це звичай, а не
-стандарт, тому розбір бере назву компанії з першого поля, роль шукає за словами
-посад, а домен з першого зовнішнього посилання. Без домену запис пропускається:
-вигадувати його з назви не можна.
+Source `hn:hiring`, the monthly Hacker News thread via the public Algolia API. The first
+run produced **204 vacancies and 200 new companies**, almost all small startups with a
+direct founder contact. The post format is a convention, not a standard, so the parser
+takes the company name from the first field, looks for the role by job-title words, and
+gets the domain from the first external link. Without a domain the record is skipped:
+it can't be invented from the name.
 
-## Стартапи: каталог YC
+## Startups: YC catalog
 
-Джерело `yc`, зріз `hiring` з відкритого дзеркала API (1475 компаній, які зараз
-наймають). Вакансій воно не дає, воно дає входи: далі discovery знаходить
-career-сторінку, впізнає ATS і забирає вакансії через API.
+Source `yc`, the `hiring` slice from the open API mirror (1475 companies currently
+hiring). It doesn't give vacancies, it gives entry points: discovery then finds the
+careers page, recognizes the ATS, and pulls vacancies via the API.
 
-Веб-придатність відсіюється тегами в `config/scoring.json`, без жодного виклику
-моделі: developer tools, SaaS, fintech, marketplace дають плюс, а hardware,
-robotics, biotech, semiconductors мінус. Стартап, який робить завод роботів,
-не наймає фронтендера, і платити моделі за цей висновок не потрібно.
+Web suitability is filtered out by tags in `config/scoring.json`, with no model call at
+all: developer tools, SaaS, fintech, marketplace get a bonus, hardware, robotics,
+biotech, semiconductors get a penalty. A startup building a robot factory doesn't hire
+front-end developers, and there's no need to pay the model for that conclusion.
 
-## Звʼязок Черги і розсилки
+## Linking the Queue and outreach
 
-Кнопка "Написав" у Черзі це журнал: лист написаний руками десь інде, запис іде в
-Контакти, компанія стає contacted. Нова кнопка **"У чергу листів"** робить інше:
-збирає чернетку тим самим кодом, що й нічна підготовка, з тими самими шаблонами,
-вибором мови і контакту. Другої чернетки тій самій компанії не буде, кнопка про
-це чесно каже.
+The "Wrote" button in the Queue is a log entry: an email written by hand somewhere else,
+the record goes into Contacts, the company becomes contacted. The new **"To outreach
+queue"** button does something different: it assembles a draft with the same code as the
+nightly preparation, with the same templates, language and contact selection. There
+won't be a second draft for the same company, and the button says so plainly.
 
-Після відправки зі сторінки "До відправки" компанія теж стає contacted і зникає
-з Черги, тому два шляхи не показують ту саму компанію двічі.
+After sending from the "To send" page, the company also becomes contacted and disappears
+from the Queue, so the two paths never show the same company twice.
 
-У редакторі шаблонів зʼявились поля, без яких розсилка була керована тільки з
-коду: **роль у розсилці** (є вакансія, іменний контакт, загальна пошта, фолоу-ап),
-**мова** і **статичний перший абзац** під `{{intro}}`. Шаблон без ролі в розсилці
-не бере участі і лежить для копіювання руками, у списку це видно бейджем.
+The template editor gained fields without which outreach was only controllable from
+code: **outreach role** (vacancy exists, named contact, general mailbox, follow-up),
+**language**, and the **static first paragraph** under `{{intro}}`. A template without an
+outreach role doesn't participate and just sits there to be copied by hand, shown with a
+badge in the list.
 
-## Розсилка, Етапи 3-6
+## Outreach, Stages 3-6
 
-**Запобіжники** (`src/pipeline/send-guards.ts`), кожен окремою функцією з тестом:
-робоче вікно 08:00-22:00 за Києвом і без вихідних, прогрів лімітів (5, потім 10,
-потім 20 листів на добу), пауза 3 хвилини, повтор компанії не раніше 90 днів,
-мертві адреси після hard bounce, стоп при баунсах вище 3 відсотків за 50 листів,
-не довше 160 слів, максимум одне посилання, жодного незаповненого плейсхолдера,
-рівно один фолоу-ап. `DAILY_SEND_LIMIT` константа в коді, не налаштування.
+**Safeguards** (`src/pipeline/send-guards.ts`), each a separate function with a test:
+working window 08:00-22:00 Kyiv time and no weekends, limit warm-up (5, then 10, then
+20 emails a day), 3-minute pause, no repeat to a company sooner than 90 days, dead
+addresses after a hard bounce, stop when bounces exceed 3 percent over 50 emails, no
+longer than 160 words, at most one link, no unfilled placeholder, exactly one follow-up.
+`DAILY_SEND_LIMIT` is a constant in code, not a setting.
 
-**Відправка** (`src/pipeline/send.ts`): один лист по одному натисканню. Помилка
-Gmail лишає запис у `failed` з причиною, а не мовчки повертає його в чергу.
+**Sending** (`src/pipeline/send.ts`): one email per click. A Gmail error leaves the
+record as `failed` with a reason, instead of silently putting it back in the queue.
 
-**Сторінка "До відправки"** у вебі: лічильник "надіслано сьогодні X з Y", таймер
-паузи, вкладки Готові і Потребують уваги, редагування тексту прямо в картці,
-кнопки Надіслати, Зберегти правки, Перегенерувати абзац, Пропустити.
+**"To send" page** in the web app: counter "sent today X of Y", pause timer, Ready and
+Needs Attention tabs, text edited right in the card, Send, Save Edits, Regenerate
+Paragraph, Skip buttons.
 
-**AI-абзац** (`src/pipeline/ai-paragraph.ts`): переписується тільки перший абзац,
-решта листа з шаблона. Валідація детермінована: Zod, 1-3 речення, 20-60 слів,
-em dash міняється комою, стоп-слова, конструкція not X but Y, знак оклику,
-перевірка вигаданих назв і чисел проти вхідного JSON, confidence нижче 60.
-Будь-яка претензія означає відкат на статичний абзац `templates.intro`, і причина
-лягає в `outreach.ai_fallback_reason` для статистики. Факти про власника лежать
-у таблиці `facts` і правляться галочками на сторінці Шаблони.
+**AI paragraph** (`src/pipeline/ai-paragraph.ts`): only the first paragraph is rewritten,
+the rest of the email comes from the template. Validation is deterministic: Zod, 1-3
+sentences, 20-60 words, em dash replaced with a comma, stop words, the "not X but Y"
+construction, exclamation marks, checking invented names and numbers against the input
+JSON, confidence below 60. Any complaint means falling back to the static paragraph
+`templates.intro`, and the reason goes into `outreach.ai_fallback_reason` for
+statistics. Facts about the owner live in the `facts` table and are edited with
+checkboxes on the Templates page.
 
-**Відповіді і баунси** (`src/pipeline/replies.ts`): щогодини обхід тредів, спершу
-детерміновані ознаки (mailer-daemon, Auto-Submitted, out of office), і лише потім
-модель. Hard bounce вбиває адресу, але не компанію. Позитивна відповідь одразу
-йде в Telegram. Історія контактів показує повний текст того, що пішло.
+**Replies and bounces** (`src/pipeline/replies.ts`): threads are walked hourly, checking
+deterministic signals first (mailer-daemon, Auto-Submitted, out of office), and only
+then the model. A hard bounce kills the address, not the company. A positive reply goes
+straight to Telegram. The contact history shows the full text of what was sent.
 
-**Фолоу-апи** (`src/pipeline/followups.ts`): рівно один, через 7-9 днів, тим самим
-тредом і з темою оригіналу. Затримка детермінована від id листа, щоб строк не
-скакав від перевірки до перевірки.
+**Follow-ups** (`src/pipeline/followups.ts`): exactly one, after 7-9 days, same thread
+and same subject as the original. The delay is deterministic from the email id, so the
+timing doesn't shift between checks.
 
-**Статистика розсилки** на сторінці Статистика і командою `outreach:stats`:
-конверсія по шаблонах, AI проти шаблона, частка відкатів валідації з причинами,
-баунс-рейт, медіанний час до відповіді.
+**Outreach statistics** on the Statistics page and via the `outreach:stats` command:
+conversion by template, AI versus template, share of validation fallbacks with reasons,
+bounce rate, median time to reply.
 
-Розклад: відповіді щогодини, чернетки фолоу-апів о 06:30 UTC (09:30 за Києвом),
-дайджест розсилки разом зі щоденним о 10:00.
+Schedule: replies hourly, follow-up drafts at 06:30 UTC (09:30 Kyiv time), outreach
+digest together with the daily one at 10:00.
 
-**Пастка зі статикою.** `not_found_handling: single-page-application` віддає
-`index.html` будь-якій навігації браузера, і воркер при цьому не викликається.
-Через це `/api/gmail/connect` показував інтерфейс замість переходу на Google, а
-`curl` на тій самій адресі бачив нормальний JSON: різниця лише в заголовку
-`Accept`. Виправлено `"run_worker_first": ["/api/*"]` у `wrangler.jsonc`.
-Без цього рядка колбек Google теж не працював би, він приходить навігацією.
+**A static-assets trap.** `not_found_handling: single-page-application` serves
+`index.html` for any browser navigation, and the worker itself never gets invoked
+because of it. This made `/api/gmail/connect` show the UI instead of redirecting to
+Google, while `curl` on the same address saw normal JSON: the only difference was the
+`Accept` header. Fixed with `"run_worker_first": ["/api/*"]` in `wrangler.jsonc`.
+Without this line the Google callback wouldn't work either, since it also arrives as
+navigation.
 
-**Розсилка працює на проді.** Сховище токена підставляється як драйвер бази:
-локально це файл `data/.gmail-token.json`, на Workers секрет `GMAIL_REFRESH_TOKEN`,
-а короткоживучий access token лежить у памʼяті ізоляту. У базу токен не кладеться
-ніде, розділ 0 OUTREACH.md.
+**Outreach works in prod.** The token store is plugged in as a database driver: locally
+it's the file `data/.gmail-token.json`, on Workers it's the `GMAIL_REFRESH_TOKEN`
+secret, and the short-lived access token lives in the isolate's memory. The token
+never goes into the database anywhere, see section 0 of OUTREACH.md.
 
-Підключення пошти теж робиться з прода: `/api/gmail/connect` веде на Google,
-`/api/gmail/callback` приймає код і показує рефреш-токен рівно один раз, щоб
-покласти його в `wrangler secret put`. Колбек проходить повз перевірку токена
-радара, бо приходить редіректом із браузера, і перевіряє себе через `state`.
+Mail connection is also done from prod: `/api/gmail/connect` leads to Google,
+`/api/gmail/callback` accepts the code and shows the refresh token exactly once, to be
+put into `wrangler secret put`. The callback bypasses the radar's own token check,
+because it arrives as a browser redirect, and verifies itself via `state`.
 
-Тестів у модулі розсилки 151 (шаблони і чернетки 45, пошта і кодування 18,
-запобіжники 41, AI-абзац 19, відповіді 17, фолоу-апи і статистика 11,
-прод-режим пошти 5),
-повний прогін 561 зелений.
+151 tests in the outreach module (templates and drafts 45, mail and encoding 18,
+safeguards 41, AI paragraph 19, replies 17, follow-ups and statistics 11,
+mail prod mode 5), 561 green in the full run.
 
 
-## Розсилка, Етап 2: пошта
+## Outreach, Stage 2: mail
 
-`src/lib/mime.ts` складає лист RFC 2822: тема в encoded-word, тіло base64 з utf-8,
-рядки по 76 символів, тільки `text/plain`, `From` з іменем і `Reply-To`. Заголовки
-`In-Reply-To` і `References` проставляються для фолоу-апу, щоб він ішов тим самим
-тредом, а не окремим листом. Тест на кирилицю окремий і обовʼязковий, 18 тестів.
+`src/lib/mime.ts` builds an RFC 2822 email: subject in encoded-word, body base64 with
+utf-8, lines of 76 characters, `text/plain` only, `From` with a name and `Reply-To`.
+`In-Reply-To` and `References` headers are set for a follow-up, so it goes in the same
+thread instead of arriving separately. A dedicated, mandatory test for Cyrillic, 18 tests.
 
-`src/lib/gmail.ts` це OAuth2 і REST без бібліотеки Google: обмін коду, автооновлення
-access token за хвилину до кінця, відправка, читання треду під Етап 5. Скоупи рівно
-два: `gmail.send` і `gmail.readonly`. Em dash ріжеться на самому виході, це останній
-рубіж перед поштою.
+`src/lib/gmail.ts` is OAuth2 and REST without the Google library: code exchange,
+automatic access-token refresh a minute before expiry, sending, thread reading for
+Stage 5. Exactly two scopes: `gmail.send` and `gmail.readonly`. The em dash is stripped
+right at the exit point, that's the last line of defense before mailing.
 
-Токен лежить у `data/.gmail-token.json` з правами 600 і в `.gitignore`, не в базі.
-Сховище підставляється як драйвер бази (`gmail-store.node.ts`), тому `node:fs`
-не потрапляє в бандл воркера: розсилка працює локально, і воркер про неї не знає.
+The token lives in `data/.gmail-token.json` with 600 permissions and in `.gitignore`,
+not in the database. The store is plugged in as a database driver (`gmail-store.node.ts`),
+so `node:fs` doesn't end up in the worker bundle: outreach works locally, and the worker
+doesn't know about it.
 
-Команди: `auth:gmail` (піднімає локальний перехоплювач на 127.0.0.1:53682 і відкриває
-браузер), `gmail:status`, `gmail:test [email]`. Стан підключення видно в лівій колонці
-інтерфейсу рядком "пошта" і роутом `GET /api/gmail/status`.
+Commands: `auth:gmail` (spins up a local interceptor on 127.0.0.1:53682 and opens the
+browser), `gmail:status`, `gmail:test [email]`. Connection status is visible in the
+sidebar of the UI as a "mail" row and the `GET /api/gmail/status` route.
 
-**Що лишилось зробити власнику:** створити OAuth-клієнт типу Desktop у Google Cloud
-Console, увімкнути Gmail API і вписати в `.env`:
+**What the owner still needs to do:** create a Desktop-type OAuth client in Google
+Cloud Console, enable the Gmail API, and put into `.env`:
 
 ```
 GOOGLE_CLIENT_ID=
@@ -275,261 +280,284 @@ GOOGLE_CLIENT_SECRET=
 GMAIL_FROM_EMAIL=<your-gmail>
 ```
 
-Redirect URI в консолі: `http://127.0.0.1:53682/callback`. Далі `pnpm cli auth:gmail`
-і `pnpm cli gmail:test`. Тестовий лист сам собі поки не надісланий, бо без цих
-ключів його нікуди слати.
+Redirect URI in the console: `http://127.0.0.1:53682/callback`. Then `pnpm cli auth:gmail`
+and `pnpm cli gmail:test`. The test email to self hasn't been sent yet, because without
+these keys there's nowhere to send it.
 
-## Витрати на модель
+## Model spend
 
-Виміряно: 500 викликів на добу, 909 тисяч вхідних токенів, 1.21 долара, і лише 6 корисних
-вакансій на виході. Причина була в порядку: модель кликалась до безкоштовних фільтрів.
-Виправлено, очікувано мінус 85 відсотків викликів. Розбір і що ще можна стиснути: `COSTS.md`.
+Measured: 500 calls a day, 909 thousand input tokens, $1.21, and only 6 useful vacancies
+out of it. The cause was ordering: the model was being called before the free filters.
+Fixed, expected minus 85 percent in calls. Breakdown and what else can be squeezed:
+`COSTS.md`.
 
 ## AI Gateway
 
-Шлюз `job-radar` створений з увімкненою автентифікацією, тому **кожен запит до
-моделі відбивався з 401 ще на вході**, не доходячи до Anthropic. У панелі це
-виглядало як нулі в метриках, бо запит, відбитий на автентифікації, туди не
-потрапляє. Перевірити однією командою: `pnpm cli llm:ping`.
+The `job-radar` gateway was created with authentication turned on, so **every request to
+the model was bounced with a 401 right at the entrance**, never reaching Anthropic. In
+the dashboard this looked like zeros in the metrics, because a request rejected at
+authentication never gets there. Check with one command: `pnpm cli llm:ping`.
 
-Два робочі шляхи: вимкнути автентифікацію в Settings шлюзу, або створити токен
-з правом **AI Gateway Run** і покласти його в `AI_GATEWAY_TOKEN`. Код тепер шле
-заголовок `cf-aig-authorization`, коли токен заданий, і в тексті помилки 401
-прямо пише, що робити.
+Two working paths: turn off authentication in the gateway's Settings, or create a token
+with the **AI Gateway Run** permission and put it into `AI_GATEWAY_TOKEN`. The code now
+sends the `cf-aig-authorization` header when the token is set, and the 401 error text
+directly says what to do.
 
-Друга дірка: виклики Workers AI через біндінг ішли повз шлюз узагалі. Тепер
-біндінг отримує `{ gateway: { id } }`, а REST-шлях ходить на
-`/workers-ai/<model>` шлюзу. Anthropic бере адресу шлюзу сам з `AI_GATEWAY_ID`
-і `CF_AI_ACCOUNT_ID`, окремий `ANTHROPIC_BASE_URL` більше не обовʼязковий.
+Second hole: Workers AI calls via the binding bypassed the gateway entirely. Now the
+binding gets `{ gateway: { id } }`, and the REST path goes to the gateway's
+`/workers-ai/<model>`. Anthropic gets the gateway address itself from `AI_GATEWAY_ID`
+and `CF_AI_ACCOUNT_ID`, a separate `ANTHROPIC_BASE_URL` is no longer required.
 
-## Класифікація на Workers AI
+## Classification on Workers AI
 
-`LLM_PROVIDER` у `.env` і в `wrangler.jsonc` перемикає, хто класифікує вакансії:
-`anthropic` (за замовчуванням) або `workers-ai`. Другий шлях рахується нейронами
-платного плану Cloudflare, який уже оплачений, тобто окремого рахунку за токени немає.
+`LLM_PROVIDER` in `.env` and in `wrangler.jsonc` switches who classifies vacancies:
+`anthropic` (default) or `workers-ai`. The second path is billed in neurons from
+Cloudflare's already-paid plan, meaning there's no separate token charge.
 
-Промпт, Zod-схема, кеш, денна стеля і ретрай спільні для обох. Ключ кешу містить
-модель, тому перемикання не віддає чужі класифікації, але й не використовує вже
-накопичений кеш Haiku: перші прогони після перемикання коштуватимуть повний обсяг.
+The prompt, Zod schema, cache, daily ceiling and retry are shared between both. The
+cache key includes the model, so switching doesn't reuse another provider's
+classifications, but it also doesn't use the cache already built up for Haiku: the
+first runs after switching will cost the full amount.
 
-Перевірити, хто працює зараз: `GET /api/stats` показує `llmProvider` і `llmModel`,
-і те саме видно в лівій колонці інтерфейсу рядком "класифікує".
+Check who's active right now: `GET /api/stats` shows `llmProvider` and `llmModel`, and
+the same is visible in the UI sidebar as a "classifies" row.
 
-Стеля викликів на добу різна: `LLM_DAILY_CALL_LIMIT` (500) для Anthropic, бо там
-кожен виклик це гроші, і `WORKERS_AI_DAILY_CALL_LIMIT` (5000) для Workers AI,
-бо там це квота вже оплаченого плану.
+The daily call ceiling differs: `LLM_DAILY_CALL_LIMIT` (500) for Anthropic, because
+every call there costs money, and `WORKERS_AI_DAILY_CALL_LIMIT` (5000) for Workers AI,
+because there it's quota from an already-paid plan.
 
-## Репутація студій і блок "Інше"
+## Studio reputation and the "Other" block
 
-`companies` отримали `rating`, `reviews_count`, `min_project`, `hourly_rate`,
-`founded_year` і `extra`. Ставка і мінімальний проєкт раніше лежали серед тегів
-і засмічували фільтр за послугами, тепер у них свої поля, а скоринг ставки читає
-обидва місця, щоб уже зібрані компанії не довелось перезбирати.
+`companies` gained `rating`, `reviews_count`, `min_project`, `hourly_rate`,
+`founded_year` and `extra`. Rate and minimum project used to sit among the tags and
+clutter the services filter, now they have their own fields, and rate scoring reads
+both places so already-collected companies don't need to be re-collected.
 
-`extra` це блок "Інше": усе, що каталог показав понад відомі поля. Набір різний
-у кожного каталогу, тому це мішок пар підпис-значення, а не колонки, і новий
-каталог не вимагає міграції. Скоринг `extra` не читає, це матеріал для людини.
+`extra` is the "Other" block: everything the catalog showed beyond the known fields.
+The set differs per catalog, so it's a bag of label-value pairs, not columns, and a new
+catalog doesn't require a migration. Scoring doesn't read `extra`, it's material for a human.
 
-Оцінка і відгуки входять у скоринг компаній секцією `companies.reputation`
-у `config/scoring.json`: висока оцінка плюс, багато відгуків плюс, нуль відгуків
-мінус (порожня картка часто означає покинуту студію). Оцінка і кількість відгуків
-перезаписуються свіжими значеннями, решта полів лише доповнює порожнє.
+Rating and reviews feed into company scoring via the `companies.reputation` section in
+`config/scoring.json`: a high rating is a plus, many reviews is a plus, zero reviews is
+a minus (an empty card often means an abandoned studio). Rating and review count get
+overwritten with fresh values, the rest of the fields only fill in what's empty.
 
-**Ставку і мінімальний проєкт беквіл уже розклав по колонках:** `pnpm cli backfill:catalog`
-дістав їх із тегів у 251 і 269 компаній відповідно і прибрав 520 тегів-сміття.
-Команда ідемпотентна, повторний запуск нічого не міняє.
+**Rate and minimum project backfill has already sorted them into columns:**
+`pnpm cli backfill:catalog` pulled them out of tags for 251 and 269 companies
+respectively and removed 520 junk tags. The command is idempotent, running it again
+changes nothing.
 
-**Теги почищені.** Каталоги мішали в теги підписи діаграм ("Allocation of expertise by %"),
-оцінки ("9.5/10 Market Presence"), кнопки ("Read 4 Reviews") і частки послуг
-("25% Web Development"). Тепер частка знімається, а сміття відсіюється, і той самий
-перелік працює в трьох місцях: розширення, парсер Clutch, беквіл для вже зібраного.
-Результат: 137 різних тегів замість купи варіантів одного й того самого.
+**Tags have been cleaned up.** Catalogs were mixing chart labels ("Allocation of
+expertise by %"), ratings ("9.5/10 Market Presence"), buttons ("Read 4 Reviews") and
+service shares ("25% Web Development") into the tags. Now the share is stripped and the
+junk is filtered out, and the same list works in three places: the extension, the
+Clutch parser, and the backfill for already-collected data. Result: 137 distinct tags
+instead of a pile of variants of the same thing.
 
-**Оцінки і відгуків у старих даних немає:** їх у тегах ніколи не було, тому вони
-зʼявляться лише на новому проході каталогами розширенням.
+**Old data has no ratings or reviews:** they were never in the tags, so they'll only
+appear on a fresh pass through the catalogs via the extension.
 
-## Пастка з токеном Cloudflare, через яку падав cf:migrate
+## The Cloudflare token trap that broke cf:migrate
 
-`wrangler` читає `.env` і бере звідти `CLOUDFLARE_API_TOKEN` як свій ключ авторизації.
-У `.env` лежав токен, виданий лише на Workers AI, тому wrangler ходив у D1 з ним
-і отримував `7403 account is not authorized to access this service`, а виглядало це
-як зламаний акаунт. Логін власника при цьому був цілий.
+`wrangler` reads `.env` and takes `CLOUDFLARE_API_TOKEN` from there as its own auth key.
+`.env` had a token issued only for Workers AI, so wrangler went to D1 with it and got
+`7403 account is not authorized to access this service`, which looked like a broken
+account. The owner's own login was fine the whole time.
 
-Змінні радара перейменовані на `CF_AI_ACCOUNT_ID` і `CF_AI_API_TOKEN`, старі імена
-читаються далі як запасний варіант. Після перейменування `pnpm cf:migrate` працює.
+The radar's variables were renamed to `CF_AI_ACCOUNT_ID` and `CF_AI_API_TOKEN`, the old
+names are still read as a fallback. After the rename `pnpm cf:migrate` works.
 
-## Схема на проді і як не наступити ще раз
+## Schema in prod, and how not to step on it again
 
-`GET /api/health?deep=1` тепер перевіряє не лише наявність таблиць, а й пробує
-прочитати найновіші колонки. Міграція, яка лише додає колонки, перелік таблиць
-не міняє, тому воркер з новим кодом і старою схемою виглядав здоровим, а сторінка
-Компанії віддавала 500 `no such column: companies.rating`. Той самий запит додано
-кроком у GitHub Actions після деплою: він нічого не міняє, лише валить збірку
-з підказкою зробити `pnpm cf:migrate`.
+`GET /api/health?deep=1` now checks not just whether the tables exist, but also tries to
+read the newest columns. A migration that only adds columns doesn't change the table
+list, so the worker with new code and an old schema looked healthy, while the Companies
+page returned a 500 `no such column: companies.rating`. The same check was added as a
+step in GitHub Actions after deploy: it changes nothing, it just fails the build with a
+hint to run `pnpm cf:migrate`.
 
-## Enrichment шукав контакти не там
+## Enrichment was looking for contacts in the wrong place
 
-Прохід по 120 компаніях дав нуль контактів при 351 завантаженій сторінці, і це
-виглядало як зламаний парсер. Насправді вибірка кандидатів не мала сортування,
-тому бралися перші рядки таблиці: Vercel, Anthropic, Stripe. У продуктових гігантів
-сторінки команди з іменами і поштою немає, тобто прохід чесно шукав не там.
+A run over 120 companies produced zero contacts out of 351 pages loaded, and it looked
+like a broken parser. In fact the candidate selection had no ordering, so it took the
+first rows in the table: Vercel, Anthropic, Stripe. Product giants don't have team
+pages with names and emails, so the run was honestly looking in the wrong place.
 
-Тепер кандидати впорядковані: студії і дизайн-агенції, далі стартапи, далі аутстаф,
-продуктові останніми, а компанія з профілем у каталозі попереду тієї, що прийшла
-лише з ATS. Плюс правило 3: прохід по 10 і більше доменах без жодного контакту
-пишеться в помилки прогону, а не тихо звітує про успіх.
+Now candidates are ordered: studios and design agencies first, then startups, then
+outstaff, product companies last, and a company with a catalog profile comes ahead of
+one that arrived only from an ATS. Plus rule 3: a run over 10 or more domains without a
+single contact gets written into the run's errors, instead of silently reporting success.
 
-## Шаблони: повне керування
+## Templates: full management
 
-Сторінка Шаблони вміє все, що від неї очікується:
+The Templates page can do everything expected of it:
 
-- **Створити** і **дублювати**. Копія отримує власний ключ і той самий текст,
-  це найшвидший спосіб зробити варіант листа під іншу нішу
-- **Перейменувати ключ**. Ключ це знімок у `outreach.template_used`, тому при
-  правці радар переписує і записи історії, одним рухом. Поле в редакторі прямо
-  каже, скільки записів перепишеться
-- **Архів** з поверненням назад. Архів це "прибрати з очей", а не видалення
-- **Видалити назовсім**, з підтвердженням, у якому видно, скільки листів написано
-  цим шаблоном. Записи в Контактах лишаються: там ключ це знімок, а не звʼязок
+- **Create** and **duplicate**. The copy gets its own key and the same text, the
+  fastest way to make a variant of an email for a different niche
+- **Rename the key**. The key is a snapshot in `outreach.template_used`, so on edit the
+  radar rewrites the history records too, in one move. The field in the editor states
+  plainly how many records will be rewritten
+- **Archive** with the ability to restore. Archive means "get it out of sight," not delete
+- **Delete for good**, with a confirmation showing how many emails were written with
+  this template. Records in Contacts stay put: there the key is a snapshot, not a
+  relationship
 
-Два виправлення заодно. `DELETE /api/templates/:id` раніше архівував, тобто кнопка
-казала "видалити", а запис лишався: тепер це справді видалення, а архів окремою дією.
-І `seedTemplates` доливав відсутні шаблони зі стартового набору, через що видалений
-шаблон повертався сам собою на наступному відкритті сторінки: тепер набір заливається
-рівно один раз, коли таблиця порожня.
+Two fixes along the way. `DELETE /api/templates/:id` used to archive, meaning the
+button said "delete" but the record stayed: now it's a real delete, and archiving is a
+separate action. And `seedTemplates` used to fill in whatever was missing from the
+starter set, which is why a deleted template would come back on the next page open: now
+the set is seeded exactly once, when the table is empty.
 
-## Два баги в enrichment, знайдені новим WARN
+## Two bugs in enrichment, found by the new WARN
 
-Правило 3 спрацювало одразу: прохід по 100 студіях записав у прогін помилку
-"перевірено 100 доменів і не знайдено жодного контакту", і за нею знайшлись
-дві справжні причини, обидві мовчазні.
+Rule 3 kicked in right away: a run over 100 studios logged an error in the run,
+"checked 100 domains and found no contacts at all," and behind it were two real causes,
+both silent.
 
-1. **Імʼя без прізвища не рахувалось за імʼя.** Половина сайтів студій підписує
-   картку команди самим імʼям: "Pavel, CEO". Правило вимагало два слова, тому
-   такі сторінки пропускались цілком. Тепер одне слово приймається, але тільки
-   впритул до посади і тільки на сторінці команди, інакше в контакти полізли б
-   пункти меню.
-2. **"VP of Operations" читалось як чужа компанія.** Фільтр відгуків та інвесторів
-   вважав словом-компанією будь-яке слово з великої після "of", тому відкидав
-   саме ті посади, заради яких написаний розділ 9: Head of Engineering,
-   Director of Product, VP of Engineering. Додано перелік відділів, і перевіряються
-   тепер усі згадки в рядку, а не перша.
+1. **A first name without a last name didn't count as a name.** Half of studio sites
+   sign a team card with just a first name: "Pavel, CEO". The rule required two words,
+   so such pages were skipped entirely. Now a single word is accepted, but only right
+   next to a job title and only on a team page, otherwise menu items would end up in contacts.
+2. **"VP of Operations" was read as someone else's company.** The reviews and
+   investors filter treated any capitalized word after "of" as a company name, so it
+   rejected exactly the titles section 9 was written for: Head of Engineering, Director
+   of Product, VP of Engineering. A list of departments was added, and now every mention
+   in the line is checked, not just the first.
 
-На збереженій сторінці реальної студії було нуль контактів, стало пʼять, і жодна
-зі старих фікстур не зіпсувалась: відгуки та інвестори далі відсіюються.
+On a saved page of a real studio there were zero contacts, now there are five, and none
+of the old fixtures broke: reviews and investors are still filtered out correctly.
 
-## Чим закриті старі борги
+## What old debts have been closed
 
-- **Парсери розширення мають smoke-тест** (`tests/extension-parsers.test.ts`, jsdom,
-  фікстура Clutch). Правило 2 в CLAUDE.md більше не порушується: зміна верстки
-  каталогу тепер валить тест, а не тихо віддає нуль карток.
-- **Рахунок на сторінці Компанії більше не розходиться зі Студіями.** Список тягнув
-  неповний набір колонок, тому скоринг там не бачив ні типу компанії, ні ознак
-  покинутого сайту, ні репутації. Перелік колонок замінено на весь рядок.
-- **Репутація студій правиться з інтерфейсу**, сторінка Правила, картка
-  "Репутація студій". Раніше ці ваги жили тільки у файлі, а на Workers файлової
-  системи немає, тобто на проді їх не можна було змінити взагалі.
+- **Extension parsers have a smoke test** (`tests/extension-parsers.test.ts`, jsdom,
+  Clutch fixture). Rule 2 in CLAUDE.md is no longer violated: a catalog layout change
+  now fails the test instead of silently returning zero cards.
+- **The score on the Companies page no longer diverges from Studios.** The listing was
+  pulling an incomplete set of columns, so scoring there couldn't see the company type,
+  signs of an abandoned site, or reputation. The column list was replaced with the full row.
+- **Studio reputation is editable from the UI**, Rules page, "Studio reputation" card.
+  These weights used to live only in a file, and Workers has no filesystem, meaning they
+  couldn't be changed in prod at all.
 
-## Далі, за пріоритетом
+## Next, by priority
 
-1. **Застосувати міграції на проді** і перевірити через `pnpm cf:doctor`.
-   Це єдина дія, яку може зробити тільки власник. Локально застосовані міграції
-   до `0009` включно, на проді жодної з нічних ще немає.
-2. ~~Контакти людей у студіях~~ → зроблено, `src/pipeline/enrich.ts`, без моделі.
-3. ~~Djinni і DOU як борди вакансій~~ → зроблено, `djinni` і `dou:vacancies`.
-4. ~~Наздоганяння пропущених запусків~~ → зроблено, `catchUp()` у `src/scheduler.ts`.
-5. ~~Adapters для Awwwards~~ → зроблено, каталог `awwwards`, 25 дизайн-студій.
-6. **Batch API для класифікації за розкладом.** Пункт 1 у `COSTS.md`, мінус 50
-   відсотків на всьому, що йде за розкладом.
-
-
----
-
-## Від юзера фідбек
-
-Зроблено:
-
-- ~~темплейти які я пишу студіям і тд, їх ніяк не поміняти~~ → сторінка **Шаблони**.
-  Таблиця `templates`, CRUD, редактор. Селект у Черзі і Студіях тягне список із бази.
-  `slug` не змінюється при перейменуванні, бо він уже стоїть в `outreach.template_used`.
-  Видалення архівує, а не стирає. Тип `resume` є, окремої логіки під резюме поки немає
-- ~~щоб фільтраційні слова налаштовувати з фронта~~ → сторінка **Правила**: поріг вакансії
-  і компанії, стоп-слова, ваги термінів, перевірка назви ролі. Плюс меню на тегу стеку
-  прямо у вакансії: підняти вагу, понизити, прибрати, відправити у стоп-слова.
-  Збережене лежить у таблиці `settings` і перекриває `config/scoring.json`
-- ~~Черга, сторінка не зовсім зрозуміла. Зараз на проді пусто і нічого не додається~~ →
-  нерозібрані картки більше не пропадають, а переїжджають у наступний зріз.
-  Порожній стан тепер називає причину: нуль вище порогу, все розібрано, чи потрібні нові знахідки
-- ~~кожен текст вакансії обривається~~ → обрізав інтерфейс на 8000 символів, прибрано.
-  У базі текст був цілий. Модель і далі бачить перші `LLM_MAX_INPUT_CHARS` символів,
-  це навмисна економія, ручка в `.env`
-- ~~Розширення. по дефолту знало юрл проди~~ → вже так: `apiUrl` за замовчуванням це воркер
-  і в `background.js`, і в попапі
-
-Лишилось:
-
-- Резюме як окремий тип із своїм полем у листуванні. Зараз це просто ще один шаблон
-- Решта конфіга (гео, досвід, розмір компанії, ваги для студій) редагується тільки у файлі 
-
-Нічна сесія:
-- Щоб парсило ще самі вакансії з сайтів по типу dou, djini і тд
-- Поправити баги і покращити веб додаток відповідно до COSTS.md файлу. Також перевірити щоб з різних сайтів, не парсились однакові прям вакансії та студії, контори.
-- Мені треба головне це писати холодні листи студіям і тд, пропонувати допомогу, свої послуги і тд, в дизайнерські наприклад писати що можу стати разрабом, чи приєднатись, вони таким чином розширять послуги свої, і так далі інші різні ніші. Також треба шукати стартапи, додати фунціонал пошуку, парсингу стартапів, і виводити їх в окрему сторінку. Доволі важливо це, то було б гуд якби зробив якісно. Парсинь нвр також треба буде з сайтів, знайди побільше. Якщо буде фільтр по тому хто їм треба, і якщо треба разраб то взагалі перкрасно. Якщо фільтр нормальний зробити не можна, то просто буду писати більшості холодні листи, досвід в стартапі в мене був.
-- Пройтись по проекту, пошукати баги, провести аудит
-- Прочитати status.md файл, почати розробку фіч, фікс всіх проблем що тут описані
+1. **Apply migrations to prod** and verify with `pnpm cf:doctor`.
+   This is the only action only the owner can do. Locally, migrations up to and
+   including `0009` are applied, prod has none of the recent ones yet.
+2. ~~Contacts of people at studios~~ → done, `src/pipeline/enrich.ts`, no model.
+3. ~~Djinni and DOU as vacancy boards~~ → done, `djinni` and `dou:vacancies`.
+4. ~~Catching up on missed runs~~ → done, `catchUp()` in `src/scheduler.ts`.
+5. ~~Adapter for Awwwards~~ → done, catalog `awwwards`, 25 design studios.
+6. **Batch API for scheduled classification.** Item 1 in `COSTS.md`, minus 50 percent
+   on everything that runs on schedule.
 
 
 ---
 
-## Ідеї без пріоритету
+## Feedback from the user
 
-- ~~Автоматичні шаблони листів прив'язати до типу компанії~~ → `templates.for_kind`,
-  шаблон під тип цієї компанії пропонується першим
-- ~~Скоринг за живістю блогу~~ → `companies.copyright_year` і `last_post_at`,
-  секція `companies.stale` у конфізі, плашка "Схоже, сайт покинутий" у картці
-- ~~Експорт черги в CSV~~ → `pnpm cli export:csv <queue|studios>` і посилання
-  в тулбарі Студій
-- Історія рахунку вакансії, щоб бачити, як правки конфіга змінюють видачу
+Done:
+
+- ~~templates I write to studios etc, there's no way to change them~~ → **Templates**
+  page. `templates` table, CRUD, editor. The select in the Queue and Studios pulls the
+  list from the database. The `slug` doesn't change on rename, because it's already
+  stored in `outreach.template_used`. Delete archives instead of erasing. Type `resume`
+  exists, there's no separate logic for resumes yet
+- ~~want to configure filter words from the frontend~~ → **Rules** page: vacancy and
+  company threshold, stop words, term weights, role title check. Plus a menu on the
+  stack tag right in the vacancy: raise weight, lower it, remove it, send to stop words.
+  Saved data lives in the `settings` table and overrides `config/scoring.json`
+- ~~Queue page isn't quite clear. Right now it's empty in prod and nothing's being added~~ →
+  unreviewed cards no longer disappear, they roll over into the next slice. The empty
+  state now names the reason: zero above threshold, everything reviewed, or new finds
+  are needed
+- ~~every vacancy text gets cut off~~ → the UI truncation at 8000 characters was
+  removed. The full text was already in the database. The model still only sees the
+  first `LLM_MAX_INPUT_CHARS` characters, that's an intentional saving, a knob in `.env`
+- ~~the extension defaulted to the prod URL~~ → already the case: `apiUrl` defaults to
+  the worker in both `background.js` and the popup
+
+Left:
+
+- Resume as a separate type with its own field in outreach. Right now it's just another template
+- The rest of the config (geo, experience, company size, weights for studios) can only
+  be edited in the file
+
+Overnight session:
+- Have it also parse actual vacancies from sites like dou, djinni, etc
+- Fix bugs and improve the web app according to the COSTS.md file. Also check that the
+  same vacancies and studios/agencies aren't parsed twice from different sites.
+- What matters most to me is writing cold emails to studios and so on, offering help, my
+  services, etc, writing to design studios for example that I could become a developer,
+  or join them, so they can expand their own services, and so on for various other
+  niches. Also need to look for startups, add search and parsing functionality for
+  startups, and show them on a separate page. This is fairly important, it would be
+  great if you did it well. Parsing needs to cover more sites too, find more of them.
+  If there's a filter for who they need, and if they need a developer, that would be
+  perfect. If a proper filter can't be made, I'll just write cold emails to most of
+  them, I have startup experience.
+- Go through the project, look for bugs, do an audit
+- Read the status.md file, start developing features, fix all the problems described here
+
 
 ---
 
-## Прийняті рішення і чому саме так
+## Ideas with no priority
 
-**Черга це зафіксований денний зріз, а не запит на льоту.** Без фіксації нова вакансія
-з вищим рахунком витісняє ту, яку ще не встигли подивитись, і список перемішується під руками.
-
-**Нерозібрані картки переносяться в наступний зріз.** Спершу зріз був жорстко денним, і картка,
-на якій не натиснули нічого, зникала наступного дня, а захист від повторів не давав їй вернутись
-30 днів. Тепер такі картки переїжджають у новий день першими за давністю очікування і займають
-місця в денному ліміті. Рядок переїжджає, а не копіюється, тому `stats.shown` не завищується,
-а `created_at` далі означає дату першого показу.
-
-**Дві різні механіки виявлення змін.** ATS дають стабільні id, там порівнюються множини id.
-Для звичайних сторінок текст чиститься від дат і лічильників, потім порівнюються хеші блоків.
-
-**Скоринг у коді, списки в конфізі.** `config/scoring.json` правиться щотижня, і кожна
-правка не має бути релізом. Модель дає лише думку про релевантність, вона важить 1/20 рахунку.
-
-**Гео жорстке.** Локація з назвою місця і без ознак віддаленості вважається офісною,
-хай там що каже прапорець remote. Це закрило "Remote (US)", "San Francisco, hybrid"
-і "Barcelona" одним правилом, без списку всіх міст світу.
-
-**Роль перевіряється за назвою.** Інакше бухгалтер з описом компанії, де згадані React
-і Next.js, набирає балів і лізе в чергу. Реальний випадок, ловився на живих даних.
-
-**Великі компанії з мінусом.** Подача в Stripe або Cloudflare майже завжди марна,
-тому гігант проходить поріг лише з дійсно сильним збігом.
-
-**Каталоги під Cloudflare збираються розширенням, а не скрейпером.** Сторінки відкриває
-справжній браузер власника. Автообхід пагінації дозволений з паузами і лімітом сторінок,
-правило 4 в `CLAUDE.md` оновлене під це. CAPTCHA і підробка сесій лишаються забороненими.
+- ~~Tie automatic email templates to company type~~ → `templates.for_kind`, the template
+  matching this company's type is offered first
+- ~~Score by blog activity~~ → `companies.copyright_year` and `last_post_at`, the
+  `companies.stale` section in the config, a "Looks abandoned" badge on the card
+- ~~Export the queue to CSV~~ → `pnpm cli export:csv <queue|studios>` and a link in the
+  Studios toolbar
+- Vacancy score history, to see how config edits change the output
 
 ---
 
-## Межі, які не переходити
+## Decisions made and why
 
-- Не розвʼязувати CAPTCHA, не підробляти сесії, не ходити під чужими обліковками
-- Не гортати каталог швидше за людину: пауза не менша за 3 секунди, ліміт 50 сторінок за прохід
-- Не вигадувати дані: чого немає в тексті, те `null`
-- Не будувати авторизацію, Docker, черги, мікросервіси
-- Не генерувати тексти листів, це окремий процес поза інструментом
+**The Queue is a fixed daily slice, not a live query.** Without fixing it, a new
+vacancy with a higher score would push out one not yet looked at, and the list would
+shuffle under the owner's hands.
+
+**Unreviewed cards roll over into the next slice.** At first the slice was strictly
+daily, and a card nobody acted on would vanish the next day, and the anti-repeat guard
+wouldn't let it come back for 30 days. Now such cards move into the new day first, by
+how long they've been waiting, and take up slots within the daily limit. The row moves,
+it isn't copied, so `stats.shown` doesn't get inflated, and `created_at` still means the
+date of the first showing.
+
+**Two different change-detection mechanics.** ATS sources give stable ids, there the
+id sets are compared. For regular pages the text is stripped of dates and counters,
+then the block hashes are compared.
+
+**Scoring in code, lists in config.** `config/scoring.json` gets edited weekly, and
+every edit shouldn't be a release. The model only provides an opinion on relevance, it's
+worth 1/20 of the score.
+
+**Geo is strict.** A location with a place name and no signs of remote work counts as
+office-based, whatever the remote flag says. This closed off "Remote (US)", "San
+Francisco, hybrid" and "Barcelona" with one rule, without a list of every city in the world.
+
+**The role is checked by title.** Otherwise an accountant with a company description
+mentioning React and Next.js racks up points and ends up in the queue. A real case,
+caught on live data.
+
+**Big companies get a penalty.** Applying to Stripe or Cloudflare is almost always
+pointless, so a giant only clears the threshold with a genuinely strong match.
+
+**Catalogs behind Cloudflare are collected via the extension, not a scraper.** Pages
+are opened by the owner's real browser. Automatic pagination is allowed with pauses and
+a page limit per pass, rule 4 in `CLAUDE.md` was updated for this. Solving CAPTCHAs and
+faking sessions remain forbidden.
+
+---
+
+## Lines not to cross
+
+- Do not solve CAPTCHAs, do not fake sessions, do not act under someone else's account
+- Do not page through a catalog faster than a human: pause no shorter than 3 seconds,
+  limit of 50 pages per pass
+- Do not invent data: whatever isn't in the text is `null`
+- Do not build authorization, Docker, queues, microservices
+- Do not generate email text, that's a separate process outside the tool

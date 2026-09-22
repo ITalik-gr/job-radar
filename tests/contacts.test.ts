@@ -9,9 +9,10 @@ import { upsertCompany } from '../src/pipeline/companies.js';
 import { deleteContact, updateContact } from '../src/pipeline/contacts.js';
 
 /**
- * Правка контактів руками. Сенс перевірки в тому, що збір приносить половинки:
- * імʼя з посадою без адреси і адресу без імені. Зведення половинок докупи не має
- * створювати третій рядок, інакше в базі росте сміття, а лист писати нема кому.
+ * Editing contacts by hand. The point of the check is that crawling brings in halves:
+ * a name with a role but no address, and an address with no name. Merging the halves
+ * must not create a third row, otherwise the database fills with junk and there is
+ * no one to write the letter to.
  */
 
 let company: Company;
@@ -30,8 +31,8 @@ beforeAll(async () => {
   company = (await upsertCompany({ name: 'Acme', domain: 'acme-contacts.com', source: 'test' })).company;
 });
 
-describe('правка контакту', () => {
-  it('дописує пошту людині, у якої було тільки імʼя', async () => {
+describe('editing a contact', () => {
+  it('adds an email to a person who only had a name', async () => {
     const row = await contact({ name: 'Anna Koval', role: 'CTO' });
     const { contact: saved, merged } = await updateContact(row.id, { email: ' Anna@Acme-Contacts.com ' });
 
@@ -40,7 +41,7 @@ describe('правка контакту', () => {
     expect(merged).toBe(0);
   });
 
-  it('дописує імʼя до адреси, у якої його не було', async () => {
+  it('adds a name to an address that did not have one', async () => {
     const row = await contact({ email: 'ihor@acme-contacts.com' });
     const { contact: saved } = await updateContact(row.id, { name: 'Ihor Bondar', role: 'Tech Lead' });
 
@@ -49,11 +50,11 @@ describe('правка контакту', () => {
   });
 
   /*
-   * Найчастіший випадок правки: загальна скринька вже лежить окремим рядком з
-   * минулого обходу, і власник приписує ту саму адресу знайденій людині. Двох
-   * рядків з однією адресою бути не має, інакше лист піде двічі.
+   * The most common editing case: a general mailbox already sits in its own row from
+   * a past crawl, and the owner attaches that same address to a person who was found.
+   * There must not be two rows with the same address, otherwise the letter would go out twice.
    */
-  it('зливає рядки, коли адреса збіглася з наявною', async () => {
+  it('merges rows when the address matches an existing one', async () => {
     const db = getDb();
     const plain = await contact({ email: 'office@acme-contacts.com', role: 'Office' });
     const person = await contact({ name: 'Olena Marchuk' });
@@ -64,12 +65,12 @@ describe('правка контакту', () => {
 
     expect(merged).toBe(1);
     expect(saved.name).toBe('Olena Marchuk');
-    // Роль дісталась від рядка, який зник: своєї в людини не було.
+    // The role came from the row that disappeared: the person did not have their own.
     expect(saved.role).toBe('Office');
     expect(await db.select().from(contacts).where(eq(contacts.id, plain.id))).toHaveLength(0);
   });
 
-  it('нова адреса вважається живою, навіть якщо стара була мертвою', async () => {
+  it('a new address is treated as live even if the old one was dead', async () => {
     const row = await contact({ name: 'Petro', email: 'dead@acme-contacts.com' });
     await getDb().update(contacts).set({ emailValid: false }).where(eq(contacts.id, row.id));
 
@@ -77,27 +78,27 @@ describe('правка контакту', () => {
     expect(saved.emailValid).toBe(true);
   });
 
-  it('порожнє поле стирає значення, а не лишає старе', async () => {
+  it('an empty field clears the value instead of keeping the old one', async () => {
     const row = await contact({ name: 'Temp', role: 'Manager', email: 'temp@acme-contacts.com' });
     const { contact: saved } = await updateContact(row.id, { role: '  ' });
     expect(saved.role).toBeNull();
   });
 
-  it('крива адреса не зберігається', async () => {
+  it('a malformed address is not saved', async () => {
     const row = await contact({ name: 'Broken' });
-    await expect(updateContact(row.id, { email: 'не пошта' })).rejects.toThrow(/адреса/);
+    await expect(updateContact(row.id, { email: 'not an email' })).rejects.toThrow(/address/);
   });
 
   /*
-   * Рядок без імені і без адреси нікуди не веде. Стерти обидва поля це видалення,
-   * і робиться воно окремою кнопкою, а не як побічний ефект правки.
+   * A row with no name and no address leads nowhere. Clearing both fields is a deletion,
+   * and it is done through a separate button, not as a side effect of editing.
    */
-  it('не дає лишити контакт без імені і без адреси', async () => {
+  it('does not allow leaving a contact without a name and without an address', async () => {
     const row = await contact({ name: 'Ghost', email: 'ghost@acme-contacts.com' });
-    await expect(updateContact(row.id, { name: '', email: '' })).rejects.toThrow(/видали/);
+    await expect(updateContact(row.id, { name: '', email: '' })).rejects.toThrow(/delete/);
   });
 
-  it('видаляє контакт', async () => {
+  it('deletes a contact', async () => {
     const row = await contact({ name: 'Investor', role: 'Former CEO of GitHub' });
     expect(await deleteContact(row.id)).toEqual({ deleted: true, companyId: company.id });
     expect(await deleteContact(row.id)).toEqual({ deleted: false, companyId: null });

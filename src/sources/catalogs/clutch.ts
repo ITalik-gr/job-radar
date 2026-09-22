@@ -6,13 +6,13 @@ import { cleanTags } from '../../pipeline/backfill-catalog.js';
 const SOURCE = 'clutch';
 
 /**
- * Clutch за Cloudflare з активним бот-детектом, тому автоматичного обходу тут немає.
- * Власник зберігає сторінку каталогу з браузера, парсер обробляє її офлайн.
- * Той самий підхід підходить будь-якому каталогу з такою ж карткою, наприклад
- * TechBehemoths, який теж віддає Cloudflare-челендж замість HTML.
+ * Clutch sits behind Cloudflare with active bot detection, so there's no automatic
+ * crawl here. The owner saves the catalog page from their browser, and the parser
+ * processes it offline. The same approach fits any catalog with the same setup, for
+ * example TechBehemoths, which also returns a Cloudflare challenge instead of HTML.
  */
 
-/** Домен ховається в параметрі `u` редиректу r.clutch.co, а не в самому href. */
+/** The domain hides in the `u` parameter of the r.clutch.co redirect, not in the href itself. */
 export function extractDomain(href: string | undefined): string | null {
   if (!href) return null;
   try {
@@ -49,7 +49,7 @@ export function parse(html: string): RawCompany[] {
     const rate = clean(card.find('.provider__highlights-item.hourly-rate').text()) || null;
     const minProject = clean(card.find('.provider__highlights-item.min-project-size').text()) || null;
 
-    // Послуги лежать у тултипах діаграми у вигляді "25% Web Development".
+    // Services sit in chart tooltips in the form "25% Web Development".
     const services = card
       .find('.provider__services-chart-item')
       .map((_, item) => {
@@ -60,15 +60,15 @@ export function parse(html: string): RawCompany[] {
       .get()
       .filter(Boolean);
 
-    // Оцінка і кількість відгуків лежать у мікророзмітці, а не в тексті картки.
+    // The rating and review count sit in microdata, not in the card's visible text.
     const ratingValue = Number(card.find('[itemprop="ratingValue"]').first().attr('content'));
     const reviewCount = Number(card.find('[itemprop="reviewCount"]').first().attr('content'));
 
     /*
-     * Блок "Інше". Кожен highlight підписаний у тултипі ("Min. project size",
-     * "Employees"), тому підпис береться звідти, а не вгадується з класу. Відомі
-     * підписи вже мають свої колонки, решта осідає сюди, і новий рядок у картці
-     * Clutch більше не вимагає ні колонки, ні правки парсера.
+     * The "Other" block. Every highlight is labeled in its tooltip ("Min. project
+     * size", "Employees"), so the label is taken from there instead of being guessed
+     * from the class. Known labels already have their own columns, the rest settles
+     * here, and a new row on a Clutch card no longer needs either a new column or a parser fix.
      */
     const extra: Record<string, string> = {};
     card.find('.provider__highlights-item').each((_, item) => {
@@ -81,10 +81,10 @@ export function parse(html: string): RawCompany[] {
     });
 
     if (/verified/i.test(clean(card.find('[class*="verification"], [class*="verified"]').text()))) {
-      extra['Перевірений профіль'] = 'так';
+      extra['Verified profile'] = 'yes';
     }
 
-    // Той самий чистильник, що і в беквілі: частки діаграм і підписи тегами не є.
+    // The same cleaner as in the backfill: chart percentages and labels aren't tags.
     const tags = cleanTags(services);
     const profile = card.find('.provider__title-link').first().attr('href') ?? null;
 

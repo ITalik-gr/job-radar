@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 
-/** Розгортає HTML-сутності: Greenhouse віддає розмітку вакансії подвійно екранованою. */
+/** Unescapes HTML entities: Greenhouse returns vacancy markup double-escaped. */
 export function decodeEntities(input: string): string {
   if (!input) return '';
   if (!input.includes('&')) return input;
@@ -8,8 +8,8 @@ export function decodeEntities(input: string): string {
 }
 
 /**
- * HTML у плаский текст. Це не нормалізація для хешування (вона буде на Етапі 3),
- * а лише читабельний `raw_text` для класифікатора і для очей.
+ * HTML into flat text. This is not the normalization used for hashing (that comes in
+ * Stage 3), just a readable `raw_text` for the classifier and for human eyes.
  */
 export function htmlToText(input: string): string {
   if (!input) return '';
@@ -31,7 +31,7 @@ export function htmlToText(input: string): string {
     .trim();
 }
 
-/** Текст із можливо екранованого HTML. */
+/** Text from HTML that may or may not be escaped. */
 export function anyToText(input: string | null | undefined): string {
   if (!input) return '';
   const looksEscaped = /&lt;|&gt;|&amp;lt;/.test(input);

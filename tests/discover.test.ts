@@ -11,7 +11,7 @@ import {
 } from '../src/pipeline/discover.js';
 
 describe('detectAts', () => {
-  it('впізнає greenhouse, lever і ashby разом зі slug', () => {
+  it('recognizes greenhouse, lever and ashby along with the slug', () => {
     expect(detectAts('<a href="https://boards.greenhouse.io/acme">Jobs</a>')).toEqual({
       kind: 'greenhouse',
       slug: 'acme',
@@ -26,34 +26,36 @@ describe('detectAts', () => {
     });
   });
 
-  it('впізнає workable, recruitee і personio', () => {
+  it('recognizes workable, recruitee and personio', () => {
     expect(detectAts('https://acme.workable.com/jobs')!.kind).toBe('workable');
     expect(detectAts('https://acme.recruitee.com/')!.kind).toBe('recruitee');
     expect(detectAts('https://acme.jobs.personio.de/')!.kind).toBe('personio');
   });
 
-  it('нічого не вигадує, коли ATS немає', () => {
-    expect(detectAts('<html><body>Про нас</body></html>')).toBeNull();
+  it('invents nothing when there is no ATS', () => {
+    expect(detectAts('<html><body>About us</body></html>')).toBeNull();
   });
 });
 
 describe('detectTech', () => {
-  it('розпізнає фреймворк за слідами в HTML', () => {
+  it('recognizes the framework from traces in the HTML', () => {
     expect(detectTech('<script src="/_next/static/chunk.js">')).toContain('next.js');
     expect(detectTech('<div id="__nuxt"></div><script src="/_nuxt/app.js">')).toContain('nuxt');
     expect(detectTech('<link href="/wp-content/themes/x/style.css">')).toContain('wordpress');
     expect(detectTech('<astro-island data-astro-cid="x">')).toContain('astro');
   });
 
-  it('порожній HTML не дає підказок', () => {
-    expect(detectTech('<html><body>привіт</body></html>')).toEqual([]);
+  it('empty HTML gives no hints', () => {
+    expect(detectTech('<html><body>hello</body></html>')).toEqual([]);
   });
 });
 
 describe('findCareerLinks', () => {
-  it('знаходить посилання і за href, і за текстом', () => {
+  it('finds links both by href and by text', () => {
+    // "Вакансії" (vacancies) is kept in Ukrainian: it exercises the CAREER_TEXT regex,
+    // which specifically matches Ukrainian career words on Ukrainian sites.
     const html = `
-      <header><a href="/about">Про нас</a><a href="/careers">Careers</a></header>
+      <header><a href="/about">About us</a><a href="/careers">Careers</a></header>
       <footer><a href="/team-page">Вакансії</a><a href="https://acme.com/jobs">Jobs</a></footer>`;
     const links = findCareerLinks(html, 'https://acme.com');
 
@@ -63,14 +65,14 @@ describe('findCareerLinks', () => {
     expect(links.some((link) => link.includes('/about'))).toBe(false);
   });
 
-  it('ігнорує сміттєві href', () => {
+  it('ignores junk href values', () => {
     expect(findCareerLinks('<a href="mailto:jobs@acme.com">Jobs</a>', 'https://acme.com')).toEqual([]);
     expect(findCareerLinks('<a href="">Careers</a>', 'https://acme.com')).toEqual([]);
   });
 });
 
 describe('looksLikeCareersPage', () => {
-  it('сторінка з переліком вакансій підходить', () => {
+  it('a page with a list of vacancies qualifies', () => {
     const html = `<ul>
       <li><a href="/jobs/frontend">Frontend Engineer</a></li>
       <li><a href="/jobs/backend">Backend Engineer</a></li>
@@ -78,26 +80,26 @@ describe('looksLikeCareersPage', () => {
     expect(looksLikeCareersPage(html)).toBe(true);
   });
 
-  it('чесне "вакансій немає" теж вважається career-сторінкою', () => {
+  it('an honest "no vacancies" also counts as a careers page', () => {
     expect(looksLikeCareersPage('<p>No open positions right now</p>')).toBe(true);
     expect(looksLikeCareersPage('<p>Наразі немає відкритих вакансій</p>')).toBe(true);
   });
 
-  it('звичайна сторінка про компанію не підходить', () => {
-    expect(looksLikeCareersPage('<h1>Про нас</h1><p>Ми студія з Києва</p>')).toBe(false);
+  it('a plain about page does not qualify', () => {
+    expect(looksLikeCareersPage('<h1>About us</h1><p>We are a studio from Kyiv</p>')).toBe(false);
   });
 });
 
 describe('CAREER_PATHS', () => {
-  it('містить шляхи з CLAUDE.md у порядку спадання ймовірності', () => {
+  it('contains the paths from CLAUDE.md in decreasing order of likelihood', () => {
     expect(CAREER_PATHS[0]).toBe('/careers');
     expect(CAREER_PATHS).toContain('/vacancies');
     expect(CAREER_PATHS).toContain('/join-us');
   });
 });
 
-describe('захист відомого ATS', () => {
-  it('усі ATS, які читаються через API, у списку недоторканних', () => {
+describe('protecting a known ATS', () => {
+  it('every ATS read through an API is on the untouchable list', () => {
     for (const kind of ['greenhouse', 'lever', 'ashby', 'workable', 'recruitee', 'personio']) {
       expect(KNOWN_ATS).toContain(kind);
     }
@@ -106,11 +108,12 @@ describe('захист відомого ATS', () => {
 });
 
 /*
- * Розмітка каже, на чому зроблений сайт компанії. Текст каже, що компанія робить
- * клієнтам, і це різні речі: студія, яка робить headless-магазини, сама може сидіти
- * на WordPress. Для листа важливіше друге, тому обидві половини збираються разом.
+ * The markup says what the company's own site runs on. The text says what the
+ * company builds for clients, and those are different things: a studio that builds
+ * headless stores can itself run on WordPress. For a letter the second matters more,
+ * so both halves are collected together.
  */
-describe('стек із тексту сторінки', () => {
+describe('stack from the page text', () => {
   const page = `
     <html><head><script src="/wp-content/themes/main.js"></script></head>
     <body>
@@ -120,28 +123,28 @@ describe('стек із тексту сторінки', () => {
     </body></html>
   `;
 
-  it('розмітка дає рушій самого сайту', () => {
+  it('the markup gives the engine of the site itself', () => {
     expect(detectTech(page)).toContain('wordpress');
   });
 
-  it('текст дає те, про що компанія пише словами', () => {
+  it('the text gives what the company says about itself in words', () => {
     const found = detectTechFromText(page);
     expect(found).toEqual(expect.arrayContaining(['headless cms', 'shopify', 'sanity', 'next.js', 'stripe']));
   });
 
-  it('разом це одна множина без повторів', () => {
+  it('together they form one set without duplicates', () => {
     const stack = detectStack(page);
     expect(stack).toContain('wordpress');
     expect(stack).toContain('sanity');
     expect(new Set(stack).size).toBe(stack.length);
   });
 
-  it('назва всередині іншого слова не рахується', () => {
+  it('a name inside another word does not count', () => {
     expect(detectTechFromText('<body>Our process is reactive and proactive.</body>')).not.toContain('react');
   });
 
-  it('розмітка не плутається з текстом: слово в класі не робить стек', () => {
-    // Тут "sanity" лише в тексті абзацу, а не в адресі CDN, і саме текст його ловить.
+  it('the markup is not confused with the text: a word in a class does not make a stack entry', () => {
+    // Here "sanity" only appears in the paragraph text, not in a CDN address, and it's the text pass that catches it.
     expect(detectTech('<body><p>sanity checks</p></body>')).not.toContain('sanity');
   });
 });

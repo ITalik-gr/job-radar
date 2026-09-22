@@ -15,17 +15,17 @@ beforeEach(async () => {
   await getDb().delete(settings);
 });
 
-describe('сховок налаштувань', () => {
-  it('без запису віддає значення за замовчуванням', async () => {
-    expect(await readSetting('немає-такого', { a: 1 })).toEqual({ a: 1 });
+describe('settings store', () => {
+  it('returns the default value when there is no record', async () => {
+    expect(await readSetting('no-such-key', { a: 1 })).toEqual({ a: 1 });
   });
 
-  it('записане читається назад', async () => {
+  it('a written value is read back', async () => {
     await writeSetting('getro:domains', { 'jobs.x.com:acme': 'acme.dev' });
     expect(await readSetting('getro:domains', {})).toEqual({ 'jobs.x.com:acme': 'acme.dev' });
   });
 
-  it('повторний запис перезаписує, а не дублює', async () => {
+  it('a repeat write overwrites rather than duplicates', async () => {
     await writeSetting('k', { v: 1 });
     await writeSetting('k', { v: 2 });
 
@@ -33,9 +33,9 @@ describe('сховок налаштувань', () => {
     expect(await getDb().select().from(settings)).toHaveLength(1);
   });
 
-  it('null у значенні зберігається як null, а не зникає', async () => {
-    // Для кешу доменів це важливо: null означає "перевіряли, домену немає",
-    // і без нього ми ходили б на той самий сайт щоразу заново.
+  it('null in a value is stored as null, not dropped', async () => {
+    // This matters for the domain cache: null means "checked, there is no domain",
+    // and without it we would hit the same site over again every time.
     await writeSetting('k', { 'jobs.x.com:acme': null });
     expect(await readSetting<Record<string, string | null>>('k', {})).toEqual({
       'jobs.x.com:acme': null,

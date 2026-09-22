@@ -10,14 +10,14 @@ export interface FeedItem {
   guid: string | null;
   description: string;
   pubDate: number | null;
-  /** Довільні одиничні теги фіду: region, company, location, type тощо. */
+  /** Arbitrary one-off feed tags: region, company, location, type and so on. */
   extra: Record<string, string>;
 }
 
 export interface FeedConfig {
   id: string;
   url: string;
-  /** Ключі додаткових тегів, які варто витягнути з item. */
+  /** Keys of additional tags worth pulling out of an item. */
   extraTags?: string[];
   company?(item: FeedItem): string | null;
   title?(item: FeedItem): string | null;

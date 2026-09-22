@@ -13,8 +13,8 @@ let acme: Company;
 let other: Company;
 const DAY = '2026-09-03';
 /**
- * Останній день у сценарії. Нерозібрані картки переїжджають у найновіший зріз,
- * тому тести дій мусять брати саме його, інакше шукають у вже спорожнілому дні.
+ * The last day in the scenario. Undecided cards move into the newest slice, so action
+ * tests must use it specifically, otherwise they search in a day that is already empty.
  */
 const LAST_DAY = '2026-09-07';
 
@@ -44,86 +44,86 @@ beforeAll(async () => {
   await addVacancy(acme.id, 'Senior Frontend', 18);
   await addVacancy(acme.id, 'Fullstack Engineer', 12);
   await addVacancy(other.id, 'React Developer', 9);
-  await addVacancy(other.id, 'Нижче порогу', 3);
-  await addVacancy(other.id, 'Закрита', 20, { closedAt: Date.now() });
+  await addVacancy(other.id, 'Below Threshold', 3);
+  await addVacancy(other.id, 'Closed', 20, { closedAt: Date.now() });
 });
 
 describe('getQueue', () => {
-  it('бере тільки відкриті вакансії вище порогу і сортує за рахунком', async () => {
+  it('takes only open vacancies above the threshold and sorts by score', async () => {
     const cards = await getQueue(DAY);
     expect(cards.map((c) => c.title)).toEqual(['Senior Frontend', 'Fullstack Engineer', 'React Developer']);
   });
 
-  it('зріз фіксується: нова вакансія з вищим рахунком не перемішує сьогоднішній список', async () => {
-    await addVacancy(acme.id, 'Найкраща вакансія дня', 30);
+  it('the slice is fixed: a new vacancy with a higher score does not reshuffle today\'s list', async () => {
+    await addVacancy(acme.id, 'Best Vacancy of the Day', 30);
     const cards = await getQueue(DAY);
     expect(cards.map((c) => c.title)).toEqual(['Senior Frontend', 'Fullstack Engineer', 'React Developer']);
   });
 
-  it('наступний день переносить нерозібрані і додає нову, вчорашні не дублюються', async () => {
+  it('the next day carries over the undecided cards and adds a new one, yesterday\'s are not duplicated', async () => {
     const cards = await getQueue('2026-09-04');
 
-    // Три вчорашні картки нерозібрані, тому переїжджають першими за давністю очікування,
-    // і лише після них іде свіжа знахідка.
+    // The three cards from yesterday are undecided, so they move first by how long they have
+    // been waiting, and only after them comes the fresh find.
     expect(cards.map((c) => c.title)).toEqual([
       'Senior Frontend',
       'Fullstack Engineer',
       'React Developer',
-      'Найкраща вакансія дня',
+      'Best Vacancy of the Day',
     ]);
 
-    // Переїзд, а не копія: на вакансію лишається один рядок черги.
+    // A move, not a copy: one queue row remains per vacancy.
     const rows = await getDb().select().from(queueItems);
     const ids = rows.map((row) => row.vacancyId);
     expect(new Set(ids).size).toBe(ids.length);
 
-    // Дата першого показу зберігається, тому видно, скільки картка вже чекає.
+    // The first-shown date is kept, so it is visible how long a card has already been waiting.
     const carried = cards.find((c) => c.title === 'Senior Frontend')!;
     expect(carried.firstShownAt).toBeGreaterThan(0);
   });
 
-  it('розібрана картка не переноситься далі', async () => {
+  it('a decided card is not carried further', async () => {
     const before = await getQueue('2026-09-04');
-    const card = before.find((c) => c.title === 'Найкраща вакансія дня')!;
+    const card = before.find((c) => c.title === 'Best Vacancy of the Day')!;
     await applyAction({ vacancyId: card.vacancyId, action: 'interesting' });
 
     const cards = await getQueue('2026-09-05');
-    expect(cards.map((c) => c.title)).not.toContain('Найкраща вакансія дня');
+    expect(cards.map((c) => c.title)).not.toContain('Best Vacancy of the Day');
     expect(cards.map((c) => c.title)).toContain('Senior Frontend');
   });
 
-  it('закрита вакансія не переноситься, навіть якщо рішення не було', async () => {
-    const gone = await addVacancy(acme.id, 'Зникла поки чекала', 25);
+  it('a closed vacancy is not carried over, even without a decision', async () => {
+    const gone = await addVacancy(acme.id, 'Vanished While Waiting', 25);
     await getDb().insert(queueItems).values({ day: '2026-09-05', vacancyId: gone.id, position: 99 });
     await getDb().update(vacancies).set({ closedAt: Date.now() }).where(eq(vacancies.id, gone.id));
 
     const cards = await getQueue('2026-09-06');
-    expect(cards.map((c) => c.title)).not.toContain('Зникла поки чекала');
+    expect(cards.map((c) => c.title)).not.toContain('Vanished While Waiting');
   });
 
-  it('ліміт карток на день дотримується разом із перенесеними', async () => {
-    for (let i = 0; i < 15; i += 1) await addVacancy(acme.id, `Масовка ${i}`, 7);
+  it('the daily card limit is respected together with carried-over cards', async () => {
+    for (let i = 0; i < 15; i += 1) await addVacancy(acme.id, `Bulk ${i}`, 7);
     const cards = await getQueue('2026-09-07');
     expect(cards).toHaveLength(config.pipeline.queueDailyLimit);
   });
 });
 
 describe('applyAction', () => {
-  it('"не цікаво" ставить статус компанії і прибирає картку з черги', async () => {
+  it('"not interesting" sets the company status and removes the card from the queue', async () => {
     const cards = await getQueue(LAST_DAY);
     const card = cards.find((c) => c.company === 'Beta')!;
 
-    await applyAction({ vacancyId: card.vacancyId, action: 'not_interesting', note: 'не той стек' });
+    await applyAction({ vacancyId: card.vacancyId, action: 'not_interesting', note: 'wrong stack' });
 
     const after = await getQueue(LAST_DAY);
     expect(after.find((c) => c.vacancyId === card.vacancyId)!.decision).toBe('not_interesting');
 
     const [state] = await getDb().select().from(companyState).where(eq(companyState.companyId, other.id));
     expect(state!.status).toBe('rejected_by_me');
-    expect(state!.reason).toBe('не той стек');
+    expect(state!.reason).toBe('wrong stack');
   });
 
-  it('"написав" створює запис у листуванні з шаблоном і датою', async () => {
+  it('"contacted" creates an outreach record with a template and a date', async () => {
     const cards = await getQueue(LAST_DAY);
     const card = cards.find((c) => c.company === 'Acme')!;
 
@@ -141,7 +141,7 @@ describe('applyAction', () => {
     expect(rows[0]!.waitingDays).toBe(0);
   });
 
-  it('"відкласти" ховає компанію до вказаної дати', async () => {
+  it('"snooze" hides the company until the given date', async () => {
     const cards = await getQueue('2026-09-04');
     await applyAction({ vacancyId: cards[0]!.vacancyId, action: 'snooze', days: 30 });
 
@@ -153,17 +153,17 @@ describe('applyAction', () => {
     expect(fresh.every((card) => card.companyId !== acme.id)).toBe(true);
   });
 
-  it('невідома дія не приймається', async () => {
+  it('an unknown action is not accepted', async () => {
     await expect(
-      applyAction({ vacancyId: 1, action: 'вигадана' as never }),
+      applyAction({ vacancyId: 1, action: 'made_up' as never }),
     ).rejects.toBeInstanceOf(Error);
   });
 });
 
-describe('відповіді і фолоу-апи', () => {
-  it('позитивна відповідь переводить компанію в replied', async () => {
+describe('replies and follow-ups', () => {
+  it('a positive reply moves the company to replied', async () => {
     const [row] = await listOutreach();
-    await markReply(row!.id, 'positive', 'кличуть на дзвінок');
+    await markReply(row!.id, 'positive', 'invited to a call');
 
     const rows = await listOutreach();
     expect(rows[0]!.replyType).toBe('positive');
@@ -173,7 +173,7 @@ describe('відповіді і фолоу-апи', () => {
     expect(state!.status).toBe('replied');
   });
 
-  it('відмова переводить у rejected_by_them, автовідповідь не міняє статус', async () => {
+  it('a rejection moves to rejected_by_them, an autoreply does not change the status', async () => {
     const db = getDb();
     const [sent] = await db
       .insert(outreach)
@@ -189,7 +189,7 @@ describe('відповіді і фолоу-апи', () => {
     expect(afterRejection!.status).toBe('rejected_by_them');
   });
 
-  it('фолоу-апи це ті, кому писали понад 7 днів тому без відповіді', async () => {
+  it('follow-ups are contacts written to more than 7 days ago with no reply', async () => {
     const db = getDb();
     await db
       .insert(outreach)
@@ -201,7 +201,7 @@ describe('відповіді і фолоу-апи', () => {
     expect(await followUps(30)).toHaveLength(0);
   });
 
-  it('воронка рахує показане, вирішене, написане і відповіді', async () => {
+  it('the funnel counts shown, decided, contacted and replies', async () => {
     const stats = await funnel();
     expect(stats.shown).toBeGreaterThan(0);
     expect(stats.decided).toBeGreaterThan(0);
@@ -210,9 +210,9 @@ describe('відповіді і фолоу-апи', () => {
   });
 });
 
-describe('зміна правил', () => {
-  it('картка, яка після перерахунку впала нижче порогу, зникає зі зрізу', async () => {
-    const fresh = (await upsertCompany({ name: 'Свіжа', domain: 'fresh.dev', source: 'test' })).company;
+describe('changing the rules', () => {
+  it('a card that fell below the threshold after a recalc disappears from the slice', async () => {
+    const fresh = (await upsertCompany({ name: 'Fresh', domain: 'fresh.dev', source: 'test' })).company;
     await addVacancy(fresh.id, 'Frontend Engineer', 14);
 
     const before = await getQueue('2026-09-10');
@@ -228,44 +228,45 @@ describe('зміна правил', () => {
 });
 
 describe('pendingCount', () => {
-  it('рахує тільки картки без рішення', async () => {
+  it('counts only cards without a decision', async () => {
     const items = await getDb().select().from(queueItems).where(eq(queueItems.day, DAY));
     const decided = items.filter((item) => item.decision !== null).length;
     expect(await pendingCount(DAY)).toBe(items.length - decided);
   });
 
-  it('сьогоднішній ключ це дата ISO', () => {
+  it('today\'s key is an ISO date', () => {
     expect(todayKey(new Date('2026-09-03T22:10:00Z'))).toBe('2026-09-03');
   });
 });
 
 /*
- * Блок навмисно останній у файлі: він створює нову компанію з вакансіями,
- * і ці записи потрапили б у чергу тестів вище, які перевіряють точний склад зрізу.
+ * This block is deliberately last in the file: it creates a new company with vacancies,
+ * and those records would land in the queue of the tests above, which check the slice's
+ * exact composition.
  */
 describe('topUpQueue', () => {
-  it('добирає картки до денного ліміту, не чіпаючи наявні', async () => {
+  it('tops up cards to the daily limit without touching the existing ones', async () => {
     const day = '2026-09-20';
     const before = await getQueue(day);
     const positionsBefore = before.map((card) => `${card.vacancyId}:${card.position}`);
 
-    // Своя компанія: у acme і other статуси вже змінені попередніми тестами,
-    // і їхні вакансії відсіювались би як приховані.
+    // Its own company: acme and other already had their statuses changed by earlier tests,
+    // and their vacancies would be filtered out as hidden.
     const fresh = (await upsertCompany({ name: 'Fresh Co', domain: 'freshco.dev', source: 'test' })).company;
-    for (let i = 0; i < 5; i += 1) await addVacancy(fresh.id, `Свіжа знахідка ${i}`, 11);
+    for (let i = 0; i < 5; i += 1) await addVacancy(fresh.id, `Fresh Find ${i}`, 11);
 
     const result = await topUpQueue(day);
     expect(result.added).toBeGreaterThan(0);
     expect(result.total).toBeLessThanOrEqual(config.pipeline.queueDailyLimit);
 
     const after = await getQueue(day);
-    // Наявні картки лишились на своїх місцях: зріз фіксований, це рішення зі STATUS.md.
+    // The existing cards stayed in their places: the slice is fixed, that is the decision from STATUS.md.
     expect(after.map((card) => `${card.vacancyId}:${card.position}`).slice(0, before.length)).toEqual(
       positionsBefore,
     );
   });
 
-  it('повний зріз не поповнюється: денний ліміт це ліміт', async () => {
+  it('a full slice does not get topped up: the daily limit is a limit', async () => {
     const day = '2026-09-21';
     await getQueue(day);
     await topUpQueue(day);
@@ -278,12 +279,12 @@ describe('topUpQueue', () => {
 });
 
 /*
- * Блок навмисно останній: він додає ще один запис "написав", а тести воронки
- * вище перевіряють точні числа.
+ * This block is deliberately last: it adds one more "contacted" record, and the funnel
+ * tests above check exact numbers.
  */
-describe('кому писали', () => {
-  it('"написав" зберігає, кому саме писали', async () => {
-    // Через рік у Контактах має бути видно людину, а не тільки компанію.
+describe('who was contacted', () => {
+  it('"contacted" remembers exactly who was written to', async () => {
+    // A year from now, Contacts should show a person, not just the company.
     const cards = await getQueue(LAST_DAY);
     const card = cards.find((c) => !c.decision)!;
     if (!card) return;
@@ -293,12 +294,12 @@ describe('кому писали', () => {
       action: 'contacted',
       channel: 'email',
       templateUsed: 'fullstack_ai',
-      contactName: 'Марія Технічна',
+      contactName: 'Maria Tech',
       contactEmail: 'maria@example.com',
     });
 
     const [row] = await listOutreach();
-    expect(row!.contactName).toBe('Марія Технічна');
+    expect(row!.contactName).toBe('Maria Tech');
     expect(row!.contactEmail).toBe('maria@example.com');
   });
 });

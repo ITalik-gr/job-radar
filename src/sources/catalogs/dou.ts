@@ -8,13 +8,13 @@ const SOURCE = 'dou';
 const BASE = 'https://jobs.dou.ua/companies/';
 
 /**
- * DOU віддає по 20 компаній на сторінку, а "більше компаній" це POST з CSRF-токеном.
- * Замість того, щоб імітувати сесію, обходимо перелік комбінацій фільтрів: кожна дає
- * свою першу сторінку, і разом вони покривають каталог без жодного трюку.
+ * DOU hands back 20 companies per page, and "more companies" is a POST with a CSRF
+ * token. Instead of simulating a session, we walk through a list of filter
+ * combinations: each gives its own first page, and together they cover the catalog with no trick at all.
  */
 /**
- * За замовчуванням шукаємо сервісні компанії і аутстаф: саме там потрібен підрядник.
- * Продуктові гіганти лишаються доступними явним --business "Tech Product".
+ * By default we look for service companies and outstaff: that's exactly where a
+ * contractor is needed. Product giants stay reachable through an explicit --business "Tech Product".
  */
 export const BUSINESS_TYPES = ['Service', 'Outstaffing', 'Startup'];
 export const ALL_BUSINESS_TYPES = [...BUSINESS_TYPES, 'Tech Product', 'R&D Center', 'Recruiting Agency'];
@@ -40,7 +40,7 @@ export function listUrl(filters: { business?: string; domain?: string; name?: st
 }
 
 export interface DouListItem extends RawCompany {
-  /** Сторінка компанії на DOU. Домен береться вже з неї. */
+  /** The company's page on DOU. The domain is taken from it. */
   profileUrl: string;
 }
 
@@ -79,9 +79,9 @@ export function parseList(html: string, tags: string[] = []): DouListItem[] {
 const CAREERS_PATH = /(career|jobs|vacanc|join)/i;
 
 /**
- * Домен, розмір і місто живуть на сторінці компанії, а не в картці переліку.
- * Розмір DOU пише кількома способами: "200...800 спеціалістів", "понад 1500 спеціалістів",
- * "51-200 співробітників". Один регексп на всі три, інакше поле буде порожнім у більшості.
+ * The domain, size and city live on the company page, not in the listing card. DOU
+ * writes the size in several ways: "200...800 спеціалістів", "понад 1500 спеціалістів",
+ * "51-200 співробітників". One regex covers all three, otherwise the field would be empty most of the time.
  */
 export function parseProfile(html: string): {
   domain: string | null;
@@ -98,13 +98,13 @@ export function parseProfile(html: string): {
       text,
     );
 
-  // DOU часто дає посилання одразу на сторінку вакансій компанії, це готовий careers_url.
+  // DOU often links straight to the company's vacancy page, which is a ready-made careers_url.
   const careersUrl =
     siteHref && CAREERS_PATH.test(new URL(siteHref, 'https://example.com').pathname)
       ? normalizeUrl(siteHref.startsWith('http') ? siteHref : `https://${siteHref}`)
       : null;
 
-  // В офісах перелічені всі міста разом із країнами, для картки досить першого.
+  // The offices list every city together with its country, the first is enough for the card.
   const offices = clean($('.offices').first().text());
   const city = offices.split(',')[0]?.replace(/\s*офіс$/i, '').trim() || null;
 
@@ -121,9 +121,9 @@ import type { CatalogSource } from '../registry.js';
 export interface FetchCatalogOptions {
   business?: string[];
   domains?: string[];
-  /** Скільки компаній максимум зібрати. Профілі тягнуться по одному на секунду. */
+  /** The maximum number of companies to collect. Profiles are fetched one per second. */
   limit?: number;
-  /** Не ходити на сторінки компаній, лишити домен null. */
+  /** Don't visit company pages, leave the domain null. */
   skipProfiles?: boolean;
 }
 
@@ -148,7 +148,7 @@ export async function fetchCatalog(options: FetchCatalogOptions = {}): Promise<R
           }
         }
       } catch (error) {
-        log.warn({ url, err: String(error) }, 'не вдалось прочитати сторінку каталогу DOU');
+        log.warn({ url, err: String(error) }, 'failed to read a DOU catalog page');
       }
     }
   }
@@ -165,7 +165,7 @@ export async function fetchCatalog(options: FetchCatalogOptions = {}): Promise<R
       item.city = profile.city ?? item.city;
       item.careersUrl = profile.careersUrl;
     } catch (error) {
-      log.warn({ url: item.profileUrl, err: String(error) }, 'не вдалось прочитати сторінку компанії DOU');
+      log.warn({ url: item.profileUrl, err: String(error) }, 'failed to read a DOU company page');
     }
   }
 

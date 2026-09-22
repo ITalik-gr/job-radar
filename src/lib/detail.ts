@@ -1,26 +1,28 @@
 /**
- * Перевірка, чи довантажена сторінка вакансії справді містить опис.
+ * Checks whether a loaded vacancy page actually contains a description.
  *
- * Половина бордів це SPA: у HTML лежить лише навігація, а текст вакансії
- * підвантажує JS. Без цієї перевірки радар зберігав як опис вакансії список
- * пунктів меню ("startups, corporations, communities, investors"), і далі цей
- * текст ішов у модель, коштував токенів і давав безглузду класифікацію.
+ * Half of the boards are SPAs: the HTML holds only navigation, and JS loads the
+ * vacancy text. Without this check the radar used to save a menu item list
+ * ("startups, corporations, communities, investors") as the vacancy description,
+ * and that text then went to the model, cost tokens, and produced a meaningless
+ * classification.
  *
- * Перевірка структурна, а не за словами: рахуємо, скільки в тексті звʼязної
- * прози. Меню з коротких рядків її не має за будь-якою мовою і будь-яким
- * дизайном, а опис вакансії має завжди.
+ * The check is structural, not word-based: it counts how much connected prose is in
+ * the text. A menu of short lines has none of it in any language or design, while a
+ * vacancy description always does.
  */
 
 /**
- * Опис вакансії з `__NEXT_DATA__`.
+ * Vacancy text from `__NEXT_DATA__`.
  *
- * Борди на Getro (Techstars, Underscore і решта мереж) це Next.js: у розмітці
- * лежить хедер і футер мережі на 70 тисяч символів, а сам опис вакансії тільки
- * у вбудованому JSON. Через це радар зберігав як текст вакансії пункти меню
- * "startups, corporations, communities" і платив за їх класифікацію.
+ * Boards on Getro (Techstars, Underscore, and the rest of the networks) are Next.js:
+ * the markup holds the network's header and footer, 70 thousand characters of it,
+ * while the vacancy description itself is only in the embedded JSON. Because of this
+ * the radar used to save the menu items "startups, corporations, communities" as the
+ * vacancy text and paid to classify them.
  *
- * Шукаємо не за фіксованим шляхом, а обходом: структура сторінки в них уже
- * мінялась, а поле `description` всередині обʼєкта вакансії лишалось.
+ * The search is not by a fixed path but by traversal: the page structure has already
+ * changed on them, while the `description` field inside the vacancy object stayed.
  */
 export function jobTextFromNextData(html: string): string | null {
   const match = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(html);
@@ -47,7 +49,7 @@ interface JobLike {
   description?: string;
 }
 
-/** Обʼєкт вакансії це той, у якого є довгий `description`. */
+/** A vacancy object is one that has a long `description`. */
 function findJob(node: unknown, depth = 0): JobLike | null {
   if (depth > 8 || node === null || typeof node !== 'object') return null;
 
@@ -72,7 +74,7 @@ function findJob(node: unknown, depth = 0): JobLike | null {
   return null;
 }
 
-/** Рядок вважається прозою, якщо він схожий на речення, а не на пункт меню. */
+/** A line counts as prose if it looks like a sentence, not a menu item. */
 function isProse(line: string): boolean {
   const clean = line.replace(/^[-•*\s]+/, '').trim();
   if (clean.length < 40) return false;
@@ -88,12 +90,13 @@ export function proseChars(text: string): number {
 }
 
 /**
- * Мінімум прози, після якого текст вважається описом. Одне справжнє речення.
+ * The minimum prose above which text counts as a description. One real sentence.
  *
- * Поріг навмисно низький. Він ловить рівно один випадок: сторінку, де немає
- * нічого, крім меню і кнопок. Відсіювати за обсягом марно, бо лендінг мережі
- * з маркетинговими абзацами набирає прози більше, ніж коротка вакансія, і саме
- * тому опис береться з `__NEXT_DATA__`, а не вгадується за виглядом тексту.
+ * The threshold is deliberately low. It catches exactly one case: a page with
+ * nothing but menus and buttons. Filtering by volume is pointless, because a
+ * network's landing page with marketing paragraphs racks up more prose than a short
+ * vacancy, which is exactly why the description is taken from `__NEXT_DATA__` rather
+ * than guessed from how the text looks.
  */
 export const MIN_PROSE_CHARS = 60;
 

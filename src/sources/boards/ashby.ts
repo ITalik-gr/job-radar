@@ -62,7 +62,7 @@ export const ashby: BoardSource = {
   parse,
   async fetch(ctx: SourceContext) {
     const slug = ctx.slug ?? ctx.company?.careersSlug;
-    if (!slug) throw new Error('ashby: потрібен slug дошки');
+    if (!slug) throw new Error('ashby: board slug required');
     const res = await fetchText(boardUrl(slug));
     return parse(res.body, ctx);
   },

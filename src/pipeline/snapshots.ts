@@ -10,9 +10,9 @@ export interface SaveSnapshotResult {
   snapshot: Snapshot;
   page: NormalizedPage;
   diff: BlockDiff;
-  /** true, коли попереднього знімка ще не було. Тоді "нові" блоки це просто перший обхід. */
+  /** true when there was no previous snapshot yet. Then "new" blocks are just the first pass. */
   first: boolean;
-  /** Хеш сторінки змінився, хоча набір блоків той самий: шум у нормалізації. */
+  /** The page hash changed even though the set of blocks is the same: noise in normalization. */
   noiseOnly: boolean;
 }
 
@@ -27,7 +27,7 @@ export async function lastSnapshot(companyId: number, url: string): Promise<Snap
   return row;
 }
 
-/** Лишаємо тільки останні N знімків на компанію, старіші чистяться. */
+/** Keeps only the last N snapshots per company, older ones are cleaned up. */
 export async function pruneSnapshots(companyId: number, keep = config.pipeline.snapshotsPerCompany) {
   const db = getDb();
   const rows = await db
@@ -56,7 +56,7 @@ export async function saveSnapshot(
   if (noiseOnly) {
     log.warn(
       { companyId, url },
-      'хеш сторінки змінився, а набір блоків ні: нормалізація пропускає шум',
+      'page hash changed but the set of blocks did not: normalization is skipping noise',
     );
   }
 

@@ -5,20 +5,20 @@ import { log } from '../../lib/log.js';
 import type { BoardSource, RawVacancy } from '../registry.js';
 
 /**
- * DOU як борд вакансій, а не як каталог компаній. Найкоротший шлях до українського
- * ринку, і головне, до вилок: ATS-джерела вилку майже ніколи не показують.
+ * DOU as a vacancy board, not as a company catalog. The shortest path to the
+ * Ukrainian market, and most importantly to salary ranges: ATS sources almost never show them.
  *
- * robots.txt дозволяє `/vacancies/`, заборони там стосуються тільки Yandex і
- * службових ajax-шляхів. Сторінка віддається сервером, тому браузер не потрібен.
+ * robots.txt allows `/vacancies/`, the disallows there only concern Yandex and
+ * internal ajax paths. The page is served by the server, so no browser is needed.
  */
 
-/** Категорії DOU. У конфізі, щоб додати нову без правки коду. */
+/** DOU categories. In config, so a new one can be added without touching code. */
 export const DOU_CATEGORIES = ['Front End', 'Node.js', 'Fullstack'];
 
 const COMPANY_URL = /jobs\.dou\.ua\/companies\/([a-z0-9._-]+)\//i;
 
 export interface DouVacancy extends RawVacancy {
-  /** Slug компанії на DOU. Потрібен, щоб доважити домен окремим запитом. */
+  /** The company's slug on DOU. Needed to attach the domain with a separate request. */
   companySlug: string | null;
 }
 
@@ -33,7 +33,7 @@ export function parseDou(html: string): DouVacancy[] {
     const title = link.text().trim();
     if (!url || !title) return;
 
-    // Назва компанії стоїть у тому самому вузлі, що й favicon, тому беремо саме текст.
+    // The company name sits in the same node as the favicon, so only the text is taken.
     const companyName = card.find('a.company').first().text().trim() || null;
     const companySlug = COMPANY_URL.exec(card.find('a.company').first().attr('href') ?? '')?.[1] ?? null;
     const location = card.find('.cities').text().trim() || null;
@@ -47,12 +47,12 @@ export function parseDou(html: string): DouVacancy[] {
       externalId,
       url,
       title,
-      // Вилка йде в текст: скоринг і модель читають саме його, окремого поля тут немає.
+      // The salary range goes into the text: scoring and the model read exactly that, there's no separate field here.
       rawText: [title, salary, location, description].filter(Boolean).join('\n'),
       companyName,
       companyDomain: null,
       location,
-      // "віддалено" це і є ознака віддаленої роботи українською.
+      // "віддалено" is Ukrainian for "remote", the sign of remote work.
       remote: location ? /віддален|remote/i.test(location) : null,
       postedAt: null,
       companySlug,
@@ -63,9 +63,9 @@ export function parseDou(html: string): DouVacancy[] {
 }
 
 /**
- * Домен компанії на сторінці списку не показується, а без нього вакансія не
- * привʼязується до картки компанії і не зливається з тією самою вакансією з ATS.
- * Сторінка компанії на DOU містить посилання на сайт, тому один запит на компанію.
+ * The company domain isn't shown on the listing page, and without it a vacancy can't
+ * be linked to a company card or merged with the same vacancy coming from an ATS. A
+ * company's page on DOU has a link to its site, so it's one request per company.
  */
 async function resolveDomain(slug: string, cache: Map<string, string | null>): Promise<string | null> {
   if (cache.has(slug)) return cache.get(slug)!;
@@ -99,9 +99,9 @@ async function resolveDomain(slug: string, cache: Map<string, string | null>): P
 }
 
 /*
- * Ідентифікатор навмисно не 'dou': під цим іменем уже зареєстрований каталог
- * компаній `src/sources/catalogs/dou.ts`, і два джерела з одним id зіткнулись би
- * у реєстрі і в таблиці `runs`.
+ * The identifier is deliberately not 'dou': that name is already taken by the
+ * company catalog `src/sources/catalogs/dou.ts`, and two sources with the same id
+ * would collide in the registry and in the `runs` table.
  */
 export const douBoard: BoardSource = {
   id: 'dou:vacancies',
@@ -124,7 +124,7 @@ export const douBoard: BoardSource = {
           if (!all.has(vacancy.url)) all.set(vacancy.url, vacancy);
         }
       } catch (error) {
-        log.warn({ category, err: String(error) }, 'dou: категорія не завантажилась');
+        log.warn({ category, err: String(error) }, 'dou: category failed to load');
       }
     }
 

@@ -4,10 +4,11 @@ import { config } from '../config.js';
 import { authUrl, exchangeCode, redirectUri, type StoredToken } from '../lib/gmail.js';
 
 /**
- * Desktop OAuth flow: локальний сервер ловить `code` з редіректу браузера.
+ * Desktop OAuth flow: a local server catches the `code` from the browser redirect.
  *
- * Копіювати код руками з адресного рядка теж працює, але помиляєшся в ньому раз
- * із трьох, а помилка виглядає як "invalid_grant" без пояснень. Тому сервер.
+ * Copying the code by hand from the address bar also works, but you mistype it one
+ * time in three, and the error looks like "invalid_grant" with no explanation.
+ * Hence the server.
  */
 
 const PAGE = (title: string, note: string) =>
@@ -20,7 +21,7 @@ function openBrowser(url: string): void {
   try {
     spawn(command, [url], { detached: true, stdio: 'ignore' }).unref();
   } catch {
-    // Браузер не відкрився, посилання вже надруковане в консолі, цього досить.
+    // The browser did not open, the link is already printed in the console, that is enough.
   }
 }
 
@@ -40,21 +41,21 @@ export async function authorize(timeoutMs = 180_000): Promise<StoredToken> {
 
       if (error || !code) {
         response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
-        response.end(PAGE('Не вийшло', `Google повернув: ${error ?? 'порожній код'}`));
+        response.end(PAGE('Failed', `Google returned: ${error ?? 'empty code'}`));
         server.close();
-        reject(new Error(`Gmail OAuth: ${error ?? 'порожній код'}`));
+        reject(new Error(`Gmail OAuth: ${error ?? 'empty code'}`));
         return;
       }
 
       try {
         const token = await exchangeCode(code);
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        response.end(PAGE('Gmail підключено', `Акаунт: ${token.email ?? 'невідомий'}. Вкладку можна закрити.`));
+        response.end(PAGE('Gmail connected', `Account: ${token.email ?? 'unknown'}. You can close this tab.`));
         server.close();
         resolve(token);
       } catch (failure) {
         response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
-        response.end(PAGE('Не вийшло', String(failure)));
+        response.end(PAGE('Failed', String(failure)));
         server.close();
         reject(failure instanceof Error ? failure : new Error(String(failure)));
       }
@@ -62,14 +63,14 @@ export async function authorize(timeoutMs = 180_000): Promise<StoredToken> {
 
     const timer = setTimeout(() => {
       server.close();
-      reject(new Error('час на підтвердження вийшов, повторити: pnpm cli auth:gmail'));
+      reject(new Error('confirmation timed out, retry: pnpm cli auth:gmail'));
     }, timeoutMs);
     timer.unref();
 
     server.on('close', () => clearTimeout(timer));
     server.listen(config.gmail.authPort, '127.0.0.1', () => {
-      console.log(`redirect_uri для консолі Google: ${redirectUri()}`);
-      console.log('відкриваю браузер, якщо не відкрився, посилання нижче:');
+      console.log(`redirect_uri for the Google console: ${redirectUri()}`);
+      console.log('opening the browser, if it did not open, the link is below:');
       console.log(url);
       openBrowser(url);
     });

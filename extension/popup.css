@@ -1,4 +1,4 @@
-/* Ті самі токени, що в theme.ts веб-застосунку. */
+/* The same tokens as in the web app's theme.ts. */
 :root {
   color-scheme: light;
 
@@ -45,7 +45,7 @@ body {
   border-radius: 4px;
 }
 
-/* ---------- шапка ---------- */
+/* ---------- header ---------- */
 
 .bar {
   display: flex;
@@ -73,7 +73,7 @@ body {
   color: var(--ink-2);
 }
 
-/* Крапка стану завжди йде з текстом: колір сам по собі нічого не значить. */
+/* The status dot always comes with text: the color alone means nothing. */
 .dot {
   width: 7px;
   height: 7px;
@@ -97,7 +97,7 @@ main {
   padding: 16px;
 }
 
-/* ---------- картки ---------- */
+/* ---------- cards ---------- */
 
 .card {
   background: var(--surface);
@@ -142,14 +142,14 @@ main {
   color: var(--ink-3);
 }
 
-/* Три числа в рядок: сканується одним поглядом, без читання підписів. */
+/* Three numbers in a row: scanned in one glance, without reading the labels. */
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
-/* Стан наступної сторінки це не число, тому він живе в рядку-примітці, а не серед метрик. */
+/* The next-page state is not a number, so it lives in a note line, not among the metrics. */
 .metrics.two {
   grid-template-columns: repeat(2, 1fr);
 }
@@ -187,7 +187,7 @@ main {
   color: var(--bad-ink);
 }
 
-/* ---------- кнопки ---------- */
+/* ---------- buttons ---------- */
 
 .actions {
   display: grid;
@@ -238,7 +238,7 @@ main {
   width: 100%;
 }
 
-/* ---------- згортайки ---------- */
+/* ---------- collapsibles ---------- */
 
 details {
   background: var(--surface);
@@ -280,7 +280,7 @@ details[open] summary {
   border-bottom: 1px solid var(--line);
 }
 
-/* ---------- посилання на каталоги ---------- */
+/* ---------- catalog links ---------- */
 
 .links {
   padding: 8px;
@@ -307,7 +307,7 @@ details[open] summary {
   color: var(--brand-ink);
 }
 
-/* ---------- налаштування ---------- */
+/* ---------- settings ---------- */
 
 .settings {
   display: flex;
@@ -333,7 +333,7 @@ details[open] summary {
   color: var(--ink-3);
 }
 
-/* Підсумок обходу з нулями має бути видно одразу, а не читатись як звичайний хінт. */
+/* A walk summary with zeros must be visible immediately, not read as an ordinary hint. */
 .hint[data-tone='warn'] {
   color: var(--warn-ink);
 }

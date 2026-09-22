@@ -1,9 +1,10 @@
 /**
- * Збирає сторінку каталогу і, за бажанням, сам гортає пагінацію.
+ * Collects a catalog page and, if asked, pages through pagination itself.
  *
- * Межі, узгоджені в CLAUDE.md, правило 4: сторінки відкриває справжній браузер власника,
- * пауза між переходами не менша за 3 секунди, ліміт сторінок за прохід. Ніяких CAPTCHA,
- * ніяких підроблених сесій. Якщо каталог показав челендж, обхід зупиняється.
+ * Limits agreed in CLAUDE.md, rule 4: pages are opened by the owner's real browser,
+ * the pause between navigations is never less than 3 seconds, and there is a page
+ * limit per pass. No CAPTCHA solving, no forged sessions. If the catalog shows a
+ * challenge, the walk stops.
  */
 (() => {
   const DEFAULTS = { autoCollect: true, minDelay: 4000, maxDelay: 9000, maxPages: 25 };
@@ -24,12 +25,13 @@
     return /just a moment|verify you are human|enable javascript and cookies|перевір/i.test(text);
   }
 
-  // ---------- панель ----------
+  // ---------- panel ----------
 
   /*
-   * Панель на сторінці каталогу. Стилі живуть в одному <style>, а не в атрибутах
-   * кожного вузла: інакше кожен перемальовок переписує двадцять inline-правил
-   * і панель неможливо правити. Класи з префіксом jr- щоб не зачепити стилі сайту.
+   * The panel on the catalog page. Styles live in one <style> tag, not in attributes
+   * on every node: otherwise every repaint rewrites twenty inline rules and the panel
+   * becomes unmaintainable. Classes get the jr- prefix so they do not clash with the
+   * site's own styles.
    */
   const PANEL_CSS = `
     #job-radar-panel {
@@ -142,7 +144,7 @@
 
     node.textContent = '';
 
-    // Згорнутий стан це один рядок: панель не мусить закривати картки каталогу.
+    // The collapsed state is one line: the panel must not cover the catalog's own cards.
     if (!STATE.panelOpen) {
       node.className = 'jr-collapsed';
       const open = document.createElement('button');
@@ -164,7 +166,7 @@
     head.className = 'jr-head';
     head.innerHTML = `
       <span class="jr-title"><i class="jr-dot" data-tone="${tone}"></i>Job Radar</span>
-      <button class="jr-hide" type="button">згорнути</button>
+      <button class="jr-hide" type="button">collapse</button>
     `;
     head.querySelector('.jr-hide').onclick = () => {
       STATE.panelOpen = false;
@@ -177,14 +179,14 @@
 
     const site = document.createElement('div');
     site.className = 'jr-site';
-    site.textContent = (result?.site ?? location.hostname) + (result && !result.known ? ', незнайомий' : '');
+    site.textContent = (result?.site ?? location.hostname) + (result && !result.known ? ', unknown' : '');
     body.appendChild(site);
 
     const metrics = document.createElement('div');
     metrics.className = 'jr-metrics';
     metrics.innerHTML = `
-      <div><b>${result?.total ?? 0}</b><span>карток на сторінці</span></div>
-      <div><b>${result?.withDomain ?? 0}</b><span>з доменом</span></div>
+      <div><b>${result?.total ?? 0}</b><span>cards on page</span></div>
+      <div><b>${result?.withDomain ?? 0}</b><span>with domain</span></div>
     `;
     body.appendChild(metrics);
 
@@ -192,9 +194,9 @@
     line.className = 'jr-status';
     if (status.tone) line.dataset.tone = status.tone;
     line.textContent = walk
-      ? `автообхід: сторінка ${walk.page} з ${STATE.settings.maxPages}, зібрано ${walk.created}`
+      ? `auto-walk: page ${walk.page} of ${STATE.settings.maxPages}, collected ${walk.created}`
       : (status.text ??
-        (result ? `нових ${result.created}, оновлено ${result.updated}` : 'чекаю на завантаження'));
+        (result ? `new ${result.created}, updated ${result.updated}` : 'waiting for page load'));
     body.appendChild(line);
 
     if (walk && status.text) {
@@ -215,21 +217,21 @@
     const collectButton = document.createElement('button');
     collectButton.type = 'button';
     collectButton.className = 'jr-btn';
-    collectButton.textContent = 'Зібрати';
+    collectButton.textContent = 'Collect';
     collectButton.onclick = () => collect(true);
     actions.appendChild(collectButton);
 
     const walkButton = document.createElement('button');
     walkButton.type = 'button';
     walkButton.className = `jr-btn ${walk ? 'jr-stop' : 'jr-primary'}`;
-    walkButton.textContent = walk ? 'Стоп' : 'Автообхід';
-    walkButton.onclick = () => (STATE.walk ? stopWalk('зупинено вручну') : startWalk());
+    walkButton.textContent = walk ? 'Stop' : 'Auto-walk';
+    walkButton.onclick = () => (STATE.walk ? stopWalk('stopped manually') : startWalk());
     actions.appendChild(walkButton);
 
     node.appendChild(actions);
   }
 
-  // ---------- збір ----------
+  // ---------- collecting ----------
 
   async function collect(manual = false) {
     if (STATE.busy) return null;
@@ -248,7 +250,7 @@
     };
 
     if (parsed.items.length === 0) {
-      render({ text: challengeShown() ? 'сторінка показує перевірку, збір пропущено' : 'карток не видно', tone: 'warn' });
+      render({ text: challengeShown() ? 'page shows a verification challenge, skipping collection' : 'no cards visible', tone: 'warn' });
       return null;
     }
 
@@ -260,7 +262,7 @@
     STATE.lastSignature = signature;
 
     STATE.busy = true;
-    render({ text: 'надсилаю' });
+    render({ text: 'sending' });
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -269,7 +271,7 @@
       });
 
       if (!response?.ok) {
-        render({ text: `${response?.error ?? 'сервер недоступний'}`, tone: 'bad' });
+        render({ text: `${response?.error ?? 'server unreachable'}`, tone: 'bad' });
         return null;
       }
 
@@ -282,12 +284,13 @@
     }
   }
 
-  // ---------- автообхід ----------
+  // ---------- auto-walk ----------
 
   /*
-   * Стан обходу зберігає service worker. Прямий доступ до chrome.storage.session
-   * зі сторінки заборонений браузером (untrusted context), і саме на цьому
-   * автообхід падав з "Access to storage is not allowed from this context".
+   * The service worker holds the walk state. Direct access to chrome.storage.session
+   * from the page is forbidden by the browser (untrusted context), and that is
+   * exactly why auto-walk used to fail with "Access to storage is not allowed from
+   * this context".
    */
   async function readWalk() {
     const response = await chrome.runtime.sendMessage({ type: 'radar:walk-get' });
@@ -308,7 +311,7 @@
 
     STATE.walk = { page: 1, created: 0, startedAt: Date.now() };
     await writeWalk(STATE.walk);
-    render({ text: 'автообхід запущено' });
+    render({ text: 'auto-walk started' });
     void step();
   }
 
@@ -327,16 +330,16 @@
       await writeWalk(STATE.walk);
     }
 
-    if (challengeShown()) return stopWalk('сайт показав перевірку, зупиняюсь');
-    if (STATE.walk.page >= STATE.settings.maxPages) return stopWalk(`ліміт ${STATE.settings.maxPages} сторінок`);
+    if (challengeShown()) return stopWalk('site showed a verification challenge, stopping');
+    if (STATE.walk.page >= STATE.settings.maxPages) return stopWalk(`limit of ${STATE.settings.maxPages} pages reached`);
 
     const next = result?.nextPage ?? window.JobRadarParsers.parse().nextPage;
-    if (!next) return stopWalk('сторінки закінчились');
+    if (!next) return stopWalk('no more pages');
 
-    // Пауза між сторінками навмисна: гортаємо не швидше за людину.
+    // The pause between pages is deliberate: we page through no faster than a human would.
     const delay =
       STATE.settings.minDelay + Math.random() * Math.max(0, STATE.settings.maxDelay - STATE.settings.minDelay);
-    render({ text: `наступна сторінка через ${Math.round(delay / 1000)} с` });
+    render({ text: `next page in ${Math.round(delay / 1000)} s` });
     await sleep(delay);
     if (!STATE.walk) return;
 
@@ -345,7 +348,7 @@
     location.href = next;
   }
 
-  // ---------- старт ----------
+  // ---------- start ----------
 
   let debounce = null;
   const observer = new MutationObserver(() => {
@@ -360,7 +363,7 @@
     STATE.walk = await readWalk();
     const walk = STATE.walk;
 
-    render({ text: 'читаю сторінку' });
+    render({ text: 'reading page' });
 
     if (STATE.settings.autoCollect || walk) {
       await sleep(900);
@@ -389,7 +392,7 @@
       return true;
     }
     if (message.type === 'radar:walk') {
-      (message.enabled ? startWalk() : stopWalk('зупинено з попапа')).then(() => sendResponse({ ok: true }));
+      (message.enabled ? startWalk() : stopWalk('stopped from the popup')).then(() => sendResponse({ ok: true }));
       return true;
     }
     if (message.type === 'radar:settings') {

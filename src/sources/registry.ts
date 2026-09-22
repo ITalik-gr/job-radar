@@ -2,7 +2,7 @@ import type { Company } from '../db/schema.js';
 
 export type SourceKind = 'catalog' | 'board';
 
-/** Сира вакансія від адаптера, ще без класифікації і скорингу. */
+/** A raw vacancy from an adapter, not yet classified or scored. */
 export interface RawVacancy {
   source: string;
   externalId: string | null;
@@ -16,7 +16,7 @@ export interface RawVacancy {
   postedAt: number | null;
 }
 
-/** Сира компанія від каталогу. */
+/** A raw company from a catalog. */
 export interface RawCompany {
   source: string;
   name: string;
@@ -28,15 +28,15 @@ export interface RawCompany {
   sourceUrl: string | null;
   tags: string[];
   description: string | null;
-  /** Скільки вакансій каталог показує в картці. Підказка, а не факт. */
+  /** How many vacancies the catalog shows on the card. A hint, not a fact. */
   openVacancies: number | null;
-  /** Репутація в каталозі. Порожнє означає, що каталог її не показав. */
+  /** Reputation in the catalog. Empty means the catalog didn't show it. */
   rating?: number | null;
   reviewsCount?: number | null;
   minProject?: string | null;
   hourlyRate?: string | null;
   foundedYear?: number | null;
-  /** Усе інше, що каталог показав: нагороди, мови, галузі, перевірений профіль. */
+  /** Everything else the catalog showed: awards, languages, industries, verified profile. */
   extra?: Record<string, string>;
 }
 
@@ -48,12 +48,12 @@ export interface SourceContext {
 export interface BoardSource {
   id: string;
   kind: 'board';
-  /** Джерелу потрібна компанія зі slug ATS. Без неї запускати нема сенсу. */
+  /** The source needs a company with an ATS slug. There's no point running it without one. */
   requiresSlug?: boolean;
-  /** true означає, що сторінка без JS порожня і потрібен playwright. */
+  /** true means the page is empty without JS and playwright is needed. */
   needsBrowser?: boolean;
   fetch(ctx: SourceContext): Promise<RawVacancy[]>;
-  /** Розбір збереженої фікстури, використовується у smoke-тестах. */
+  /** Parses a saved fixture, used in smoke tests. */
   parse(payload: string, ctx?: SourceContext): RawVacancy[];
 }
 
@@ -70,7 +70,7 @@ export type Source = BoardSource | CatalogSource;
 const sources = new Map<string, Source>();
 
 export function registerSource(source: Source): void {
-  if (sources.has(source.id)) throw new Error(`джерело ${source.id} вже зареєстроване`);
+  if (sources.has(source.id)) throw new Error(`source ${source.id} is already registered`);
   sources.set(source.id, source);
 }
 

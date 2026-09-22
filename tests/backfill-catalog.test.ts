@@ -12,7 +12,7 @@ beforeAll(() => {
 });
 
 describe('backfillCatalogFields', () => {
-  it('переносить ставку і мінімальний проєкт з тегів у колонки і чистить теги', async () => {
+  it('moves the rate and minimum project from tags into columns and cleans the tags', async () => {
     await upsertCompany({
       name: 'Old Studio',
       domain: 'old.com',
@@ -29,11 +29,11 @@ describe('backfillCatalogFields', () => {
     expect(company.hourlyRate).toBe('$50 - $99 / hr');
     expect(company.minProject).toBe('$10,000+');
     expect(company.foundedYear).toBe(2015);
-    // У тегах лишаються тільки послуги, бо решта переїхала в колонки.
+    // Only services stay in the tags, the rest moved into columns.
     expect(company.tags).toEqual(['Web Development']);
   });
 
-  it('не чіпає вже заповнені колонки і не вигадує даних з порожніх тегів', async () => {
+  it('does not touch already filled columns and does not invent data from empty tags', async () => {
     await upsertCompany({
       name: 'Fresh',
       domain: 'fresh.com',
@@ -48,14 +48,14 @@ describe('backfillCatalogFields', () => {
     const { company: fresh } = await upsertCompany({ name: 'Fresh', domain: 'fresh.com', source: 'goodfirms' });
     const { company: bare } = await upsertCompany({ name: 'Bare', domain: 'bare.com', source: 'csv' });
 
-    // Свіжий збір точніший за тег, який лежить роками, тому колонка виграє.
+    // A fresh crawl is more accurate than a tag that has sat there for years, so the column wins.
     expect(fresh.hourlyRate).toBe('$100 - $149 / hr');
     expect(bare.hourlyRate).toBeNull();
     expect(bare.minProject).toBeNull();
     expect(bare.tags).toEqual(['Design']);
   });
 
-  it('повторний запуск нічого не міняє', async () => {
+  it('running it again changes nothing', async () => {
     const second = await backfillCatalogFields();
     expect(second.rate).toBe(0);
     expect(second.tagsRemoved).toBe(0);
@@ -63,14 +63,14 @@ describe('backfillCatalogFields', () => {
 });
 
 describe('cleanTags', () => {
-  it('знімає частку діаграми з назви послуги і зводить дублі', () => {
+  it('strips the chart percentage from a service name and merges duplicates', () => {
     expect(cleanTags(['25% Web Development', 'Web development', 'UX/UI Design'])).toEqual([
       'Web Development',
       'UX/UI Design',
     ]);
   });
 
-  it('прибирає підписи діаграм, оцінки і кнопки, які тегами не є', () => {
+  it('removes chart captions, ratings and buttons that are not tags', () => {
     const tags = cleanTags([
       'Allocation of expertise by %',
       'Was this helpful?',
@@ -86,7 +86,7 @@ describe('cleanTags', () => {
     expect(tags).toEqual(['Mobile App Development']);
   });
 
-  it('нічого не вигадує з порожнього списку', () => {
+  it('invents nothing from an empty list', () => {
     expect(cleanTags([])).toEqual([]);
   });
 });

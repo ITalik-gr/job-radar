@@ -1,108 +1,116 @@
 # Job Radar Collector
 
-Розширення Chrome, яке збирає компанії з каталогів агенцій у локальний Job Radar.
+A Chrome extension that collects companies from agency catalogs into your local Job Radar.
 
-## Встановлення, одна хвилина
+## Installation, one minute
 
-1. Відкрити `chrome://extensions`
-2. Увімкнути **Режим розробника** (перемикач угорі праворуч)
-3. Натиснути **Завантажити розпаковане**
-4. Вибрати теку `extension` з цього проєкту
-5. Готово, значок зʼявиться на панелі. Можна закріпити його кнопкою пазла
+1. Open `chrome://extensions`
+2. Turn on **Developer mode** (toggle in the top right)
+3. Click **Load unpacked**
+4. Pick the `extension` folder from this project
+5. Done, the icon appears on the toolbar. You can pin it with the puzzle-piece button
 
-Оновлення після змін у коді: та сама сторінка `chrome://extensions`, кнопка перезавантаження
-на картці розширення.
+Updating after code changes: same `chrome://extensions` page, reload button on the
+extension's card.
 
-## Як користуватись
+## How to use it
 
-1. **Перший запуск:** відкрий попап і впиши адресу свого радара. Поки поле порожнє,
-   збір вимкнений: розширенню нема куди слати дані, і краще воно скаже це вголос,
-   ніж мовчки відправить кудись не туди
-2. Радар має бути запущений: локально `pnpm start`, або твій воркер на Cloudflare
-3. Відкрити каталог: Clutch, GoodFirms, DesignRush, Sortlist, The Manifest, UpCity,
+1. **First run:** open the popup and fill in your radar's address. As long as the
+   field is empty, collecting is disabled: the extension has nowhere to send data,
+   and it is better for it to say so out loud than to silently send it somewhere
+   wrong
+2. The radar must be running: locally `pnpm start`, or your worker on Cloudflare
+3. Open a catalog: Clutch, GoodFirms, DesignRush, Sortlist, The Manifest, UpCity,
    TechBehemoths, Awwwards, Wadline
-4. Гортати сторінки як завжди
+4. Browse pages as usual
 
-Кожна відкрита сторінка збирається сама, унизу праворуч зʼявляється плашка:
+Every opened page collects itself, a badge appears in the bottom right corner:
 
 ```
-● Job Radar                 згорнути
+● Job Radar                 collapse
 clutch.co
-73 карток на сторінці   66 з доменом
-нових 12, оновлено 61
-[ Зібрати ]        [ Автообхід ]
+73 cards on the page   66 with a domain
+12 new, 61 updated
+[ Collect ]        [ Auto-walk ]
 ```
 
-У попапі видно стан сервера, що розпізналось на поточній сторінці і скільки зібрано за добу.
-Автозбір можна вимкнути перемикачем, тоді працює кнопка "Зібрати цю сторінку".
+The popup shows server status, what was recognized on the current page, and how
+much has been collected today. Auto-collect can be turned off with a toggle, and
+then the "Collect this page" button works instead.
 
-## Автообхід пагінації
+## Auto-walking pagination
 
-Кнопка **Автообхід** на панелі або в попапі гортає каталог сама: збирає сторінку,
-чекає паузу, переходить на наступну. Зупиняється, коли скінчились сторінки, вичерпано
-ліміт або сайт показав перевірку.
+The **Auto-walk** button on the panel or in the popup browses the catalog on its
+own: collects the page, waits a pause, moves to the next one. Stops when pages run
+out, the limit is exhausted, or the site shows a challenge.
 
-Налаштування в попапі: пауза (за замовчуванням 4 до 9 секунд, випадкова) і ліміт сторінок
-за прохід (25). Межі з `CLAUDE.md`, правило 4: пауза не менша за 3 секунди, не більше
-50 сторінок за прохід, ніяких CAPTCHA і підроблених сесій. Якщо сайт показав челендж,
-обхід зупиняється сам.
+Settings in the popup: the pause (default 4 to 9 seconds, randomized) and the page
+limit per pass (25). Limits from `CLAUDE.md`, rule 4: pause no shorter than 3
+seconds, no more than 50 pages per pass, no CAPTCHAs and no forged sessions. If the
+site shows a challenge, the walk stops on its own.
 
-## Панель на сторінці
+## On-page panel
 
-Унизу праворуч завжди видно, що відбувається: який це каталог, скільки карток розпізнано,
-скільки з них із доменом, скільки записано, чи знайдена наступна сторінка. Там же кнопки
-"Зібрати" і "Автообхід". Панель можна згорнути в компактну мітку.
+The bottom right corner always shows what is happening: which catalog this is, how
+many cards were recognized, how many of them have a domain, how many were saved, and
+whether the next page was found. The "Collect" and "Auto-walk" buttons are there
+too. The panel can be collapsed into a compact tag.
 
-## Куди піти по студії
+## Where to find studios
 
-У попапі є список каталогів з готовими посиланнями: Clutch (web development, design, Україна,
-Польща, Німеччина, малі команди), GoodFirms, DesignRush, Sortlist, The Manifest, UpCity,
-TechBehemoths.
+The popup has a list of catalogs with ready-made links: Clutch (web development,
+design, Ukraine, Poland, Germany, small teams), GoodFirms, DesignRush, Sortlist,
+The Manifest, UpCity, TechBehemoths.
 
-DOU тут немає навмисно. Його список компаній не показує сайтів, тому все зібране з нього
-відсіювалось як "немає домену" і в базу не потрапляло нічого. DOU береться серверним
-каталогом: `pnpm cli catalog:dou`, він заходить у профіль компанії і бере сайт звідти.
+DOU is deliberately not here. Its company list does not show websites, so everything
+collected from it used to be filtered out as "no domain" and nothing made it into
+the database. DOU is collected by the server-side catalog adapter:
+`pnpm cli catalog:dou`, which visits the company profile and gets the site from there.
 
-## Робота з задеплоєним радаром
+## Working with a deployed radar
 
-У попапі задаються адреса радара і токен. Адреси за замовчуванням немає навмисно:
-поки її не вписати, розширення не збирає нічого і прямо про це каже.
+The radar address and token are set in the popup. There is deliberately no default
+address: until you fill it in, the extension collects nothing and says so plainly.
 
-Локально це `http://localhost:3000`. Для задеплойованого це адреса твого воркера
-плюс `RADAR_TOKEN` у друге поле. Деталі в `DEPLOY.md`.
+Locally it is `http://localhost:3000`. For a deployed instance, it is your worker's
+address plus `RADAR_TOKEN` in the second field. Details in `DEPLOY.md`.
 
-## Якщо каталог не розпізнався
+## If a catalog is not recognized
 
-У попапі буде написано "незнайомий", а розбір піде через JSON-LD, який віддає більшість
-каталогів. Якщо і там нуль, скинь URL сторінки, додам селектори для цього сайту
-у `extension/parsers.js`, розділ `SITES`.
+The popup will say "unfamiliar", and parsing will fall back to JSON-LD, which most
+catalogs emit. If that comes up empty too, send me the page URL and I will add
+selectors for that site in `extension/parsers.js`, the `SITES` section.
 
-## Сайти, намальовані скриптом
+## Sites drawn by a script
 
-Серверний обхід читає сирий HTML. На сайті, зробленому на React або схожому рушії,
-там порожній каркас: ні пошти, ні згадок стеку, і виглядає це як "на сайті нічого
-немає". Такі домени радар складає в окрему чергу.
+The server-side crawl reads raw HTML. On a site built with React or a similar
+engine, that is an empty shell: no email, no mentions of the stack, and it looks
+like "there is nothing on this site". Such domains get collected by the radar into
+a separate queue.
 
-У попапі є блок "сайтів чекають на браузер" і кнопка **Обійти в фоні**. Вона:
+The popup has a "sites waiting for the browser" block and a **Walk in the
+background** button. It:
 
-1. Бере чергу з радара, до десяти доменів за прохід
-2. Відкриває кожен **неактивною вкладкою**, тобто нікуди не перекидає
-3. Чекає завантаження і ще дві з половиною секунди на рендер
-4. Читає з готового DOM пошту, стек, ознаки живості і посилання далі
-5. Тією ж вкладкою переходить на контакти, "про нас" і вакансії, до трьох
-   сторінок, з паузою три секунди між ними
-6. Закриває вкладку, шле знайдене в радар і тримає паузу три з половиною секунди
+1. Takes the queue from the radar, up to ten domains per pass
+2. Opens each one in a **background tab**, that is, it does not redirect you anywhere
+3. Waits for it to load, plus another two and a half seconds for rendering
+4. Reads email, stack, signs of the site being alive, and further links from the
+   ready DOM
+5. Navigates the same tab to contacts, "about us" and vacancies, up to three pages,
+   with a three-second pause between them
+6. Closes the tab, sends what it found to the radar, and holds a three-and-a-half
+   second pause
 
-Крок 5 тут головний. Читати саму головну майже завжди означає повернутись ні з
-чим: на ній стоїть презентація, пошта лежить на контактах, а імена з посадами на
-сторінці команди. Радар розбирає текст цих сторінок тим самим кодом, яким розбирає
-сторінки, завантажені сервером, тому ім'я з однієї сторінки і адреса з іншої
-сходяться в один контакт.
+Step 5 is the important one here. Reading only the home page almost always means
+coming back empty-handed: it carries a pitch, the email sits on the contacts page,
+and names with titles sit on the team page. The radar parses the text of these
+pages with the same code it uses for pages loaded by the server, so a name from one
+page and an address from another end up merged into one contact.
 
-Пауза і ліміт за прохід не випадкові: це чужі сайти, і ходити ними треба так, як
-ходить людина, розділ 4 CLAUDE.md. Обхід живе в service worker, тому попап можна
-закрити, робота продовжиться.
+The pause and the per-pass limit are not arbitrary: these are other people's sites,
+and they have to be visited the way a human would, section 4 of CLAUDE.md. The walk
+lives in the service worker, so the popup can be closed and the work continues.
 
-Якщо після обходу в попапі написано "порожніх N", це не тиша, а повідомлення:
-сторінки прочитались, і на них не знайшлось ні пошти, ні людей. Подробиці по
-кожному домену видно, якщо навести курсор на цей рядок.
+If the popup says "empty N" after a walk, that is not silence, it is a report: the
+pages were read, and no email or people were found on them. Details per domain show
+up when you hover over that line.

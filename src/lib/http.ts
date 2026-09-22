@@ -17,7 +17,7 @@ export class HttpError extends Error {
 
 export class RobotsDisallowedError extends Error {
   constructor(readonly url: string) {
-    super(`robots.txt забороняє ${url}`);
+    super(`robots.txt forbids ${url}`);
     this.name = 'RobotsDisallowedError';
   }
 }
@@ -25,8 +25,8 @@ export class RobotsDisallowedError extends Error {
 const globalLimit = pLimit(config.http.concurrency);
 
 /**
- * Використовуємо глобальний fetch, а не undici напряму: той самий код має працювати
- * і в Node, і на Cloudflare Workers. Редиректи fetch веде сам.
+ * Using the global fetch instead of undici directly: the same code must work both in
+ * Node and on Cloudflare Workers. fetch follows redirects itself.
  */
 async function get(url: string, headers: Record<string, string>, timeoutMs: number) {
   const controller = new AbortController();
@@ -38,7 +38,7 @@ async function get(url: string, headers: Record<string, string>, timeoutMs: numb
   }
 }
 
-// Не більше одного запиту на домен на секунду: тримаємо час наступного дозволеного старту.
+// No more than one request per domain per second: we track the time of the next allowed start.
 const nextSlotByHost = new Map<string, number>();
 
 async function waitForSlot(host: string): Promise<void> {
@@ -58,12 +58,12 @@ async function loadRobots(origin: string): Promise<RobotsEntry> {
   try {
     const res = await get(url, { 'user-agent': config.http.userAgent }, config.http.timeoutMs);
     if (!res.ok) {
-      // Немає robots.txt означає дозволено, це стандартна поведінка.
+      // No robots.txt means allowed, this is the standard behavior.
       return { checkedAt: Date.now(), robots: null };
     }
     return { checkedAt: Date.now(), robots: robotsParser(url, await res.text()) };
   } catch (error) {
-    log.warn({ url, err: String(error) }, 'не вдалось прочитати robots.txt, вважаємо дозволеним');
+    log.warn({ url, err: String(error) }, 'could not read robots.txt, treating as allowed');
     return { checkedAt: Date.now(), robots: null };
   }
 }
@@ -87,7 +87,7 @@ export function resetHttpCaches(): void {
 
 export interface FetchOptions {
   headers?: Record<string, string>;
-  /** Пропустити перевірку robots.txt. Тільки для власних API-ендпоінтів ATS. */
+  /** Skip the robots.txt check. Only for the ATS's own API endpoints. */
   ignoreRobots?: boolean;
   retries?: number;
   timeoutMs?: number;
@@ -122,8 +122,8 @@ export async function fetchText(url: string, options: FetchOptions = {}): Promis
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      const error = new HttpError(`${res.status} на ${url}: ${body.slice(0, 200)}`, res.status, url);
-      // 4xx крім 408 і 429 повторювати немає сенсу.
+      const error = new HttpError(`${res.status} on ${url}: ${body.slice(0, 200)}`, res.status, url);
+      // No point retrying a 4xx other than 408 and 429.
       if (res.status < 500 && res.status !== 408 && res.status !== 429) {
         throw new AbortError(error);
       }
@@ -146,7 +146,7 @@ export async function fetchText(url: string, options: FetchOptions = {}): Promis
       onFailedAttempt: (error) => {
         log.warn(
           { url, attempt: error.attemptNumber, left: error.retriesLeft, err: error.message },
-          'запит не вдався, повторюю',
+          'request failed, retrying',
         );
       },
     }),
@@ -161,6 +161,6 @@ export async function fetchJson<T = unknown>(url: string, options: FetchOptions 
   try {
     return JSON.parse(res.body) as T;
   } catch {
-    throw new HttpError(`невалідний JSON з ${url}`, res.status, url);
+    throw new HttpError(`invalid JSON from ${url}`, res.status, url);
   }
 }

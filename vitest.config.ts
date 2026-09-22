@@ -5,13 +5,13 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     hookTimeout: 20000,
-    // Тести, що чіпають базу, працюють з одним файлом data/test-radar.db,
-    // тому файли тестів виконуються послідовно.
+    // Tests that touch the database work with a single data/test-radar.db file,
+    // so test files run sequentially.
     fileParallelism: false,
-    // Локальний драйвер бази підключається один раз на весь прогін.
+    // The local database driver connects once for the whole run.
     setupFiles: ['tests/setup.ts'],
-    // У тестах троттлінг лишається живим, але коротким: механіку перевіряємо,
-    // а десять секунд очікування на кожен прогін не платимо.
+    // Throttling stays alive in tests but short: we verify the mechanics,
+    // without paying ten seconds of waiting on every run.
     env: {
       HTTP_DOMAIN_DELAY_MS: '50',
       LOG_LEVEL: 'silent',

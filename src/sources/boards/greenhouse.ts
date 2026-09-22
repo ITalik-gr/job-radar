@@ -60,7 +60,7 @@ export const greenhouse: BoardSource = {
   parse,
   async fetch(ctx: SourceContext) {
     const slug = ctx.slug ?? ctx.company?.careersSlug;
-    if (!slug) throw new Error('greenhouse: потрібен slug дошки');
+    if (!slug) throw new Error('greenhouse: board slug required');
     const res = await fetchText(boardUrl(slug), { ignoreRobots: false });
     return parse(res.body, ctx);
   },

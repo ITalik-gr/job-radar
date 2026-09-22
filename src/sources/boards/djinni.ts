@@ -4,19 +4,19 @@ import { log } from '../../lib/log.js';
 import type { BoardSource, RawVacancy } from '../registry.js';
 
 /**
- * Djinni як борд вакансій. Разом з DOU це український ринок з вилками, яких
- * ATS-джерела не дають майже ніколи.
+ * Djinni as a vacancy board. Together with DOU this is the Ukrainian market with
+ * salary ranges, which ATS sources almost never give.
  *
- * robots.txt дозволяє `/jobs`, заборонені лише `/jobs2`, `/q`, `/developers`,
- * `/free-jobs` і `/set_lang`. Сторінка віддається сервером, браузер не потрібен.
+ * robots.txt allows `/jobs`, only `/jobs2`, `/q`, `/developers`, `/free-jobs` and
+ * `/set_lang` are disallowed. The page is served by the server, no browser needed.
  *
- * Домену компанії тут немає і взяти його нізвідки: Djinni навмисно не веде на
- * сайт роботодавця, а частина вакансій узагалі анонімна. Тому такі записи
- * привʼязуються лише до компаній, які вже є в базі під тією самою назвою,
- * а нових не створюють. Вигадувати домен не можна, це правило 6 в CLAUDE.md.
+ * There's no company domain here and nowhere to get one from: Djinni deliberately
+ * doesn't link to the employer's site, and some vacancies are anonymous altogether.
+ * So such records are only linked to companies already in the database under the same
+ * name, and new ones aren't created. Making up a domain isn't allowed, that's rule 6 in CLAUDE.md.
  */
 
-/** Ключові слова Djinni. У конфізі, щоб додати нове без правки коду. */
+/** Djinni keywords. In config, so a new one can be added without touching code. */
 export const DJINNI_KEYWORDS = ['JavaScript', 'Fullstack', 'Node.js'];
 
 export function parseDjinni(html: string): RawVacancy[] {
@@ -32,18 +32,19 @@ export function parseDjinni(html: string): RawVacancy[] {
     if (!link || !title) return;
 
     /*
-     * У частини карток на місці назви компанії стоїть число (лічильник переглядів
-     * в анонімних вакансіях). Чисто числова "назва" це не компанія, і краще null,
-     * ніж сміття: правило 6 в CLAUDE.md.
+     * On some cards, a number stands where the company name should be (a view
+     * counter on anonymous vacancies). A purely numeric "name" is not a company, and
+     * null is better than garbage: rule 6 in CLAUDE.md.
      */
     const rawCompany = card.find('.job_item__header-link span.small').first().text().trim();
     const companyName = rawCompany && !/^\d+$/.test(rawCompany) ? rawCompany : null;
     const location = card.find('.location-text').first().text().trim() || null;
 
     /*
-     * Djinni показує не саму вилку, а її рівень значками долара, і окремо текст
-     * умов. Кладемо весь видимий текст картки: скоринг і модель читають `rawText`,
-     * і краще дати їм більше, ніж вигадати число, якого на сторінці немає.
+     * Djinni doesn't show the salary range itself, only its level as dollar-sign
+     * icons, plus separate condition text. So the whole visible card text is stored:
+     * scoring and the model read `rawText`, and it's better to give them more than
+     * to make up a number that isn't on the page.
      */
     const body = card.text().replace(/\s+/g, ' ').trim();
 
@@ -84,7 +85,7 @@ export const djinni: BoardSource = {
           if (!all.has(vacancy.url)) all.set(vacancy.url, vacancy);
         }
       } catch (error) {
-        log.warn({ keyword, err: String(error) }, 'djinni: запит не вдався');
+        log.warn({ keyword, err: String(error) }, 'djinni: request failed');
       }
     }
 

@@ -1,8 +1,8 @@
 {
-  "_": "Правила відбору. Файл читається на кожен запуск, код чіпати не треба. Після зміни: pnpm cli score:recalc",
+  "_": "Selection rules. The file is read on every run, no need to touch the code. After a change: pnpm cli score:recalc",
   "threshold": 6,
   "roleGate": {
-    "_": "Назва вакансії має бути схожа на інженерну. Інакше бали з тексту про компанію витягують нагору бухгалтерів і продажників.",
+    "_": "The job title should look like an engineering one. Otherwise points from the company description text pull accountants and salespeople to the top.",
     "enabled": true,
     "mustMatch": [
       "ai developer",
@@ -70,7 +70,7 @@
     ]
   },
   "geo": {
-    "_": "Київ, UTC+3, переїзд неможливий. Вакансія, прив'язана до іншого регіону, не підходить, навіть якщо в ній написано remote.",
+    "_": "Kyiv, UTC+3, relocation is not possible. A vacancy tied to another region does not fit, even if it says remote.",
     "enabled": true,
     "homeCity": [
       "київ",
@@ -187,7 +187,7 @@
       "distributed",
       "віддален"
     ],
-    "_placeRule": "Локація, в якій названо місце і немає жодної ознаки віддаленості, вважається офісною. Це закриває In-Office, Barcelona і North America одним правилом, без списку міст.",
+    "_placeRule": "A location that names a place and has no sign of being remote is treated as office based. This covers In-Office, Barcelona and North America with one rule, without a list of cities.",
     "penaltyOnSitePlace": -20
   },
   "experience": {
@@ -220,7 +220,7 @@
     "solidity"
   ],
   "weights": {
-    "_": "Бали за збіг. Назва важить утричі, бо в тексті про компанію технології згадують просто так.",
+    "_": "Points for a match. The title weighs three times as much, because company description text mentions technologies just in passing.",
     "titleMultiplier": 3,
     "bodyCap": 8,
     "terms": {
@@ -278,7 +278,7 @@
     "ukrainianVacancy": 3
   },
   "companies": {
-    "_": "Скоринг студій і агенцій, яким варто написати. Це окрема черга, вакансія їм не потрібна.",
+    "_": "Scoring for studios and agencies worth writing to. This is a separate queue, they do not need a vacancy.",
     "threshold": 5,
     "sizeWeights": {
       "1 - 9": 2,
@@ -356,7 +356,7 @@
       "NL": 1,
       "US": 0
     },
-    "_kindWeights": "Вага за типом компанії. Стартап без тегів каталогу інакше набирає майже нуль і не проходить поріг, хоча писати туди сенс є. Аутстаф і продукт у мінус: у перших посередник, у других холодний лист не працює.",
+    "_kindWeights": "Weight by company kind. A startup without catalog tags otherwise scores almost zero and does not clear the threshold, even though it is worth writing to. Outstaff and product are penalized: the former has a middleman, the latter does not respond to cold outreach.",
     "kindWeights": {
       "startup": 3,
       "design": 2,
@@ -365,7 +365,7 @@
       "product": -5,
       "unknown": 0
     },
-    "_stale": "Штраф за мертвий сайт. Агенція з копірайтом позаминулого року і без свіжих постів не наймає і не відповідає, і лист туди це витрачений вечір.",
+    "_stale": "Penalty for a dead site. An agency with a copyright year from two years ago and no fresh posts is not hiring and will not reply, and a letter there is a wasted evening.",
     "stale": {
       "copyrightYearsBehind": 2,
       "copyrightPenalty": -4,
@@ -375,7 +375,7 @@
     "hasCareersPage": 2,
     "hasOpenVacancies": 3,
     "reputation": {
-      "_": "Репутація в каталозі. Студія з відгуками реально працює з клієнтами, порожня картка часто покинута.",
+      "_": "Reputation in the catalog. A studio with reviews genuinely works with clients, an empty card is often abandoned.",
       "goodRating": 4.5,
       "goodRatingBonus": 2,
       "weakRating": 4,
@@ -385,17 +385,17 @@
       "noReviewsPenalty": -1
     },
     "hourlyRateBonus": {
-      "_": "Ставка агенції натякає на бюджет. Дуже дешеві не платитимуть, дуже дорогі не візьмуть чужого.",
+      "_": "An agency's rate hints at budget. Very cheap ones will not pay, very expensive ones will not take outside work.",
       "$25 - $49 / hr": 1,
       "$50 - $99 / hr": 3,
       "$100 - $149 / hr": 2,
       "$150 - $199 / hr": 0,
       "$200 - $300 / hr": -2
     },
-    "_web": "Теги YC і каталогів, за якими видно, чи це веб-продукт. Власник фронтендер, тому SaaS і developer tools це його робота, а завод роботів і біотех наймають зовсім інших людей, і лист туди марний для обох сторін."
+    "_web": "YC and catalog tags that show whether this is a web product. The owner is a frontend developer, so SaaS and developer tools are his kind of work, while a robotics factory or biotech hires completely different people, and a letter there is pointless for both sides."
   },
   "companySize": {
-    "_": "Гіганти показуються тільки коли збіг справді сильний: мінус до рахунку вакансії, щоб у чергу проходили лише найкращі.",
+    "_": "Giants are shown only when the match is genuinely strong: a penalty to the vacancy score so only the best make it into the queue.",
     "bigPenalty": -6,
     "bigFrom": 1000,
     "midPenalty": -2,

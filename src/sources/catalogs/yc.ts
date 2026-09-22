@@ -4,15 +4,15 @@ import { normalizeDomain } from '../../lib/normalize.js';
 import type { CatalogSource, RawCompany } from '../registry.js';
 
 /**
- * Каталог компаній Y Combinator, CLAUDE.md розділ 4, пріоритет 2.
+ * The Y Combinator company catalog, CLAUDE.md section 4, priority 2.
  *
- * Береться зріз `hiring`, а не всі 6200 компаній: він містить лише тих, хто
- * зараз наймає, важить у чотири рази менше і не засмічує базу вигорілими
- * стартапами десятирічної давності. Джерело статичне, публічне і без ключів,
- * тому ходити до нього дешево і чесно.
+ * The `hiring` slice is taken, not all 6200 companies: it holds only those
+ * currently hiring, weighs four times less, and doesn't clutter the database with
+ * burned-out decade-old startups. The source is static, public and needs no keys,
+ * so hitting it is cheap and honest.
  *
- * Далі працює звичайний ланцюжок: discovery знаходить career-сторінку компанії,
- * впізнає ATS і забирає вакансії через API. Тобто YC дає не вакансії, а входи.
+ * From there the usual chain runs: discovery finds the company's careers page,
+ * recognizes the ATS and pulls vacancies through the API. So YC doesn't give vacancies, it gives entry points.
  */
 
 const SOURCE = 'yc';
@@ -35,8 +35,8 @@ export interface YcCompany {
 }
 
 /**
- * Розмір командою, а не діапазоном з каталогу: у YC це число, і зводити його до
- * тих самих кошиків, що й у Clutch, потрібно для скорингу розміру.
+ * Size by team headcount, not by a catalog range: at YC it's a number, and it needs
+ * to be reduced to the same buckets as Clutch for size scoring.
  */
 export function sizeBucket(teamSize: number | null | undefined): string | null {
   if (!teamSize || teamSize < 1) return null;
@@ -48,8 +48,8 @@ export function sizeBucket(teamSize: number | null | undefined): string | null {
 }
 
 /**
- * Локація приходить рядком "San Francisco, CA, USA; Remote". Беремо перший
- * запис: він і є основним офісом, решта це філії і слово Remote.
+ * The location arrives as a string "San Francisco, CA, USA; Remote". We take the
+ * first entry: that's the main office, the rest is branches and the word Remote.
  */
 export function splitLocation(value: string | null | undefined): {
   city: string | null;
@@ -69,14 +69,14 @@ export function parseYc(payload: string): RawCompany[] {
   try {
     list = JSON.parse(payload) as YcCompany[];
   } catch (error) {
-    throw new Error(`YC: відповідь не є JSON, ${String(error).slice(0, 120)}`);
+    throw new Error(`YC: response is not JSON, ${String(error).slice(0, 120)}`);
   }
-  if (!Array.isArray(list)) throw new Error('YC: очікувався масив компаній');
+  if (!Array.isArray(list)) throw new Error('YC: expected an array of companies');
 
   const companies: RawCompany[] = [];
   for (const item of list) {
     const domain = normalizeDomain(item.website ?? '');
-    // Компанія без сайту марна: нема куди йти по career-сторінку і по контакти.
+    // A company with no site is useless: there's nowhere to go for a careers page or contacts.
     if (!item.name || !domain) continue;
     if (item.status && item.status.toLowerCase() === 'inactive') continue;
 
@@ -92,8 +92,8 @@ export function parseYc(payload: string): RawCompany[] {
       careersUrl: null,
       sourceUrl: item.url ?? null,
       /*
-       * Індустрія і теги лягають в одні теги навмисно: скоринг компаній читає
-       * саме їх, і саме за ними видно, чи це веб-продукт, чи завод роботів.
+       * Industry and tags deliberately land in the same tags list: company scoring
+       * reads exactly those, and that's what shows whether it's a web product or a robot factory.
        */
       tags: [item.industry, item.subindustry?.split('->').pop(), ...(item.tags ?? [])]
         .map((tag) => tag?.trim())
@@ -101,13 +101,13 @@ export function parseYc(payload: string): RawCompany[] {
       description: item.one_liner ?? item.long_description ?? null,
       openVacancies: null,
       extra: {
-        ...(item.batch ? { Батч: item.batch } : {}),
-        ...(item.team_size ? { Команда: String(item.team_size) } : {}),
+        ...(item.batch ? { Batch: item.batch } : {}),
+        ...(item.team_size ? { 'Team size': String(item.team_size) } : {}),
       },
     });
   }
 
-  log.debug({ found: companies.length }, 'YC розібрано');
+  log.debug({ found: companies.length }, 'YC parsed');
   return companies;
 }
 

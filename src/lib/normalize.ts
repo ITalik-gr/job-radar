@@ -1,4 +1,4 @@
-/** Нормалізація доменів і рядків. Нормалізація тексту сторінок буде на Етапі 3. */
+/** Normalizing domains and strings. Page text normalization comes in Stage 3. */
 
 const TRACKING_PARAMS = /^(utm_|ref$|referrer$|gh_src$|source$|fbclid$|gclid$|mc_cid$|mc_eid$)/i;
 
@@ -56,7 +56,7 @@ export function collapseWhitespace(input: string): string {
   return input.replace(/[\t\f\r ]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
 }
 
-/** ISO-тиждень у форматі 2026-W07, компонент ключа дедупу. */
+/** ISO week in the format 2026-W07, a component of the dedupe key. */
 export function isoWeek(date: Date): string {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const day = d.getUTCDay() || 7;

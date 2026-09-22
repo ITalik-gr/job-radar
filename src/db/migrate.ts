@@ -11,6 +11,6 @@ export function runMigrations(path: string = config.dbPath) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   runMigrations();
-  log.info({ db: config.dbPath }, 'міграції застосовано');
+  log.info({ db: config.dbPath }, 'migrations applied');
   process.exit(0);
 }

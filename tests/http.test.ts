@@ -17,20 +17,20 @@ beforeAll(async () => {
       return;
     }
     if (url.startsWith('/private')) {
-      res.writeHead(200).end('секрет');
+      res.writeHead(200).end('secret');
       return;
     }
     if (url === '/flaky') {
       hits += 1;
       if (hits < 3) {
-        res.writeHead(500).end('впало');
+        res.writeHead(500).end('failed');
         return;
       }
-      res.writeHead(200).end('ок');
+      res.writeHead(200).end('ok');
       return;
     }
     if (url === '/gone') {
-      res.writeHead(404).end('нема');
+      res.writeHead(404).end('gone');
       return;
     }
     if (url === '/json') {
@@ -38,7 +38,7 @@ beforeAll(async () => {
       return;
     }
     timestamps.push(Date.now());
-    res.writeHead(200, { 'content-type': 'text/html' }).end('<html>привіт</html>');
+    res.writeHead(200, { 'content-type': 'text/html' }).end('<html>hello</html>');
   });
 
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -51,35 +51,35 @@ afterAll(async () => {
 });
 
 describe('fetchText', () => {
-  it('читає сторінку', async () => {
+  it('reads a page', async () => {
     const res = await fetchText(`${base}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain('привіт');
+    expect(res.body).toContain('hello');
   });
 
-  it('поважає robots.txt', async () => {
+  it('respects robots.txt', async () => {
     await expect(fetchText(`${base}/private/page`)).rejects.toBeInstanceOf(RobotsDisallowedError);
   });
 
-  it('ignoreRobots обходить перевірку тільки явно', async () => {
+  it('ignoreRobots bypasses the check only explicitly', async () => {
     const res = await fetchText(`${base}/private/page`, { ignoreRobots: true });
-    expect(res.body).toBe('секрет');
+    expect(res.body).toBe('secret');
   });
 
-  it('повторює 5xx і зрештою отримує відповідь', async () => {
+  it('retries 5xx and eventually gets a response', async () => {
     const res = await fetchText(`${base}/flaky`, { retries: 3 });
-    expect(res.body).toBe('ок');
+    expect(res.body).toBe('ok');
     expect(hits).toBe(3);
   });
 
-  it('не повторює 404', async () => {
+  it('does not retry 404', async () => {
     await expect(fetchText(`${base}/gone`, { retries: 3 })).rejects.toThrow('404');
   });
 
-  it('тримає паузу між запитами до одного домену', async () => {
-    // Пауза береться з config.http.domainDelayMs, у тестах це 50 мс (vitest.config.ts).
-    // Перевіряємо сумарний час трьох запитів, а не проміжки між ними: окремий проміжок
-    // залежить від того, коли сервер устиг записати мітку, і дає хибні падіння.
+  it('keeps a pause between requests to the same domain', async () => {
+    // The pause comes from config.http.domainDelayMs, 50ms in tests (vitest.config.ts).
+    // We check the total time of three requests, not the gaps between them: a single
+    // gap depends on when the server managed to record the timestamp and gives false failures.
     timestamps.length = 0;
     const started = Date.now();
     await Promise.all([fetchText(`${base}/a`), fetchText(`${base}/b`), fetchText(`${base}/c`)]);
@@ -91,7 +91,7 @@ describe('fetchText', () => {
 });
 
 describe('fetchJson', () => {
-  it('парсить JSON', async () => {
+  it('parses JSON', async () => {
     const data = await fetchJson<{ jobs: { id: number }[] }>(`${base}/json`);
     expect(data.jobs[0]!.id).toBe(1);
   });

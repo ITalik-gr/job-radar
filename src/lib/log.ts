@@ -1,7 +1,7 @@
 /**
- * Мінімальний логер з тим самим інтерфейсом, що був у pino.
- * Причина заміни: pino тягне за собою Node-специфічні транспорти і файлову систему,
- * а той самий код має працювати і на Cloudflare Workers, де ні того, ні іншого немає.
+ * A minimal logger with the same interface pino used to have.
+ * Reason for the replacement: pino drags along Node-specific transports and a file
+ * system, and the same code must also work on Cloudflare Workers, where neither exists.
  */
 
 export type Level = 'debug' | 'info' | 'warn' | 'error' | 'silent';

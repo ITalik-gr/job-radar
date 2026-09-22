@@ -1,8 +1,8 @@
 import type { PageBlock } from './normalize.js';
 
 /**
- * Хеш усієї сторінки каже "щось змінилось", але не каже що. Тому порівнюємо множини
- * хешів блоків: нові хеші це нові вакансії, зниклі це закриті.
+ * A hash of the whole page says "something changed" but not what. So the sets of block
+ * hashes are compared instead: new hashes are new vacancies, missing ones are closed ones.
  */
 export interface BlockDiff {
   added: PageBlock[];
@@ -39,9 +39,9 @@ export interface IdDiff<T extends IdentifiedItem> {
 }
 
 /**
- * ATS віддають стабільні id вакансій, тому там хешувати текст не треба:
- * поява і закриття видно порівнянням множин id. URL це запасний ключ,
- * якщо джерело id не дало.
+ * ATS boards hand back stable vacancy ids, so there's no need to hash text there:
+ * appearance and closure show up just by comparing the sets of ids. The URL is a
+ * fallback key when the source didn't provide an id.
  */
 export function keyOf(item: IdentifiedItem): string {
   return item.externalId ?? item.url;

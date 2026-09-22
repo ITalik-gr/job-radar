@@ -39,7 +39,7 @@ const llmReply = (over: Record<string, unknown> = {}) => ({
       currency: null,
       english_level_required: 'B2',
       relevance: 90,
-      why: 'повний збіг зі стеком',
+      why: 'full match with the stack',
       ...over,
     }),
     inputTokens: 10,
@@ -55,11 +55,12 @@ beforeAll(async () => {
   acme = (await upsertCompany({ name: 'Acme', domain: 'acme.com', source: 'test' })).company;
 });
 
-describe('невідома компанія', () => {
-  it('вакансія з назвою і доменом створює компанію, а не відкидається', async () => {
+describe('unknown company', () => {
+  it('a vacancy with a name and domain creates the company instead of being dropped', async () => {
     /*
-     * Раніше такий запис мовчки зникав у debug-лозі. Це зʼїдало всю видачу джерел,
-     * які приносять нові компанії разом з вакансіями: борди акселераторів, DOU, Djinni.
+     * Such a record used to silently disappear in the debug log. That was eating the whole
+     * output of sources that bring new companies together with vacancies: accelerator boards,
+     * DOU, Djinni.
      */
     const before = await getDb().select().from(companies);
 
@@ -85,12 +86,12 @@ describe('невідома компанія', () => {
     expect(after.length).toBe(before.length + 1);
     expect(after.some((row) => row.domain === 'newco.dev')).toBe(true);
 
-    // Прибираємо за собою: файл тестів ділить одну базу, і зайва вакансія
-    // вище порогу поламала б перевірки черги нижче.
+    // Clean up after ourselves: the test file shares one database, and a stray
+    // vacancy above the threshold would break the queue checks below.
     await getDb().delete(companies).where(eq(companies.domain, 'newco.dev'));
   });
 
-  it('без домену компанія не вигадується: інакше всі вакансії борду стануть однією', async () => {
+  it('without a domain the company is not invented: otherwise all vacancies from a board would become one', async () => {
     const before = await getDb().select().from(companies);
 
     await ingestVacancies(
@@ -101,7 +102,7 @@ describe('невідома компанія', () => {
           url: 'https://djinni.co/jobs/999-frontend/',
           title: 'Frontend Developer',
           rawText: 'react typescript',
-          companyName: 'Прихована компанія',
+          companyName: 'Hidden Company',
           companyDomain: null,
           location: 'Kyiv',
           remote: false,
@@ -116,7 +117,7 @@ describe('невідома компанія', () => {
 });
 
 describe('dedupeKey', () => {
-  it('домен, слаг назви і тиждень', () => {
+  it('domain, title slug and week', () => {
     const key = dedupeKey({
       domain: 'https://www.Acme.com',
       title: 'Senior Frontend Developer',
@@ -126,20 +127,20 @@ describe('dedupeKey', () => {
     expect(key).toBe('acme.com|senior-frontend-developer|2026-W36');
   });
 
-  it('однакова вакансія з різних джерел дає той самий ключ', () => {
+  it('the same vacancy from different sources gives the same key', () => {
     const a = dedupeKey({ domain: 'acme.com', title: 'Senior Frontend Developer', url: 'https://acme.com/jobs/1' });
     const b = dedupeKey({ domain: 'acme.com', title: 'Senior  Frontend  Developer', url: 'https://djinni.co/jobs/77' });
     expect(a).toBe(b);
   });
 
-  it('джерела зливаються, а не затираються', () => {
+  it('sources merge instead of being overwritten', () => {
     expect(mergeSources('greenhouse', 'djinni')).toBe('greenhouse,djinni');
     expect(mergeSources('greenhouse,djinni', 'djinni')).toBe('greenhouse,djinni');
   });
 });
 
 describe('ingestVacancies', () => {
-  it('релевантна вакансія класифікується, скориться і пишеться', async () => {
+  it('a relevant vacancy gets classified, scored and written', async () => {
     const stats = await ingestVacancies([raw()], llmReply(), acme);
     expect(stats.created).toBe(1);
     expect(stats.classified).toBe(1);
@@ -151,7 +152,7 @@ describe('ingestVacancies', () => {
     expect(row!.isVacancy).toBe(true);
   });
 
-  it('повторний прогін не дублює, а оновлює last_seen і джерело', async () => {
+  it('a repeat run does not duplicate, it updates last_seen and the source', async () => {
     const before = (await getDb().select().from(vacancies).where(eq(vacancies.url, 'https://acme.com/jobs/1')))[0]!;
     const stats = await ingestVacancies([raw({ source: 'djinni', url: 'https://djinni.co/jobs/77' })], llmReply(), acme);
 
@@ -163,7 +164,7 @@ describe('ingestVacancies', () => {
     expect(after.lastSeen).toBeGreaterThanOrEqual(before.lastSeen);
   });
 
-  it('стоп-слово ріже до моделі, запис лишається в базі зі -100', async () => {
+  it('a stop word cuts before the model, the record stays in the database with -100', async () => {
     let called = false;
     const stats = await ingestVacancies(
       [raw({ title: 'Angular Developer', url: 'https://acme.com/jobs/2', externalId: '2' })],
@@ -182,7 +183,7 @@ describe('ingestVacancies', () => {
     expect(row!.score).toBe(-100);
   });
 
-  it('короткий блок довантажується, і стоп-слово з опису теж ріже', async () => {
+  it('a short block gets fetched in full, and a stop word in the description also cuts', async () => {
     let called = false;
     const stats = await ingestVacancies(
       [raw({ title: 'Developer', rawText: 'Join our team', url: 'https://acme.com/jobs/3', externalId: '3' })],
@@ -201,10 +202,10 @@ describe('ingestVacancies', () => {
     expect(called).toBe(false);
   });
 
-  it('невалідна відповідь моделі дає needs_review, а не втрату запису', async () => {
+  it('an invalid model reply gives needs_review, not a lost record', async () => {
     const stats = await ingestVacancies(
       [raw({ url: 'https://acme.com/jobs/4', externalId: '4', title: 'React Engineer' })],
-      { caller: async () => ({ text: 'не json', inputTokens: 1, outputTokens: 1 }) },
+      { caller: async () => ({ text: 'not json', inputTokens: 1, outputTokens: 1 }) },
       acme,
     );
 
@@ -216,8 +217,8 @@ describe('ingestVacancies', () => {
   });
 });
 
-describe('економія на моделі', () => {
-  it('вакансію, яку відсіюють безкоштовні правила, у модель не шлемо', async () => {
+describe('saving on the model', () => {
+  it('a vacancy filtered out by the free rules is not sent to the model', async () => {
     let called = false;
     const stats = await ingestVacancies(
       [
@@ -242,7 +243,7 @@ describe('економія на моделі', () => {
     expect(stats.created).toBe(1);
   });
 
-  it('нетехнічна роль теж не доходить до моделі', async () => {
+  it('a non technical role also does not reach the model', async () => {
     let called = false;
     await ingestVacancies(
       [raw({ title: 'Account Executive, EMEA', url: 'https://acme.com/jobs/ae', externalId: 'ae' })],
@@ -257,7 +258,7 @@ describe('економія на моделі', () => {
     expect(called).toBe(false);
   });
 
-  it('перспективна вакансія модель усе ж отримує', async () => {
+  it('a promising vacancy still reaches the model', async () => {
     let called = false;
     await ingestVacancies(
       [
@@ -284,7 +285,7 @@ describe('економія на моделі', () => {
               currency: null,
               english_level_required: null,
               relevance: 80,
-              why: 'збіг',
+              why: 'match',
             }),
             inputTokens: 10,
             outputTokens: 5,
@@ -298,7 +299,7 @@ describe('економія на моделі', () => {
 });
 
 describe('closeMissing', () => {
-  it('зниклі вакансії закриваються, а не видаляються', async () => {
+  it('missing vacancies get closed, not deleted', async () => {
     const open = await getDb().select().from(vacancies).where(eq(vacancies.companyId, acme.id));
     const keep = open[0]!.dedupeKey;
 
@@ -311,11 +312,11 @@ describe('closeMissing', () => {
   });
 
   /*
-   * Партії існують через ліміт D1 на сто звʼязаних параметрів. Тест бере число,
-   * яке гарантовано перекриває кілька партій: на одному запиті це впало б на Workers,
-   * і саме так воно і падало на бордах Greenhouse у великих компаній.
+   * Batches exist because of D1's limit on a hundred bound parameters. The test takes a number
+   * that is guaranteed to span several batches: in a single request this would fail on Workers,
+   * and that is exactly how it failed on Greenhouse boards for large companies.
    */
-  it('закриває сотні вакансій, не впираючись у ліміт параметрів запиту', async () => {
+  it('closes hundreds of vacancies without hitting the query parameter limit', async () => {
     const { company } = await upsertCompany({ name: 'Bulk', domain: 'bulk-close.com', source: 'test' });
     const total = 250;
 
@@ -341,13 +342,13 @@ describe('closeMissing', () => {
 });
 
 describe('queue', () => {
-  it('показує тільки відкриті вакансії вище порогу', async () => {
+  it('shows only open vacancies above the threshold', async () => {
     const rows = await queue();
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(row.score!).toBeGreaterThanOrEqual(config.pipeline.scoreThreshold);
   });
 
-  it('компанія зі статусом contacted зникає з черги', async () => {
+  it('a company with contacted status drops out of the queue', async () => {
     await getDb()
       .update(companyState)
       .set({ status: 'contacted' })
@@ -368,7 +369,7 @@ describe('queue', () => {
     expect((await queue()).length).toBeGreaterThan(0);
   });
 
-  it('ліміт карток на день дотримується', async () => {
+  it('the daily card limit is respected', async () => {
     expect((await queue(1)).length).toBeLessThanOrEqual(1);
   });
 });

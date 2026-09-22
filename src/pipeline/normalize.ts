@@ -5,9 +5,9 @@ import { htmlToText } from '../lib/html.js';
 import { normalizeUrl } from '../lib/normalize.js';
 
 /**
- * Нормалізація сторінки перед хешуванням. Головне місце проєкту: якщо зробити слабо,
- * хеш мінятиметься щодня і система потоне у фальшивих сповіщеннях.
- * Порядок правил має значення, дати чистяться до схлопування пробілів.
+ * Normalizing a page before hashing. The most important place in the project: if this is
+ * done poorly, the hash will change every day and the system will drown in false alerts.
+ * The order of the rules matters, dates are cleaned before whitespace collapses.
  */
 
 const DROP_SELECTORS = [
@@ -41,13 +41,13 @@ const DROP_SELECTORS = [
 ].join(', ');
 
 const NOISE_PATTERNS: [RegExp, string][] = [
-  // Відносний час англійською і українською.
+  // Relative time in English and Ukrainian.
   [/\b(posted|updated|published|added)?\s*\b\d+\s*(second|minute|hour|day|week|month|year)s?\s+ago\b/gi, ' '],
-  // Для кирилиці \b не працює, вона поза ASCII, тому межі слова через lookaround.
+  // \b doesn't work for Cyrillic, it's outside ASCII, so word boundaries go through lookaround.
   [/(?<![\p{L}\d])\d+\s*(секунд|хвилин|годин|дн|день|дні|тижн|місяц|рок)[\p{L}]*\s+тому(?![\p{L}])/giu, ' '],
   [/(?<![\p{L}])(щойно|сьогодні|вчора|позавчора)(?![\p{L}])/giu, ' '],
   [/\b(just now|today|yesterday)\b/gi, ' '],
-  // Абсолютні дати у поширених форматах.
+  // Absolute dates in common formats.
   [/\b\d{4}-\d{2}-\d{2}(t[\d:.,+-]*z?)?\b/gi, ' '],
   [/\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b/g, ' '],
   [
@@ -58,24 +58,24 @@ const NOISE_PATTERNS: [RegExp, string][] = [
     /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+\d{1,2},?\s*\d{0,4}\b/gi,
     ' ',
   ],
-  // Час доби.
+  // Time of day.
   [/\b\d{1,2}:\d{2}(:\d{2})?\s*(am|pm)?\b/gi, ' '],
-  // Лічильники переглядів, кандидатів, відгуків.
+  // View, applicant and review counters.
   [/\b\d[\d\s,.']*\s*(views?|viewed|applicants?|applications?|candidates?|clicks?)\b/gi, ' '],
   [/\b(viewed|seen)\s+\d[\d\s,.']*\s*times?\b/gi, ' '],
   [/\b\d[\d\s,.']*\s*(people|others)\s+(applied|viewed|clicked)\b/gi, ' '],
   [/(?<![\p{L}\d])\d[\d\s,.']*\s*(перегляд|відгук|кандидат|заявк|відкли)[\p{L}]*(?![\p{L}])/giu, ' '],
-  // Випадкові хеші: білд-id, nonce, ETag, що лишились у тексті.
+  // Random hashes: build ids, nonces, ETags that ended up in the text.
   [/\b(?=[a-f0-9]*\d)[a-f0-9]{8,64}\b/gi, ' '],
   [/\b[a-z0-9_-]{22,}\b/gi, ' '],
-  // Рік копірайту, якщо він пережив видалення футера.
+  // Copyright year, if it survived the footer being dropped.
   [/©\s*\d{4}(\s*[-–]\s*\d{4})?/g, ' '],
   [/\b(copyright|all rights reserved)\b/gi, ' '],
 ];
 
 const KEEP_ATTRS = new Set(['href']);
 
-/** Прибирає з href tracking-параметри, залишає стабільну частину посилання. */
+/** Strips tracking parameters from href, keeps the stable part of the link. */
 export function cleanHref(href: string | undefined): string | null {
   if (!href) return null;
   const value = href.trim();
@@ -83,7 +83,7 @@ export function cleanHref(href: string | undefined): string | null {
   if (value.startsWith('mailto:') || value.startsWith('tel:')) return value.toLowerCase();
   if (/^https?:\/\//i.test(value)) return normalizeUrl(value);
 
-  // Відносне посилання: чистимо параметри вручну, без вигаданого домену в результаті.
+  // A relative link: clean the parameters by hand, with no made-up domain in the result.
   const [path, query = ''] = value.split('?');
   const params = new URLSearchParams(query);
   for (const key of [...params.keys()]) {
@@ -150,8 +150,8 @@ function textOf($: cheerio.CheerioAPI, node: AnyNode): string {
 }
 
 /**
- * Кандидати-блоки: елементи списків і картки, всередині яких є посилання, схоже на
- * вакансію. Вкладені кандидати відкидаються, лишається найзовнішній.
+ * Candidate blocks: list items and cards that contain a link that looks like a vacancy.
+ * Nested candidates are dropped, only the outermost one remains.
  */
 export function extractBlocks($: cheerio.CheerioAPI): PageBlock[] {
   const candidates: Element[] = [];
@@ -165,7 +165,7 @@ export function extractBlocks($: cheerio.CheerioAPI): PageBlock[] {
     candidates.push(el);
   });
 
-  // Запасний варіант: сторінка без карток, самі посилання.
+  // Fallback: a page with no cards, just links.
   if (candidates.length === 0) {
     $('a[href]').each((_, node) => {
       const el = node as Element;
@@ -199,8 +199,9 @@ export function extractBlocks($: cheerio.CheerioAPI): PageBlock[] {
 }
 
 /**
- * Назва вакансії це перший рядок посилання. Беремо саме перший, бо в картку часто
- * загорнуті ще локація і "read more", які без переносів злипаються з назвою.
+ * The vacancy title is the first line of the link. We take exactly the first one,
+ * because a card often also wraps the location and "read more", which stick to the
+ * title without line breaks.
  */
 function titleOf(innerHtml: string | null): string | null {
   if (!innerHtml) return null;

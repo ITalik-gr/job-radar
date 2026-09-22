@@ -82,13 +82,21 @@ nothing in the flow asks.
 ### 2.3. Account and database ids
 
 `wrangler.jsonc` pinned a specific D1 database id and carried the author's
-Cloudflare account id, worker URL and name as plain vars. The config schema marks
-`database_id` optional, so it is gone: wrangler binds the database by name at
-deploy time. Everything that identifies a person moved out of the file and is set
-with `wrangler secret put`, which also means a deploy no longer overwrites it.
+Cloudflare account id, worker URL and name as plain vars. They now live in
+`wrangler.local.jsonc`, which is gitignored; `wrangler.local.example.jsonc` shows
+the shape. `pnpm deploy` runs `scripts/wrangler-config.mjs`, which merges the local
+file over the committed one into `wrangler.deploy.json` and deploys that.
 
-`DEPLOY.md`, `README.md` and `STATUS.md` no longer name a specific worker, and the
-deploy workflow reads its health check URL from a repository variable.
+Leaving `database_id` out entirely is not enough: wrangler then resolves the
+database through the D1 API, and a deploy token without D1 permissions fails with
+`Authentication error [code: 10000]`. Keeping the personal values as vars rather
+than secrets is also deliberate: a deploy deletes vars missing from the config, and
+a secret cannot take the name of a var that already exists.
+
+GitHub Actions has no local file, so the workflow writes it from the
+`WRANGLER_LOCAL_JSONC` repository secret. `DEPLOY.md`, `README.md` and `STATUS.md`
+no longer name a specific worker, and the health check URL comes from a repository
+variable.
 
 ---
 

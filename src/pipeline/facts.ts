@@ -3,11 +3,11 @@ import { getDb } from '../db/client.js';
 import { facts, type Fact } from '../db/schema.js';
 
 /**
- * Whitelist фактів про власника для персоналізації.
+ * A whitelist of facts about the owner, for personalization.
  *
- * Модель не має права згадати нічого, чого немає в цьому списку, а валідатор
- * абзацу перевіряє результат окремо. Список живе в базі, а не в промпті, щоб
- * вимкнути факт можна було галочкою, не чіпаючи код.
+ * The model has no right to mention anything that isn't on this list, and the
+ * paragraph validator checks the result separately. The list lives in the database, not
+ * in the prompt, so a fact can be turned off with a checkbox, without touching code.
  */
 
 export interface FactInput {
@@ -43,7 +43,7 @@ export async function updateFact(id: number, patch: Partial<FactInput>): Promise
   if (patch.isActive !== undefined) next.isActive = patch.isActive;
 
   const [row] = await db.update(facts).set(next).where(eq(facts.id, id)).returning();
-  if (!row) throw new Error(`факту ${id} немає`);
+  if (!row) throw new Error(`fact ${id} does not exist`);
   return row;
 }
 

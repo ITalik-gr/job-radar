@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Порт API налаштовується: 3000 буває зайнятий іншим проєктом власника.
+      // The API port is configurable: 3000 is sometimes taken by another project of the owner's.
       '/api': { target: `http://localhost:${process.env.API_PORT ?? 3000}`, changeOrigin: true },
     },
   },

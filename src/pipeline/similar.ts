@@ -6,17 +6,17 @@ import { log } from '../lib/log.js';
 import { withRun } from '../lib/runs.js';
 
 /**
- * Пошук схожих компаній за змістом, а не за тегами.
+ * Finding companies similar by content, not by tags.
  *
- * Навіщо: теги каталогів грубі і різні на кожному сайті, а власник відбирає студії
- * на око, за описом і стеком. Коли він позначив кілька як цікаві, найдешевший спосіб
- * знайти ще таких це порівняти описи, а не перебирати теги руками.
+ * Why: catalog tags are coarse and different on every site, while the owner picks
+ * studios by eye, by description and stack. Once several are marked interesting, the
+ * cheapest way to find more like them is to compare descriptions, not go through tags by hand.
  *
- * Вектори лежать у `companies.embedding`, повний перебір іде в памʼяті: компаній
- * сотні, і це мілісекунди. Окрема векторна база тут була б зайвою залежністю.
+ * Vectors live in `companies.embedding`, a full scan runs in memory: there are hundreds
+ * of companies, and that's milliseconds. A separate vector database here would be an unneeded dependency.
  */
 
-/** Що саме описує компанію для моделі. Порядок від найважливішого до загального. */
+/** What describes a company for the model. Ordered from most to least important. */
 export function companyText(company: Pick<Company, 'name' | 'description' | 'tags' | 'techHints' | 'kind'>): string {
   return [
     company.name,
@@ -36,10 +36,10 @@ export interface EmbedStats {
 }
 
 /**
- * Порахувати вектори тим компаніям, у яких їх ще немає.
+ * Compute vectors for companies that don't have one yet.
  *
- * Пачками по 25: Workers AI приймає масив текстів за раз, і один запит на компанію
- * був би і повільніше, і дорожче в нейронах.
+ * In batches of 25: Workers AI accepts an array of texts at once, and one request per
+ * company would be both slower and more expensive in neurons.
  */
 export async function embedCompanies(limit = 200, batchSize = 25): Promise<EmbedStats> {
   return withRun('embed', async () => {
@@ -72,13 +72,13 @@ export async function embedCompanies(limit = 200, batchSize = 25): Promise<Embed
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        stats.errors.push(`пачка ${index / batchSize + 1}: ${message}`);
-        // Немає сенсу довбати ту саму помилку двадцять разів поспіль.
+        stats.errors.push(`batch ${index / batchSize + 1}: ${message}`);
+        // No point hitting the same error twenty times in a row.
         if (/CLOUDFLARE_|401|403/.test(message)) break;
       }
     }
 
-    log.info(stats, 'вектори компаній порахувано');
+    log.info(stats, 'company vectors computed');
     return stats;
   });
 }
@@ -92,8 +92,9 @@ export interface SimilarCompany {
 }
 
 /**
- * Схожі на задану. Поріг навмисно не нульовий: без нього у видачу лізе вся база,
- * відсортована за дрібними відмінностями, і список виглядає осмисленим, хоча ним не є.
+ * Similar to the given one. The threshold is deliberately non-zero: without it the
+ * whole database creeps into the result, sorted by tiny differences, and the list
+ * looks meaningful while not being one.
  */
 export async function similarCompanies(
   companyId: number,

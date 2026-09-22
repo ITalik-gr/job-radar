@@ -88,13 +88,13 @@ $('setupUrl').addEventListener('keydown', (event) => {
 
 async function refresh() {
   if (!(await refreshSetup())) {
-    $('healthText').textContent = 'адреса не задана';
+    $('healthText').textContent = 'address is not set';
     $('health').querySelector('.dot').dataset.tone = 'bad';
     return;
   }
 
   const health = await chrome.runtime.sendMessage({ type: 'radar:health' });
-  $('healthText').textContent = health?.ok ? 'на звʼязку' : (health?.error ?? 'не запущений');
+  $('healthText').textContent = health?.ok ? 'connected' : (health?.error ?? 'not running');
   $('health').querySelector('.dot').dataset.tone = health?.ok ? 'ok' : 'bad';
 
   const day = new Date().toISOString().slice(0, 10);
@@ -114,13 +114,13 @@ async function refresh() {
 
   const preview = await send({ type: 'radar:preview' });
 
-  // Не каталог: числа порожні, зате одразу видно, куди піти. Тому список каталогів
-  // розкривається сам, а на каталозі лишається згорнутим і не займає екран.
+  // Not a catalog: the numbers are empty, but it is immediately clear where to go.
+  // So the catalog list expands itself, and on a catalog it stays collapsed and does not take up the screen.
   if (!preview) {
-    $('site').textContent = 'не каталог';
+    $('site').textContent = 'not a catalog';
     $('site').dataset.tone = 'muted';
     $('pageMetrics').hidden = true;
-    setNote('Відкрий сторінку каталогу зі списку нижче, і збір почнеться сам.');
+    setNote('Open a catalog page from the list below, and collection will start on its own.');
     $('catalogsBox').open = true;
     $('walk').disabled = true;
     $('collect').disabled = true;
@@ -135,18 +135,18 @@ async function refresh() {
   $('collect').disabled = preview.total === 0;
 
   const walk = $('walk');
-  walk.textContent = preview.walking ? 'Зупинити автообхід' : 'Автообхід пагінації';
+  walk.textContent = preview.walking ? 'Stop auto-walk' : 'Auto-walk pagination';
   walk.className = preview.walking ? 'btn danger' : 'btn primary';
   walk.disabled = !preview.nextPage && !preview.walking;
 
   if (!preview.known) {
-    setNote('Каталог незнайомий, розбір іде загальною евристикою. Перевір, чи схожі числа на правду.', 'warn');
+    setNote('Catalog is unfamiliar, parsing runs on the generic heuristic. Check whether the numbers look right.', 'warn');
   } else if (preview.total === 0) {
-    setNote('Карток не видно. Можливо, сторінка ще вантажиться або показує перевірку.', 'warn');
+    setNote('No cards visible. The page may still be loading or showing a verification challenge.', 'warn');
   } else if (!preview.nextPage) {
-    setNote('Наступної сторінки не видно, автообхід зупиниться після цієї.');
+    setNote('No next page visible, auto-walk will stop after this one.');
   } else {
-    setNote(`Наступна сторінка знайдена, за прохід буде до ${stored.maxPages} сторінок.`);
+    setNote(`Next page found, up to ${stored.maxPages} pages will be visited per pass.`);
   }
 }
 
@@ -159,19 +159,19 @@ $('walk').addEventListener('click', async () => {
 $('collect').addEventListener('click', async () => {
   const button = $('collect');
   button.disabled = true;
-  button.textContent = 'збираю';
+  button.textContent = 'collecting';
   await send({ type: 'radar:collect-now' });
-  button.textContent = 'Зібрати цю сторінку';
+  button.textContent = 'Collect this page';
   await refresh();
 });
 
 /*
- * Обхід сайтів, намальованих скриптом. Кнопка живе окремо від каталогів навмисно:
- * це не збір списків компаній, а добір пошти і стеку по вже відомих доменах, і
- * працює він на будь-якій вкладці, не тільки на каталозі.
+ * Walking sites that a script renders. The button lives apart from the catalogs on
+ * purpose: this is not collecting lists of companies, but picking up email and stack
+ * for domains already known, and it works on any tab, not only on a catalog.
  */
 async function refreshBrowserWalk() {
-  // Без адреси черги не існує, і питати її означає лише отримати помилку у відповідь.
+  // Without an address the queue does not exist, and asking for it would only get an error back.
   const setup = await chrome.runtime.sendMessage({ type: 'radar:configured' });
   if (!setup?.configured) {
     $('jsCount').textContent = '?';
@@ -183,29 +183,30 @@ async function refreshBrowserWalk() {
   const running = state?.state?.running && !state?.state?.report;
 
   const button = $('jsWalk');
-  button.textContent = running ? 'Зупинити обхід' : 'Обійти в фоні';
+  button.textContent = running ? 'Stop walk' : 'Walk in background';
   button.className = running ? 'btn wide danger' : 'btn wide';
 
   if (running && state.state.domain) {
-    $('jsNote').textContent = `${state.state.domain}, ${state.state.at} з ${state.state.total}`;
+    $('jsNote').textContent = `${state.state.domain}, ${state.state.at} of ${state.state.total}`;
     return;
   }
 
   const report = state?.state?.report;
   if (report) {
     const parts = [
-      `сайтів ${report.done}`,
-      `сторінок ${report.pages ?? 0}`,
-      `контактів ${report.contacts}`,
-      `людей ${report.people ?? 0}`,
+      `sites ${report.done}`,
+      `pages ${report.pages ?? 0}`,
+      `contacts ${report.contacts}`,
+      `people ${report.people ?? 0}`,
     ];
 
     /*
-     * Порожній результат показується текстом помилки, а не числом у хвості.
-     * Правило 3 в CLAUDE.md: нуль це помилка, і мовчати про неї не можна, інакше
-     * обхід виглядає робочим рівно доти, доки хтось не полізе в базу перевіряти.
+     * An empty result shows as error text, not as a number at the tail.
+     * Rule 3 in CLAUDE.md: zero is an error, and staying silent about it is not
+     * allowed, otherwise the walk looks like it is working right up until someone
+     * checks the database.
      */
-    if (report.empty > 0) parts.push(`порожніх ${report.empty}`);
+    if (report.empty > 0) parts.push(`empty ${report.empty}`);
     $('jsNote').textContent = parts.join(', ');
     $('jsNote').dataset.tone = report.empty > 0 || report.errors?.length ? 'warn' : '';
     if (report.errors?.length) $('jsNote').title = report.errors.join('\n');
@@ -225,8 +226,8 @@ $('jsWalk').addEventListener('click', async () => {
   }
 
   $('jsWalk').disabled = true;
-  $('jsNote').textContent = 'відкриваю сайти у фонових вкладках';
-  // Попап закривається при переході по вкладках, тому робота живе у service worker.
+  $('jsNote').textContent = 'opening sites in background tabs';
+  // The popup closes when switching tabs, so the work lives in the service worker.
   chrome.runtime.sendMessage({ type: 'radar:browser-walk', limit: 10 });
   setTimeout(refreshBrowserWalk, 1500);
 });

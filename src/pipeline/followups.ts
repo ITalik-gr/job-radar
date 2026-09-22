@@ -6,22 +6,23 @@ import { renderLetter } from '../lib/letter.js';
 import { matchTemplate, outreachTemplates, readSignature, type Language } from './outreach.js';
 
 /**
- * Фолоу-апи, розділ 6 OUTREACH.md.
+ * Follow-ups, section 6 of OUTREACH.md.
  *
- * Рівно один на компанію, через 7-9 днів, обовʼязково в тому самому треді.
- * Другий фолоу-ап це вже не наполегливість, а причина потрапити в спам, тому
- * його немає навіть як опції.
+ * Exactly one per company, after 7-9 days, always in the same thread. A second
+ * follow-up is no longer persistence, it's a reason to end up in spam, so it doesn't
+ * even exist as an option.
  */
 
 export const FOLLOWUP_MIN_DAYS = 7;
 export const FOLLOWUP_MAX_DAYS = 9;
 
 /**
- * Затримка 7-9 днів, але детермінована для конкретного листа.
+ * A 7-9 day delay, but deterministic for a specific letter.
  *
- * Випадкове число щоразу означало б, що лист то настав, то знову ні, залежно
- * від моменту перевірки. Розкид потрібен, щоб фолоу-апи не йшли пачкою рівно
- * на восьмий день, і залишок id для цього годиться не гірше за генератор.
+ * A random number every time would mean the letter was due, then not due again,
+ * depending on when it was checked. The spread is needed so follow-ups don't go out in
+ * a batch on exactly the eighth day, and the remainder of the id works just as well for
+ * that as a generator.
  */
 export function followupDelayDays(outreachId: number): number {
   return FOLLOWUP_MIN_DAYS + (outreachId % (FOLLOWUP_MAX_DAYS - FOLLOWUP_MIN_DAYS + 1));
@@ -40,7 +41,7 @@ export interface FollowupCandidate {
 }
 
 /**
- * Кому час писати вдруге: відповіді немає, баунсу не було, фолоу-ап ще не йшов.
+ * Who it's time to write to a second time: no reply, no bounce, no follow-up sent yet.
  */
 export async function dueFollowups(now = new Date()): Promise<FollowupCandidate[]> {
   const db = getDb();
@@ -56,7 +57,7 @@ export async function dueFollowups(now = new Date()): Promise<FollowupCandidate[
         isNull(outreach.bounceType),
         isNull(outreach.followupOf),
         isNotNull(outreach.gmailThreadId),
-        // Ні відправленого, ні готового: чернетка фолоу-апу теж рахується.
+        // Neither sent nor ready: a follow-up draft counts too.
         sql`not exists (
           select 1 from ${outreach} as f where f.followup_of = ${outreach.id}
         )`,
@@ -85,11 +86,11 @@ export interface FollowupReport {
 }
 
 /**
- * Готує чернетки фолоу-апів. Автоматично вони не летять: та сама черга
- * підтвердження, та сама кнопка на кожен лист.
+ * Prepares follow-up drafts. They don't go out automatically: the same confirmation
+ * queue, the same button for every letter.
  *
- * Тема береться з оригіналу без змін. Нова тема створює окремий тред у поштових
- * клієнтах, і тоді фолоу-ап читається як друга розсилка, а не як нагадування.
+ * The subject is taken from the original unchanged. A new subject creates a separate
+ * thread in mail clients, and then the follow-up reads like a second mailing instead of a reminder.
  */
 export async function prepareFollowups(now = new Date()): Promise<FollowupReport> {
   const db = getDb();
@@ -103,7 +104,7 @@ export async function prepareFollowups(now = new Date()): Promise<FollowupReport
     if (!template) {
       report.skipped.push({
         company: candidate.company,
-        reason: `немає шаблона followup мовою ${candidate.language}`,
+        reason: `no followup template for language ${candidate.language}`,
       });
       continue;
     }
@@ -134,15 +135,15 @@ export async function prepareFollowups(now = new Date()): Promise<FollowupReport
       contactName: candidate.contactName,
       error:
         rendered.missing.length > 0
-          ? `порожні плейсхолдери: ${rendered.missing.join(', ')}`
+          ? `empty placeholders: ${rendered.missing.join(', ')}`
           : /\[[^\]\n]{3,}\]/.test(rendered.text)
-            ? 'у шаблоні фолоу-апу лишились мітки'
+            ? 'placeholder markers left in the followup template'
             : null,
     });
 
     report.created += 1;
   }
 
-  log.info(report, 'фолоу-апи підготовлено');
+  log.info(report, 'followups prepared');
   return report;
 }

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Job Radar Collector",
   "version": "1.0.0",
-  "description": "Збирає компанії з каталогів агенцій у локальний Job Radar",
+  "description": "Collects companies from agency catalogs into a local Job Radar",
   "permissions": [
     "storage",
     "tabs",

@@ -1,265 +1,303 @@
-# Деплой на Cloudflare
+# Deploying to Cloudflare
 
-Мета: радар працює без запущеного ноута, доступний з телефона, cron не залежить від сну.
+Goal: the radar works without a laptop running, is reachable from a phone, and cron
+does not depend on anyone being awake.
 
-Один воркер віддає і API, і фронт. База це D1. Планувальник це Cron Triggers.
+One worker serves both the API and the frontend. The database is D1. The scheduler
+is Cron Triggers.
 
-## Якщо білд висить
+## If the build hangs
 
-Дивитись, на якому етапі він став, це різні хвороби.
+Where it got stuck matters, these are different ailments.
 
-**Висить на `Installing`** це компіляція `better-sqlite3` через node-gyp. Лікується
-прапорцем `--ignore-scripts`, він уже стоїть і в воркфлоу, і в Build command.
+**Hangs on `Installing`** is `better-sqlite3` compiling through node-gyp. Fixed by
+the `--ignore-scripts` flag, already in place in the workflow and in the build
+command.
 
-**Висить на `Initializing`** (до `Cloning`, у логах лише `Initializing build environment...`)
-це не репозиторій: код на той момент навіть не завантажений, тому змінювати в ньому
-нічого не треба. У Cloudflare це означає зіпсований build token, див. розділ
-"Workers Builds" нижче. Саме через це викатка переїхала в GitHub Actions.
+**Hangs on `Initializing`** (before `Cloning`, logs show only
+`Initializing build environment...`) is not about the repo: the code has not even
+been downloaded at that point, so there is nothing to change in it. On Cloudflare
+this means a broken build token, see the "Workers Builds" section below. This is
+exactly why deployment moved to GitHub Actions.
 
-## Найчастіша помилка на проді
+## The most common error in production
 
-`Failed query: select ... params:` на будь-якому запиті означає, що **у віддаленій базі немає
-таблиць**. Міграції треба застосувати окремо, деплой воркера їх не запускає.
+`Failed query: select ... params:` on any query means **the remote database has no
+tables**. Migrations have to be applied separately, deploying the worker does not
+run them.
 
 ```bash
 pnpm wrangler d1 migrations apply job-radar --remote
 pnpm cf:doctor https://<your-worker>.workers.dev/ --token <RADAR_TOKEN>
 ```
 
-`doctor` покаже, які таблиці є, яких бракує і що робити. Те саме віддає
-`GET /api/health?deep=1`, він доступний без токена.
+`doctor` shows which tables exist, which are missing, and what to do. `GET /api/health?deep=1`
+gives the same thing, and it is available without a token.
 
-Перевірити напряму:
+Checking directly:
 
 ```bash
 pnpm wrangler d1 execute job-radar --remote --command "select name from sqlite_master where type='table'"
 ```
 
-Має бути 10 таблиць: companies, company_state, contacts, llm_cache, llm_usage, outreach,
-queue_items, runs, snapshots, vacancies.
+There should be 10 tables: companies, company_state, contacts, llm_cache, llm_usage,
+outreach, queue_items, runs, snapshots, vacancies.
 
-## Один раз
+## One time only
 
 ```bash
 pnpm wrangler login
 
-# 1. База
+# 1. Database
 pnpm wrangler d1 create job-radar
-# у відповіді буде database_id, вписати його у wrangler.jsonc
+# the response will contain database_id, put it into wrangler.local.jsonc
+# (copy from wrangler.local.example.jsonc, it is gitignored)
 
-# 2. Секрети
-pnpm wrangler secret put RADAR_TOKEN          # вигадати довгий рядок, це пароль до радара
+# 2. Secrets
+pnpm wrangler secret put RADAR_TOKEN          # make up a long string, this is the radar's password
 pnpm wrangler secret put ANTHROPIC_API_KEY
 pnpm wrangler secret put TELEGRAM_BOT_TOKEN
 pnpm wrangler secret put TELEGRAM_CHAT_ID
 
-# 3. Схема бази
+# 3. Database schema
 pnpm cf:migrate
 
-# 4. Викатка
+# 4. Deploy
 pnpm deploy
 ```
 
-Після викатки воркер живе на `https://<your-worker>.workers.dev`.
+After deploying, the worker lives at `https://<your-worker>.workers.dev`.
 
-## Деплой на пуш, GitHub Actions
+## Deploy on push, GitHub Actions
 
-Основний шлях. Файл `.github/workflows/deploy.yml`, спрацьовує на пуш у `main`
-і кнопкою Run workflow. Кроки: встановити залежності без скриптів, перевірити типи
-(бекенд і фронт), зібрати фронт, `wrangler deploy`.
+The main path. File `.github/workflows/deploy.yml`, triggers on push to `main` and
+with the Run workflow button. Steps: install dependencies without scripts, check
+types (backend and frontend), build the frontend, `wrangler deploy`.
 
-Типи перевіряються до викатки навмисно: воркер один і він же прод, зламану збірку
-дешевше зупинити в CI.
+Types are checked before deploying on purpose: there is one worker and it is
+production, cheaper to stop a broken build in CI.
 
-**Що треба задати один раз** у GitHub, Settings, Secrets and variables, Actions:
+**What needs to be set once** in GitHub, Settings, Secrets and variables, Actions:
 
-| секрет | де взяти |
+| secret | where to get it |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com, My Profile, API Tokens, шаблон **Edit Cloudflare Workers** |
-| `CLOUDFLARE_ACCOUNT_ID` | `pnpm wrangler whoami`, колонка Account ID |
+| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com, My Profile, API Tokens, **Edit Cloudflare Workers** template |
+| `CLOUDFLARE_ACCOUNT_ID` | `pnpm wrangler whoami`, Account ID column |
 
-Токен має покривати Workers Scripts (edit), Workers KV (edit), D1 (edit) і Account
-Settings (read). Шаблон Edit Cloudflare Workers дає це все.
+The token needs to cover Workers Scripts (edit), Workers KV (edit), D1 (edit) and
+Account Settings (read). The Edit Cloudflare Workers template gives all of that.
 
-**Чому `--ignore-scripts`:** у залежностях є `better-sqlite3`, нативний драйвер для локальної
-роботи. У CI він компілюється через node-gyp, це кілька хвилин або взагалі зависання,
-а воркеру він не потрібен: там база це D1. З цим прапорцем збірка займає секунди.
+**Why `--ignore-scripts`:** among the dependencies is `better-sqlite3`, a native
+driver for local work. In CI it compiles through node-gyp, taking several minutes or
+hanging outright, and the worker does not need it: there the database is D1. With
+this flag the build takes seconds.
 
-Важливо: **міграції D1 у цей ланцюжок не входять,** і це свідомо. Застосовувати схему
-автоматично на кожен пуш небезпечно. Після зміни схеми (тобто після `pnpm db:generate`)
-треба один раз виконати з ноута:
+Important: **D1 migrations are not part of this chain**, and that is deliberate.
+Applying the schema automatically on every push is dangerous. After a schema change
+(that is, after `pnpm db:generate`), run this once from your laptop:
 
 ```bash
 pnpm wrangler d1 migrations apply job-radar --remote
 ```
 
-## Після нічної сесії 04.09: обовʼязкова міграція
+For personal values that must not sit in the repo (database id, From name, AI
+Gateway settings), see the "Personal values" section below.
 
-Зʼявились нові таблиці і колонки. **Без міграції прод зламається**, і не частково,
-а на будь-якому запиті до компаній: код читає `companies.kind`, `copyright_year`
-і `last_post_at`, а їх там ще немає.
+## After the overnight session on 09/04: mandatory migration
 
-| міграція | що додає |
+New tables and columns appeared. **Without the migration, production will break**,
+and not partially either, on any request touching companies: the code reads
+`companies.kind`, `copyright_year` and `last_post_at`, and they are not there yet.
+
+| migration | what it adds |
 | --- | --- |
-| `0005` | таблиці `settings` (правила з інтерфейсу) і `templates` (шаблони листів) |
+| `0005` | tables `settings` (rules from the interface) and `templates` (letter templates) |
 | `0006` | `companies.kind`: studio, design, startup, product, outstaff |
-| `0007` | `companies.copyright_year`, `last_post_at`: ознаки живості сайту |
-| `0008` | `templates.for_kind`: під який тип компанії заточений шаблон |
-| `0009` | `outreach.contact_name`, `contact_email`: кому саме писали |
+| `0007` | `companies.copyright_year`, `last_post_at`: signs of the site being alive |
+| `0008` | `templates.for_kind`: which company type a template is tailored to |
+| `0009` | `outreach.contact_name`, `contact_email`: who exactly was written to |
 
 ```bash
 pnpm wrangler d1 migrations apply job-radar --remote
 pnpm cf:doctor https://<your-worker>.workers.dev/ --token <RADAR_TOKEN>
 ```
 
-`doctor` мусить показати 12 таблиць.
+`doctor` must show 12 tables.
 
-Після міграції один раз проставити типи наявним компаніям, локально або через
-інтерфейс не вийде, тільки CLI по локальній базі: `pnpm cli kinds`. На проді типи
-проставляться самі при наступному прогоні джерел, бо `upsertCompany` рахує їх щоразу.
+After the migration, existing companies need their kind set once, this cannot be
+done through the interface, only via CLI against the local database:
+`pnpm cli kinds`. On production the kinds get set on their own the next time the
+sources run, because `upsertCompany` computes them every time.
 
-## Workers Builds, вбудований білдер Cloudflare
+## Workers Builds, Cloudflare's built-in builder
 
-Другий шлях, зараз не використовується. Він зависав на `Initializing build environment...`
-і далі не йшов. Етап `Initializing` це видача білд-раннера, репо на той момент ще
-не клоноване, тому причина завжди на стороні Cloudflare, а не в коді. За документацією
-це буває, коли **build token видалено або перевипущено**: у налаштуваннях білда лишається
-посилання на токен, якого вже немає.
+The second path, not used right now. It used to hang on
+`Initializing build environment...` and never got further. The `Initializing` stage
+is issuing a build runner, the repo has not been cloned yet at that point, so the
+cause is always on Cloudflare's side, not in the code. Per the docs, this happens
+when the **build token has been deleted or reissued**: the build settings still
+reference a token that no longer exists.
 
-Якщо колись вертатись до нього:
+If you ever go back to it:
 
-1. Дашборд, Workers and Pages, воркер `job-radar`, Settings, Build
-2. Перевірити, що імʼя воркера в дашборді збігається з `name` у `wrangler.jsonc`, тобто `job-radar`
-3. У полі Build token створити **новий** токен і вибрати його, старий не переобирати
-4. Якщо не допомогло, видалити і поставити наново інтеграцію з GitHub
+1. Dashboard, Workers and Pages, worker `job-radar`, Settings, Build
+2. Check that the worker's name in the dashboard matches `name` in `wrangler.jsonc`, that is `job-radar`
+3. In the Build token field, create a **new** token and select it, do not reselect the old one
+4. If that does not help, remove and set up the GitHub integration again
 
-| поле | значення |
+| field | value |
 | --- | --- |
 | Build command | `pnpm install --frozen-lockfile --ignore-scripts && pnpm build:web` |
 | Deploy command | `npx wrangler deploy` |
 | Root directory | `/` |
-| Build variables | не потрібні, секрети живуть окремо |
+| Build variables | not needed, secrets live separately |
 
-Тримати обидва шляхи ввімкненими не варто: на кожен пуш буде дві викатки,
-і остання за часом не обовʼязково новіша за комітом.
+Not worth keeping both paths enabled: every push would trigger two deploys, and the
+later one is not necessarily newer by commit.
 
-Секрети (`RADAR_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
-задаються один раз через `wrangler secret put` або в дашборді, Settings, Variables and Secrets.
-Вони не в репозиторії і не перезаписуються деплоєм.
+Secrets (`RADAR_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
+are set once through `wrangler secret put` or in the dashboard, Settings, Variables
+and Secrets. They are not in the repository and are not overwritten by a deploy.
 
-## AI Gateway перед Anthropic
+## Personal values: wrangler.local.jsonc
 
-Виклики моделі можуть іти через шлюз Cloudflare. Це безкоштовно і дає три речі,
-яких зараз немає: кеш поверх наявного `llm_cache`, жорсткий ліміт витрат
-і лог кожного запиту з відповіддю. Зараз у `llm_usage` видно лише лічильник,
-тобто скільки викликів, але не що саме пішло в модель і чому.
+Everything that identifies you or your Cloudflare account (database id, From name,
+Gmail redirect URI, AI Gateway account and gateway name, your worker's URL) stays
+out of `wrangler.jsonc`, which is committed and generic.
 
-Якість класифікації не змінюється: модель та сама, змінюється тільки адреса.
+1. Copy `wrangler.local.example.jsonc` to `wrangler.local.jsonc` (gitignored) and fill it in
+2. `pnpm deploy` builds `wrangler.deploy.json` from `wrangler.jsonc` plus `wrangler.local.jsonc`
+   (`scripts/wrangler-config.mjs`) and deploys with it
+3. For GitHub Actions, store the whole file as the `WRANGLER_LOCAL_JSONC` repository secret:
+   ```bash
+   gh secret set WRANGLER_LOCAL_JSONC < wrangler.local.jsonc
+   ```
+   CI writes it to `wrangler.local.jsonc` before building the deploy config. Without
+   the secret, the generic config deploys as is, which is what a fresh fork gets by default.
 
-1. Дашборд Cloudflare, розділ AI, AI Gateway, Create Gateway, імʼя `job-radar`
-2. Локально в `.env`:
+Real secrets (API keys, tokens) still go through `wrangler secret put` as described
+above, never through `wrangler.local.jsonc`.
+
+## AI Gateway in front of Anthropic
+
+Model calls can go through Cloudflare's gateway. This is free and gives three things
+that are missing right now: a cache on top of the existing `llm_cache`, a hard spend
+limit, and a log of every request with its response. Right now `llm_usage` only
+shows a counter, that is, how many calls, but not what exactly went into the model
+and why.
+
+Classification quality does not change, it is the same model, only the address changes.
+
+1. Cloudflare dashboard, AI section, AI Gateway, Create Gateway, name `job-radar`
+2. Locally in `.env`:
    ```
    ANTHROPIC_BASE_URL=https://gateway.ai.cloudflare.com/v1/<CF_ACCOUNT_ID>/job-radar/anthropic
    ```
-3. На проді те саме змінною воркера:
+3. In production, the same thing as a worker variable:
    ```bash
    pnpm wrangler secret put ANTHROPIC_BASE_URL
    ```
 
-Порожня змінна означає прямий виклик, тому нічого не ламається, якщо шлюз не створений.
+An empty variable means a direct call, so nothing breaks if the gateway is not created.
 
-## Пошук схожих компаній через Workers AI
+## Finding similar companies through Workers AI
 
-Вектори описів компаній рахуються моделлю `@cf/baai/bge-m3`. Вона багатомовна,
-і це тут головне: у базі поруч англійські описи студій і українські вакансії з DOU.
+Company description vectors are computed by the `@cf/baai/bge-m3` model. It is
+multilingual, and that matters here: the database has English studio descriptions
+sitting next to Ukrainian vacancies from DOU.
 
-На проді нічого налаштовувати не треба: у `wrangler.jsonc` є біндінг `AI`,
-токен і вихід назовні не потрібні. Кнопка "Порахувати схожість" у меню Запустити.
+Nothing to configure in production: `wrangler.jsonc` has the `AI` binding, no token
+or outbound access needed. The "Compute similarity" button is in the Run menu.
 
-Локально потрібен токен, бо біндінга поза Workers не буває:
+Locally a token is needed, since there is no binding outside Workers:
 
 ```
 CF_AI_ACCOUNT_ID=<CF_ACCOUNT_ID>
-CF_AI_API_TOKEN=<токен з правами Workers AI Read і Run>
+CF_AI_API_TOKEN=<token with Workers AI Read and Run permissions>
 
-# Імена саме CF_AI_*, а не CLOUDFLARE_*. Wrangler читає .env і бере звідти
-# CLOUDFLARE_API_TOKEN як свій ключ авторизації, тому токен, виданий лише на
-# Workers AI, підміняв логін і ламав pnpm cf:migrate з 7403
+# The names are exactly CF_AI_*, not CLOUDFLARE_*. Wrangler reads .env and takes
+# CLOUDFLARE_API_TOKEN from it as its own auth key, so a token issued only for
+# Workers AI replaced the login and broke pnpm cf:migrate with 7403
 # "account is not authorized to access this service".
 ```
 
-Далі `pnpm cli embed --limit 200` і `pnpm cli similar <id>`.
+Then `pnpm cli embed --limit 200` and `pnpm cli similar <id>`.
 
-Вартість: безкоштовна квота Workers AI це 10 тисяч нейронів на добу, і вся база
-з чотирьохсот компаній у неї вкладається з запасом. Класифікація вакансій
-лишається на Anthropic: там потрібен строгий JSON і поведінка "чого немає
-в тексті, те null", і міняти перевірену модель заради двох доларів на місяць
-сенсу немає.
+Cost: the free Workers AI quota is 10 thousand neurons a day, and the whole database
+of four hundred companies fits into it with room to spare. Vacancy classification
+stays on Anthropic: it needs strict JSON and the "whatever is not in the text is
+null" behavior, and swapping out a proven model to save two dollars a month is not
+worth it.
 
-## Корисні команди
+## Useful commands
 
-| команда | що робить |
+| command | what it does |
 | --- | --- |
-| `pnpm deploy` | зібрати фронт і викотити (з ноута) |
-| `pnpm cf:migrate` | застосувати міграції до віддаленої бази |
-| `pnpm cf:migrate:local` | те саме для локальної D1 (`wrangler dev`) |
-| `pnpm cf:dev` | воркер локально на справжньому D1, порт 8787 |
-| `pnpm cf:tail` | живі логи проду |
-| `pnpm cf:doctor <url> --token <token>` | перевірка бази і роутів на проді |
+| `pnpm deploy` | build the frontend and deploy (from a laptop) |
+| `pnpm cf:migrate` | apply migrations to the remote database |
+| `pnpm cf:migrate:local` | the same for the local D1 (`wrangler dev`) |
+| `pnpm cf:dev` | worker locally against real D1, port 8787 |
+| `pnpm cf:tail` | live production logs |
+| `pnpm cf:doctor <url> --token <token>` | check the database and routes in production |
 
-## Перший вхід
+## First login
 
-Відкрити `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`.
-Токен збережеться в браузері, далі заходити можна без нього. На телефоні так само.
+Open `https://<your-worker>.workers.dev/?token=<RADAR_TOKEN>`.
+The token gets saved in the browser, after that you can log in without it. Same on the phone.
 
-Без токена API віддає 401. Це єдиний захист, і його досить для інструмента на одну людину,
-але токен не можна класти в публічні місця.
+Without the token, the API returns 401. This is the only protection, and it is
+enough for a tool meant for one person, but the token must not be put anywhere
+public.
 
-## Розширення
+## Extension
 
-У попапі розширення вписати:
+In the extension popup, fill in:
 
-- **адреса радара**: `https://<your-worker>.workers.dev`
-- **токен**: той самий `RADAR_TOKEN`
+- **radar address**: `https://<your-worker>.workers.dev`
+- **token**: the same `RADAR_TOKEN`
 
-Далі збирач шле компанії прямо в хмару, локальний сервер більше не потрібен.
+After that the collector sends companies straight to the cloud, the local server is no longer needed.
 
-## Телеграм
+## Telegram
 
-Команди бота на Workers працюють через вебхук, полінгу там немає:
+Bot commands on Workers work through a webhook, there is no polling there:
 
 ```bash
 curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-worker>.workers.dev/api/telegram/webhook"
 ```
 
-Сповіщення за розкладом (дайджест, фолоу-апи, алерти) працюють і без вебхука.
+Scheduled notifications (digest, follow-ups, alerts) work fine without the webhook too.
 
-## Перенести локальну базу в D1
+## Moving the local database to D1
 
-`sqlite3 .dump` не годиться: він містить `CREATE TABLE`, які конфліктують із уже застосованими
-міграціями. Тому є окрема команда, яка віддає тільки дані:
+`sqlite3 .dump` does not work: it contains `CREATE TABLE` statements that conflict
+with already applied migrations. So there is a separate command that outputs only
+the data:
 
 ```bash
-# тільки компанії і листування, це головне, близько 400 КБ
+# just companies and correspondence, the most important part, about 400 KB
 pnpm cli export:sql /tmp/data.sql --tables companies,company_state,contacts,outreach
 pnpm wrangler d1 execute job-radar --remote --file=/tmp/data.sql
 ```
 
-Повний експорт разом із вакансіями і снапшотами важить близько 13 МБ, це вже впирається
-в ліміти одного `d1 execute`. Вакансії простіше зібрати наново кнопкою "Оновити вакансії",
-вони й так оновлюються кожні 6 годин.
+A full export together with vacancies and snapshots weighs about 13 MB, which
+already runs into the limits of a single `d1 execute`. It is simpler to collect
+vacancies again with the "Refresh vacancies" button, they get refreshed every 6
+hours anyway.
 
-Або почати з чистої бази: розширення, кнопка "Зібрати DOU" і "Знайти career-сторінки"
-наповнять її за вечір.
+Or start with a clean database: the extension, the "Collect DOU" and "Find career
+pages" buttons will fill it up over an evening.
 
-## Що лишилось локальним
+## What stayed local
 
-- `pnpm cli` працює тільки з локальною базою. Для хмарної версії дії доступні кнопками в інтерфейсі
-- Playwright, якщо колись знадобиться, на Workers не запуститься. Це буде окремий локальний обхід
-- Ліміт CPU на запит: важкі прогони (`source:sync` по сотнях компаній) краще залишати cron-у,
-  який ділить роботу на окремі запуски
+- `pnpm cli` only works with the local database. For the cloud version, actions are
+  available through buttons in the interface
+- Playwright, if it is ever needed, will not run on Workers. That would be a
+  separate local workaround
+- CPU limit per request: heavy runs (`source:sync` across hundreds of companies)
+  are better left to cron, which splits the work into separate runs
 
-## Скільки це коштує
+## What this costs
 
-Free plan: 100 тисяч запитів на добу, 5 мільйонів рядків читання з D1 на добу, cron кожні кілька годин.
-Для одного користувача це безкоштовно. Платить тільки Anthropic API за класифікацію.
+Free plan: 100 thousand requests a day, 5 million D1 row reads a day, cron every few
+hours. Free for one user. Only the Anthropic API for classification costs money.

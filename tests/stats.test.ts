@@ -48,7 +48,7 @@ beforeAll(async () => {
       companyId: acme.id,
       source: 'test',
       url: 'https://acme.com/3',
-      title: 'Вічна вакансія',
+      title: 'Forever Open Vacancy',
       stack: ['react'],
       score: 9,
       firstSeen: now - 200 * DAY,
@@ -68,7 +68,7 @@ beforeAll(async () => {
 });
 
 describe('median', () => {
-  it('рахує медіану для парної і непарної кількості', () => {
+  it('computes the median for an even and an odd count', () => {
     expect(median([1, 2, 3])).toBe(2);
     expect(median([1, 2, 3, 4])).toBe(2.5);
     expect(median([])).toBeNull();
@@ -76,26 +76,26 @@ describe('median', () => {
 });
 
 describe('topTech', () => {
-  it('рахує технології, ігноруючи відсіяні стоп-словами', async () => {
+  it('counts technologies, ignoring those filtered out by stop words', async () => {
     const rows = await topTech(365);
     expect(rows[0]).toEqual({ tech: 'react', count: 3 });
     expect(rows.some((row) => row.tech === 'angular')).toBe(false);
   });
 
-  it('за короткий період старі вакансії не рахуються', async () => {
+  it('over a short period, old vacancies are not counted', async () => {
     const rows = await topTech(5);
     expect(rows.every((row) => row.count <= 1)).toBe(true);
   });
 });
 
 describe('medianSalaries', () => {
-  it('бере середину вилки, коли є обидві межі', async () => {
+  it('takes the middle of the range when both bounds are present', async () => {
     const rows = await medianSalaries('seniority');
     expect(rows.find((row) => row.group === 'senior')!.median).toBe(5000);
     expect(rows.find((row) => row.group === 'middle')!.median).toBe(3000);
   });
 
-  it('групування за країною бере країну компанії', async () => {
+  it('grouping by country takes the company\'s country', async () => {
     const rows = await medianSalaries('country');
     expect(rows[0]!.group).toBe('UA');
     expect(rows[0]!.count).toBe(2);
@@ -103,27 +103,27 @@ describe('medianSalaries', () => {
 });
 
 describe('lifetimes', () => {
-  it('медіана часу життя рахується лише по закритих', async () => {
+  it('the median lifetime is computed only over closed vacancies', async () => {
     const stats = await lifetimes();
     expect(stats.closedCount).toBe(2);
     expect(stats.medianDays).toBeGreaterThan(5);
     expect(stats.medianDays).toBeLessThan(25);
   });
 
-  it('вакансія, що висить понад 120 днів, це підозра на ghost job', async () => {
+  it('a vacancy hanging around for more than 120 days is a suspected ghost job', async () => {
     const stats = await lifetimes(120);
     expect(stats.ghosts).toHaveLength(1);
-    expect(stats.ghosts[0]!.title).toBe('Вічна вакансія');
+    expect(stats.ghosts[0]!.title).toBe('Forever Open Vacancy');
     expect(stats.ghosts[0]!.days).toBeGreaterThanOrEqual(200);
   });
 
-  it('поріг налаштовується', async () => {
+  it('the threshold is configurable', async () => {
     expect((await lifetimes(1000)).ghosts).toHaveLength(0);
   });
 });
 
 describe('perDay', () => {
-  it('групує нові вакансії за днями', async () => {
+  it('groups new vacancies by day', async () => {
     const rows = await perDay(365);
     expect(rows.length).toBeGreaterThanOrEqual(3);
     expect(rows.reduce((sum, row) => sum + row.count, 0)).toBe(4);

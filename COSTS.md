@@ -1,150 +1,160 @@
-# Витрати на модель
+# Model costs
 
-Проблема реальна і виміряна, не теоретична. Тут цифри, причини і що з цим зроблено.
+The problem is real and measured, not theoretical. Here are the numbers, the causes
+and what has been done about it.
 
 ---
 
-## Що показали дані
+## What the data showed
 
-За одну добу 03.09.2026, таблиця `llm_usage` (насправді це буквально година - дві):
+Over one day, 03.09.2026, the `llm_usage` table (actually literally an hour or two):
 
-| показник | значення |
+| metric | value |
 | --- | --- |
-| викликів | 500 (уперлись у денну стелю) |
-| вхідних токенів | 909 243 |
-| вихідних токенів | 59 465 |
-| у середньому на виклик | 1 818 вхідних, 119 вихідних |
+| calls | 500 (hit the daily ceiling) |
+| input tokens | 909,243 |
+| output tokens | 59,465 |
+| average per call | 1,818 input, 119 output |
 
-За тарифом Haiku 4.5 (1 долар за мільйон вхідних, 5 за мільйон вихідних) це **1.21 долара за добу**.
-Виглядає дрібницею, але:
+At the Haiku 4.5 rate (1 dollar per million input tokens, 5 per million output tokens)
+that is **1.21 dollars a day**. Looks trivial, but:
 
-- у базі 1 675 вакансій, класифіковано 498, тобто повний прохід коштує близько **4 доларів**
-- **вище порогу опинилось 6 вакансій**. Тобто корисних результатів шість, а заплачено за 498
-- за розкладом кожні 6 годин йде до 50 викликів, це близько **15 доларів на місяць**
-  за інструмент, який дає кілька карток на тиждень
+- the database has 1,675 vacancies, 498 classified, so a full pass costs about **4 dollars**
+- **6 vacancies ended up above the threshold**. So there are six useful results, and 498 were paid for
+- on the schedule, every 6 hours brings up to 50 calls, that is roughly **15 dollars a month**
+  for a tool that produces a few cards a week
 
-Тобто ціна не в абсолютній сумі, а в співвідношенні: **платимо 0.20 долара за одну корисну вакансію**.
-
----
-
-## Чому так вийшло
-
-### 1. Модель кликалась до безкоштовних фільтрів
-
-Головна причина. Порядок був такий: стоп-слова, потім модель, потім скоринг з гео і роллю.
-А гео і роль це чисті регекспи, вони нічого не коштують.
-
-На реальних даних перерахунок дає: **1 060 вакансій відсіюються за роллю** (не інженерна назва)
-і **369 за гео** (офіс або прив'язка до регіону). Разом 85 відсотків усього обсягу.
-За кожну з них було заплачено моделі, щоб потім викинути безкоштовним правилом.
-
-### 2. У модель летів увесь текст вакансії
-
-Середня довжина `raw_text` це 6 699 символів, ліміт стояв 12 000. Більшість цього обсягу
-це блок "про компанію", однаковий для всіх вакансій цієї компанії. Тобто опис Vercel
-оплачувався 87 разів, по разу на кожну їхню вакансію.
-
-### 3. Стеля була по кількості викликів, а не по користі
-
-500 викликів на добу витрачались на те, що трапилось першим, а не на те, що має шанс.
+So the price is not in the absolute amount, but in the ratio: **we pay 0.20 dollars per one useful vacancy**.
 
 ---
 
-## Що вже зроблено
+## Why it turned out this way
 
-### Безкоштовні фільтри перед моделлю
+### 1. The model was called before the free filters
 
-Тепер до виклику рахується детермінований бал без участі моделі. Якщо вакансія відсіяна
-за роллю або гео, або її бал такий, що навіть максимальні 5 балів від моделі
-(`llm_relevance` 100 ділиться на 20) не дотягнуть до порогу, модель не викликається зовсім.
-Запис усе одно зберігається, просто з детермінованим балом.
+The main reason. The order was: stop words, then the model, then scoring with geo
+and role. And geo and role are plain regexes, they cost nothing.
 
-Очікуваний ефект на наявних даних: замість 1 675 викликів близько 250, тобто **мінус 85 відсотків**.
-У грошах повний прохід падає з 4 доларів до приблизно 0.60.
+Recalculating on real data gives: **1,060 vacancies filtered out by role** (not an
+engineering title) and **369 by geo** (office or tied to a region). Together, 85
+percent of the whole volume. The model was paid for each of them, only to be thrown
+out afterward by a free rule.
 
-Те саме правило застосоване і в `classify:pending`, який ганяється за розкладом.
+### 2. The full vacancy text went into the model
 
-Перевіряється трьома тестами в `tests/ingest.test.ts`: гео-відсів, нетехнічна роль
-і контрольний випадок, де модель таки має бути викликана.
+The average length of `raw_text` is 6,699 characters, the limit was 12,000. Most of
+that volume is the "about the company" block, identical for every vacancy of that
+company. That is, Vercel's description was paid for 87 times, once per each of their
+vacancies.
 
-### Менше тексту в запиті
+### 3. The ceiling was by call count, not by usefulness
 
-Ліміт зменшено з 12 000 до 8 000 символів (`LLM_MAX_INPUT_CHARS`). Це компроміс: далі
-різати ризиковано, бо вимоги до англійської і вилка часто стоять у кінці опису,
-і модель почне вгадувати замість того, щоб прочитати.
+500 calls a day were spent on whatever happened first, not on whatever had a chance.
 
-### Вирізання блока "про компанію"
+---
 
-Зроблено, `src/pipeline/boilerplate.ts`. Найдовший спільний префікс і суфікс серед
-вакансій компанії вирізається **тільки з тексту, що йде в модель**. Скоринг,
-збереження і показ працюють з повним текстом.
+## What has already been done
 
-Виміряно на живих даних, а не за прогнозом:
+### Free filters before the model
 
-| компанія | вакансій | спільного тексту |
+Now, before the call, a deterministic score is calculated without the model's
+involvement. If a vacancy is filtered out by role or geo, or its score is such that
+even the maximum 5 points from the model (`llm_relevance` 100 divided by 20) would
+not reach the threshold, the model is not called at all. The record is still saved,
+just with the deterministic score.
+
+Expected effect on the existing data: instead of 1,675 calls, about 250, that is
+**minus 85 percent**. In money, a full pass drops from 4 dollars to about 0.60.
+
+The same rule is applied in `classify:pending`, which runs on schedule.
+
+Verified by three tests in `tests/ingest.test.ts`: the geo rejection, a non-technical
+role, and a control case where the model should indeed be called.
+
+### Less text in the request
+
+The limit was reduced from 12,000 to 8,000 characters (`LLM_MAX_INPUT_CHARS`). This is
+a compromise: cutting further is risky, because English requirements and the salary
+range often sit at the end of the description, and the model would start guessing
+instead of reading.
+
+### Cutting out the "about the company" block
+
+Done, `src/pipeline/boilerplate.ts`. The longest common prefix and suffix among a
+company's vacancies is cut **only from the text that goes to the model**. Scoring,
+saving and display work with the full text.
+
+Measured on live data, not by forecast:
+
+| company | vacancies | shared text |
 | --- | --- | --- |
-| Cloudflare | 313 | 4 786 символів з 8 466, це 57 відсотків |
-| Anthropic | 546 | 3 844 з 7 860, це 49 відсотків |
-| Stripe | 551 | 109 символів, тобто майже нічого |
+| Cloudflare | 313 | 4,786 characters out of 8,466, that is 57 percent |
+| Anthropic | 546 | 3,844 out of 7,860, that is 49 percent |
+| Stripe | 551 | 109 characters, that is next to nothing |
 
-**Загальна економія по базі: 19.8 відсотка**, а не 40 до 60, як прогнозував цей файл
-раніше. Причина в двох речах: стеля 8 000 символів уже зрізала найдовші тексти,
-і шаблон знайшовся лише в 5 компаній з 11, що мають чотири і більше вакансій.
-Там, де шаблон є, економія справді близька до половини.
+**Overall savings across the database: 19.8 percent**, not 40 to 60 as this file
+predicted earlier. The reason is two things: the 8,000 character ceiling already cut
+off the longest texts, and a template was found in only 5 out of 11 companies with
+four or more vacancies. Where a template exists, the savings really are close to half.
 
-Запобіжники: спільна частина коротша за 200 символів ігнорується як випадковість,
-менше трьох вакансій це не вибірка, і якщо після обрізання лишається менше 600
-символів, текст іде цілим. Краще заплатити за зайві токени, ніж дати моделі
-недогризок і отримати вигадану вилку. Вісім тестів у `tests/boilerplate.test.ts`.
-
----
-
-## Що ще можна зробити, за спаданням користі
-
-### 1. Batch API (мінус 50 відсотків на всьому, що йде за розкладом)
-
-Класифікація за розкладом не потребує миттєвої відповіді. Batch API коштує вдвічі дешевше,
-результат забирається за кілька хвилин або годин. Підходить для `classify:pending`
-і не підходить для ручного натискання кнопки в інтерфейсі.
-
-### 2. Кешування системного промпта
-
-Зараз системний промпт це близько 400 токенів на кожен виклик. Мінімальний розмір
-для кешування у Haiku більший, тому саме промпт кешувати сенсу немає. Має сенс,
-якщо разом із ним кешувати опис компанії при пакетній обробці її вакансій.
-
-### 3. Стеля не по кількості, а по грошах
-
-Замість `LLM_DAILY_CALL_LIMIT` рахувати денний ліміт у доларах за фактичними токенами
-з `llm_usage`. Так стеля не залежить від того, довгі чи короткі тексти трапились сьогодні.
-
-### 4. Класифікувати тільки те, що показуємо
-
-Радикальний варіант: модель кличеться не при зборі, а при першому показі картки в черзі.
-Тоді на добу це максимум 10 викликів (розмір черги), тобто центи на місяць.
-Мінус: статистика по стеку і вилках буде рахуватись лише по показаних вакансіях.
+Safeguards: a shared part shorter than 200 characters is ignored as coincidence,
+fewer than three vacancies is not a sample, and if less than 600 characters remain
+after trimming, the text goes in whole. Better to pay for a few extra tokens than to
+give the model a scrap and get a made-up salary range back. Eight tests in
+`tests/boilerplate.test.ts`.
 
 ---
 
-## Скільки має коштувати правильно
+## What else can be done, in decreasing order of usefulness
 
-Після всіх зроблених змін:
+### 1. Batch API (minus 50 percent on everything that runs on schedule)
 
-| сценарій | викликів на добу | приблизна вартість на місяць |
+Scheduled classification does not need an instant answer. The Batch API costs half
+as much, the result comes back within minutes or hours. Fits `classify:pending` and
+does not fit a manual button press in the interface.
+
+### 2. Caching the system prompt
+
+Right now the system prompt is about 400 tokens per call. The minimum size for
+caching on Haiku is larger, so caching the prompt alone is not worth it. It becomes
+worth it if the company description is cached alongside it when batch-processing its
+vacancies.
+
+### 3. A ceiling by money, not by count
+
+Instead of `LLM_DAILY_CALL_LIMIT`, compute a daily limit in dollars from actual
+tokens in `llm_usage`. That way the ceiling does not depend on whether today's texts
+happened to be long or short.
+
+### 4. Classify only what gets shown
+
+The radical option: the model is called not at collection time, but the first time a
+card is shown in the queue. Then that is at most 10 calls a day (the queue size),
+that is cents a month. Downside: stack and salary statistics would only be computed
+over the vacancies actually shown.
+
+---
+
+## What it should cost, done right
+
+After all the changes made so far:
+
+| scenario | calls per day | approximate monthly cost |
 | --- | --- | --- |
-| до змін | 500 | близько 15 доларів |
-| фільтри перед моделлю плюс вирізання шаблону, це поточний стан | 30 до 50 | 1 до 2 долари |
-| плюс Batch API для розкладу | 30 до 50 | менше долара |
-| класифікація тільки черги | до 10 | центи |
+| before the changes | 500 | about 15 dollars |
+| filters before the model plus template trimming, current state | 30 to 50 | 1 to 2 dollars |
+| plus Batch API for the schedule | 30 to 50 | under a dollar |
+| classifying only the queue | up to 10 | cents |
 
 ---
 
-## Як стежити
+## How to keep an eye on it
 
 ```bash
-pnpm cli llm:budget                      # скільки викликів лишилось сьогодні
+pnpm cli llm:budget                      # how many calls are left today
 sqlite3 data/radar.db "select * from llm_usage order by day desc limit 7;"
 ```
 
-У проді те саме видно на сторінці Статистика, поле "виклики моделі".
-Якщо цифра росте швидше за кількість карток у черзі, щось знову кличе модель марно.
+In production the same thing is visible on the Statistics page, "model calls" field.
+If the number grows faster than the number of cards in the queue, something is
+calling the model needlessly again.

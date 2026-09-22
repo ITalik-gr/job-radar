@@ -1,7 +1,8 @@
 /**
- * Точка реєстрації адаптерів. Порядок реалізації визначений у CLAUDE.md, розділ 4:
- * спочатку ATS з чистим JSON, потім RSS, потім каталоги, потім борди, потім власні
- * career-сторінки. Кожен адаптер додається сюди тільки разом зі smoke-тестом на фікстурі.
+ * The registration point for adapters. The implementation order is defined in
+ * CLAUDE.md, section 4: first ATS boards with clean JSON, then RSS, then catalogs,
+ * then boards, then a company's own careers page. Each adapter is added here only
+ * together with a smoke test on a fixture.
  */
 import { registerSource } from './registry.js';
 import { greenhouse } from './boards/greenhouse.js';

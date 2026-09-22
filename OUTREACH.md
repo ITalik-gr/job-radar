@@ -1,31 +1,31 @@
-# OUTREACH.md — модуль розсилки Job Radar
+# OUTREACH.md: Job Radar outreach module
 
-Доповнення до `CLAUDE.md`. Читати обидва.
-Мета модуля: перетворити чергу компаній у відправлені листи, з памʼяттю про контакти,
-персоналізацією через LLM і детекцією відповідей.
-
----
-
-## 0. ЖОРСТКІ ПРАВИЛА
-
-1. **ЖОДНИХ em dash (—) ніде: у коді, коментарях, UI, шаблонах, згенерованих листах.**
-   Валідатор має різати їх автоматично перед відправкою.
-2. **Автоматичної відправки без підтвердження людиною НЕ ІСНУЄ.**
-   Система готує лист повністю, людина натискає кнопку на кожен лист окремо.
-   Причина: масова автовідправка з особистого Gmail означає блокування акаунта.
-   Не додавати "режим автопілота" навіть як опцію, навіть за прапорцем у конфізі.
-3. **LLM переписує тільки перший абзац і тільки з наданих фактів.**
-   Будь-яке твердження, якого немає у вхідних даних, є багом.
-4. Жорсткий ліміт відправок на день зашитий у код константою, не в налаштування UI.
-5. Ніяких трекінг-пікселів, ніяких скорочувачів посилань, ніяких UTM у лінках листа.
-6. OAuth-токени і API-ключі тільки в `.env` і локальному сховищі, ніколи в БД разом з даними,
-   ніколи в комітах.
+Addendum to `CLAUDE.md`. Read both.
+Module goal: turn the company queue into sent emails, with memory of contacts,
+LLM personalization and reply detection.
 
 ---
 
-## 1. МОДЕЛЬ ДАНИХ
+## 0. HARD RULES
 
-Доповнення до наявної схеми.
+1. **NO em dashes anywhere: in code, comments, UI, templates, generated emails.**
+   The validator must strip them automatically before sending.
+2. **There is NO automatic sending without human confirmation.**
+   The system prepares the email in full, the human clicks the button for each email individually.
+   Reason: mass auto-sending from a personal Gmail account means the account gets blocked.
+   Do not add an "autopilot mode" in any form, not even as an option behind a config flag.
+3. **The LLM rewrites only the first paragraph and only from the facts provided.**
+   Any claim that isn't in the input data is a bug.
+4. A hard daily send limit is baked into the code as a constant, not a UI setting.
+5. No tracking pixels, no link shorteners, no UTM parameters in email links.
+6. OAuth tokens and API keys only in `.env` and local storage, never in the DB alongside data,
+   never in commits.
+
+---
+
+## 1. DATA MODEL
+
+Addendum to the existing schema.
 
 ```ts
 templates
@@ -35,152 +35,153 @@ templates
   target_type,                    // vacancy | studio_named | studio_generic | followup
   is_active, created_at, updated_at
 
-outreach                          // розширення наявної таблиці
+outreach                          // extension of the existing table
   id, company_id, vacancy_id, contact_id,
   template_id, language,
-  subject_final, body_final,      // те, що реально пішло
-  ai_used, ai_paragraph,          // згенерований перший абзац, окремо для аудиту
+  subject_final, body_final,      // what actually went out
+  ai_used, ai_paragraph,          // generated first paragraph, kept separately for auditing
   status,                         // draft | approved | sent | failed | bounced | replied
   gmail_message_id, gmail_thread_id,
   queued_at, sent_at,
   reply_at, reply_type,           // positive | rejection | autoreply | ooo | unclear
   bounce_type,                    // hard | soft
-  followup_of,                    // id попереднього листа в ланцюжку
+  followup_of,                    // id of the previous email in the chain
   followup_due_at,
   error
 
 send_log
-  id, day, count, last_sent_at    // для лімітів і пауз
+  id, day, count, last_sent_at    // for limits and pauses
 
-facts                             // whitelist фактів про власника для LLM
+facts                             // whitelist of facts about the owner for the LLM
   id, key, text_uk, text_en, is_active
 ```
 
-`ai_paragraph` зберігається окремо навмисно. Через 100 листів можна буде порівняти
-конверсію з AI-персоналізацією і без неї.
+`ai_paragraph` is stored separately on purpose. After 100 emails it will be possible to compare
+conversion with AI personalization against conversion without it.
 
 ---
 
-## 2. ПІДКЛЮЧЕННЯ GMAIL
+## 2. GMAIL CONNECTION
 
-### Спосіб
+### Method
 
-**Gmail API через OAuth2**, не SMTP з app password.
+**Gmail API via OAuth2**, not SMTP with an app password.
 
-Причини: SMTP не дає ні `threadId`, ні читання вхідних, тобто без нього неможливі
-детекція відповідей і коректне тредування фолоу-апів. Плюс app passwords Google
-поступово обмежує.
+Reasons: SMTP gives neither `threadId` nor inbox reading, meaning reply detection and
+correct follow-up threading are impossible without it. Plus Google is gradually
+restricting app passwords.
 
-### Скоупи
+### Scopes
 
 ```
 https://www.googleapis.com/auth/gmail.send
 https://www.googleapis.com/auth/gmail.readonly
 ```
 
-`gmail.readonly` потрібен виключно для детекції відповідей і баунсів.
-Не запитувати `gmail.modify` і не запитувати повний `mail.google.com`.
+`gmail.readonly` is needed exclusively for reply and bounce detection.
+Do not request `gmail.modify` and do not request full `mail.google.com`.
 
-### Флоу
+### Flow
 
-1. CLI-команда `pnpm cli auth:gmail` відкриває браузер, desktop OAuth flow
-2. Refresh token зберігається локально у `data/.gmail-token.json`, файл у `.gitignore`
-3. Access token оновлюється автоматично, при протуханні refresh token команда повторюється
-4. Стан підключення видно на сторінці Налаштування у вебі
+1. The CLI command `pnpm cli auth:gmail` opens the browser, desktop OAuth flow
+2. The refresh token is stored locally in `data/.gmail-token.json`, the file is in `.gitignore`
+3. The access token refreshes automatically, and when the refresh token expires the command is run again
+4. Connection status is visible on the Settings page in the web app
 
-### Відправка
+### Sending
 
-`users.messages.send`, тіло у форматі RFC 2822, base64url.
+`users.messages.send`, body in RFC 2822 format, base64url.
 
-Обовʼязково:
-- `From` з іменем: `Olena Koval <адреса>`
-- `Reply-To` та сама адреса
-- `text/plain`, **не HTML**. HTML-листи від незнайомців фільтруються жорсткіше
-- підпис у кінці:
+Mandatory:
+- `From` with a name: `Olena Koval <address>`
+- `Reply-To` is the same address
+- `text/plain`, **not HTML**. HTML emails from strangers get filtered more aggressively
+- signature at the end:
   ```
   Olena Koval
   Front-end / Full-stack developer
   olena.dev
   ```
-- максимум одне посилання в тілі листа
+- at most one link in the email body
 
-Для фолоу-апу: `threadId` з попереднього листа, заголовки `In-Reply-To` і `References`
-з `Message-Id` оригіналу. Інакше фолоу-ап прийде окремим листом і виглядатиме як нова розсилка.
+For a follow-up: `threadId` from the previous email, `In-Reply-To` and `References` headers
+with the original's `Message-Id`. Otherwise the follow-up arrives as a separate email and
+looks like a new outreach blast.
 
 ---
 
-## 3. ПАЙПЛАЙН ВІДПРАВКИ
+## 3. SENDING PIPELINE
 
-Чотири стани, між ними людина.
+Four states, with a human between them.
 
 ```
-Черга компаній
-   ↓  (автоматично, вночі або по кнопці)
-Підготовка чернеток: вибір шаблону, підстановка, AI-абзац, валідація
+Company queue
+   ↓  (automatic, overnight or by button)
+Draft preparation: template selection, substitution, AI paragraph, validation
    ↓
-status = draft, лежить на сторінці "До відправки"
-   ↓  (людина читає, за потреби править, натискає Надіслати)
-status = approved → відправка через Gmail API → status = sent
-   ↓  (фоново, раз на годину)
-Перевірка відповідей і баунсів
+status = draft, sits on the "To send" page
+   ↓  (human reads, edits if needed, clicks Send)
+status = approved → sent via Gmail API → status = sent
+   ↓  (in the background, once an hour)
+Reply and bounce checking
 ```
 
-### Підготовка чернеток
+### Draft preparation
 
-Крок автоматичний, запускається командою або кроном.
+An automatic step, run by command or by cron.
 
-Вибір шаблону детермінований, не через LLM:
+Template selection is deterministic, not via LLM:
 
 ```
-є відкрита вакансія                       → template: vacancy
-немає вакансії, є іменний контакт          → template: studio_named
-немає вакансії, тільки hello@ або info@    → template: studio_generic
+open vacancy exists                        → template: vacancy
+no vacancy, named contact exists            → template: studio_named
+no vacancy, only hello@ or info@            → template: studio_generic
 ```
 
-Мова: країна компанії UA означає `uk`, решта `en`.
-Якщо на сайті компанії домінує інша мова, все одно `en`, не вигадувати.
+Language: company country UA means `uk`, everything else `en`.
+If the company's site is dominated by another language, it's still `en`, no guessing.
 
-### Підстановка
+### Substitution
 
-Плейсхолдери в шаблонах: `{name}`, `{company}`, `{city}`, `{country}`, `{stack}`, `{role}`.
+Placeholders in templates: `{name}`, `{company}`, `{city}`, `{country}`, `{stack}`, `{role}`.
 
-**Якщо обовʼязковий плейсхолдер порожній, чернетка не створюється.**
-Вона отримує `status = draft` з полем `error` і показується в окремій вкладці "Потребують уваги".
-Лист із текстом "Hi ," не має існувати навіть як чернетка.
+**If a required placeholder is empty, the draft is not created.**
+It gets `status = draft` with an `error` field and shows up in a separate "Needs attention" tab.
+An email with the text "Hi ," must never exist, not even as a draft.
 
-### Відправка
+### Sending
 
-- Тільки по одному листу, тільки по натисканню
-- Мінімальна пауза між відправками **3 хвилини**, зашита в код.
-  Спроба надіслати раніше блокується з поясненням і таймером у UI
-- Денний ліміт: константа `DAILY_SEND_LIMIT`, стартове значення **20**
-- Прогрів: перші 3 дні ліміт автоматично 5, дні 4-7 ліміт 10, далі 20.
-  Рахується від дати першої відправки, зберігається в `send_log`
-- Не відправляти між 22:00 і 08:00 за Києвом і у вихідні.
-  Лист у суботу вночі виглядає як бот
+- Only one email at a time, only by clicking
+- Minimum pause between sends is **3 minutes**, baked into the code.
+  An attempt to send earlier is blocked with an explanation and a timer in the UI
+- Daily limit: constant `DAILY_SEND_LIMIT`, starting value **20**
+- Warm-up: the first 3 days the limit is automatically 5, days 4-7 it's 10, after that 20.
+  Counted from the date of the first send, stored in `send_log`
+- Do not send between 22:00 and 08:00 Kyiv time, and not on weekends.
+  An email at midnight on a Saturday looks like a bot
 
 ---
 
-## 4. AI-ПЕРСОНАЛІЗАЦІЯ
+## 4. AI PERSONALIZATION
 
-### Що саме персоналізується
+### What exactly gets personalized
 
-**Тільки перший абзац.** Другий абзац (досвід, стек, проєкти) і третій (лінк, підпис)
-беруться з шаблону без змін. Це навмисно: другий абзац містить факти про власника,
-і генерувати його означає ризикувати вигаданим досвідом.
+**Only the first paragraph.** The second paragraph (experience, stack, projects) and the third
+(link, signature) are taken from the template unchanged. This is intentional: the second
+paragraph contains facts about the owner, and generating it would mean risking invented experience.
 
-### Вхідні дані для моделі
+### Input data for the model
 
-Тільки те, що вже є в БД по цій компанії:
-- назва, домен, місто, країна, розмір
-- `tech_hints` зі сканування сайту
-- теги з каталогу
-- опис з каталогу (перші 400 символів)
-- назва вакансії і її стек, якщо є
+Only what's already in the DB for this company:
+- name, domain, city, country, size
+- `tech_hints` from the site scan
+- tags from the catalog
+- description from the catalog (first 400 characters)
+- vacancy title and its stack, if there is one
 
-Плюс `facts` з БД: короткий whitelist фактів про власника, які модель має право згадати.
+Plus `facts` from the DB: a short whitelist of facts about the owner the model is allowed to mention.
 
-### Промпт
+### Prompt
 
 ```
 Ти пишеш перший абзац холодного листа розробника до веб-студії.
@@ -203,192 +204,196 @@ COMPANY:
 {"paragraph": "...", "facts_used": ["..."], "confidence": 0-100}
 ```
 
-Модель: `claude-haiku-4-5-20251001`. Температура 0.7.
+Model: `claude-haiku-4-5-20251001`. Temperature 0.7.
 
-### Валідація (детермінована, після моделі)
+Note: the prompt above is kept in Ukrainian on purpose. It is fed to the model as literal
+instruction text and its own rules require it to produce Ukrainian output when `{language}`
+is `uk`, so it is data, not prose to translate. See the translation exceptions in this pass.
 
-Це ключова частина. Модель пропонує, код вирішує.
+### Validation (deterministic, after the model)
+
+This is the key part. The model proposes, the code decides.
 
 ```
-1. Zod-парсинг. Невалідний JSON → один ретрай → відкат на шаблонний абзац
-2. Кількість речень 1-3, довжина 20-60 слів. Інакше відкат
-3. Наявність em dash → автозаміна на кому
-4. Стоп-слова зі списку → відкат на шаблонний абзац
-5. Перевірка на вигадані сутності:
-   витягнути з абзацу всі власні назви та числа,
-   кожне має зустрічатись у вхідному company_json,
-   інакше відкат
-6. confidence < 60 → відкат
+1. Zod parsing. Invalid JSON → one retry → fall back to the template paragraph
+2. Sentence count 1-3, length 20-60 words. Otherwise fall back
+3. Em dash present → auto-replace with a comma
+4. Stop word from the list → fall back to the template paragraph
+5. Check for invented entities:
+   extract every proper name and number from the paragraph,
+   each one must appear in the input company_json,
+   otherwise fall back
+6. confidence < 60 → fall back
 ```
 
-**Відкат означає використання статичного першого абзацу з шаблону.**
-Система ніколи не відправляє лист без першого абзацу і ніколи не блокується через LLM.
+**Falling back means using the static first paragraph from the template.**
+The system never sends an email without a first paragraph and never gets blocked because of the LLM.
 
-Кожен відкат логується з причиною. На сторінці Статистика видно частку відкатів по причинах.
-Якщо вона вище 30 відсотків, промпт поганий, це сигнал правити.
+Every fallback is logged with a reason. The Statistics page shows the share of fallbacks by reason.
+If it's above 30 percent, the prompt is bad, that's a signal to fix it.
 
-### Бюджет
+### Budget
 
-Один виклик на компанію, результат кешується в `outreach.ai_paragraph`.
-Повторна генерація тільки по явній кнопці "Перегенерувати" в UI.
-Ніяких фонових перегенерацій.
+One call per company, the result is cached in `outreach.ai_paragraph`.
+Regeneration only via the explicit "Regenerate" button in the UI.
+No background regenerations.
 
 ---
 
-## 5. ДЕТЕКЦІЯ ВІДПОВІДЕЙ
+## 5. REPLY DETECTION
 
-Крон раз на годину.
+Cron once an hour.
 
-1. Для кожного `outreach` зі `status = sent` і без `reply_at` запросити тред через
-   `users.threads.get` за `gmail_thread_id`
-2. Якщо в треді зʼявилось повідомлення не від власника, це відповідь
-3. Класифікувати тип через LLM (дешево, короткий промпт):
+1. For each `outreach` row with `status = sent` and no `reply_at`, fetch the thread via
+   `users.threads.get` using `gmail_thread_id`
+2. If a message from someone other than the owner appears in the thread, that's a reply
+3. Classify the type via LLM (cheap, short prompt):
    `positive | rejection | autoreply | ooo | unclear`
-4. Записати `reply_at`, `reply_type`, оновити `company_state.status = replied`
-5. `positive` дає негайне сповіщення в Telegram
+4. Record `reply_at`, `reply_type`, update `company_state.status = replied`
+5. `positive` triggers an immediate Telegram notification
 
-### Баунси
+### Bounces
 
-Ознаки: відправник `mailer-daemon@` або `postmaster@`, тема містить
+Signs: sender is `mailer-daemon@` or `postmaster@`, subject contains
 `Delivery Status Notification`, `Undelivered`, `Returned mail`.
 
-Hard bounce означає позначити контакт як невалідний, компанію не блокувати,
-спробувати інший контакт, якщо є.
+A hard bounce means marking the contact as invalid, not blocking the company,
+trying another contact if one exists.
 
-**Якщо частка баунсів за останні 50 листів перевищує 3 відсотки, відправка блокується
-повністю до ручного розблокування.** Це не попередження, це стоп. Продовження відправки
-при високих баунсах руйнує репутацію відправника.
+**If the bounce share over the last 50 emails exceeds 3 percent, sending is blocked
+entirely until manually unblocked.** This is not a warning, it's a stop. Continuing to send
+during a high bounce rate ruins the sender's reputation.
 
 ---
 
-## 6. ФОЛОУ-АПИ
+## 6. FOLLOW-UPS
 
-- Рівно **один** фолоу-ап на компанію, не більше
-- Через 7-9 днів (рандом у цьому діапазоні) після оригіналу
-- Тільки якщо `reply_type` порожній і не було hard bounce
-- Обовʼязково в тому самому треді
-- Шаблон `followup`, 2 речення максимум
-- Фолоу-ап проходить ту саму чергу підтвердження, автоматично не летить
-- Якщо система не має чим доповнити лист (немає нового факту), фолоу-ап все одно
-  дозволений, але UI показує підказку вписати одне речення про свіжий прогрес
+- Exactly **one** follow-up per company, no more
+- After 7-9 days (random within this range) after the original
+- Only if `reply_type` is empty and there was no hard bounce
+- Must be in the same thread
+- Template `followup`, 2 sentences maximum
+- The follow-up goes through the same confirmation queue, it does not fly automatically
+- If the system has nothing to add to the email (no new fact), the follow-up is still
+  allowed, but the UI shows a hint to add one sentence about recent progress
 
-Щодня о 10:00 Telegram шле список готових до фолоу-апу.
+Every day at 10:00 Telegram sends the list of companies ready for a follow-up.
 
 ---
 
 ## 7. UI
 
-Нова секція "Розсилка" з трьома сторінками.
+A new "Outreach" section with three pages.
 
-### 7.1 До відправки
+### 7.1 To send
 
-Головний робочий екран.
+The main working screen.
 
-- Список чернеток, відсортований за `outreach_priority`
-- Картка: компанія, контакт, тема, повний текст листа, бейдж AI або Шаблон
-- Текст **редагований прямо в картці**, зміни зберігаються в `body_final`
-- Кнопки: `Надіслати` (гаряча клавіша), `Перегенерувати абзац`, `Пропустити`, `Видалити`
-- Зверху: лічильник `надіслано сьогодні 7 з 20`, таймер до наступної дозволеної відправки
-- Коли ліміт вичерпано, кнопки заблоковані, показано коли розблокується
-- Вкладка "Потребують уваги": чернетки з незаповненими плейсхолдерами
+- List of drafts, sorted by `outreach_priority`
+- Card: company, contact, subject, full email text, AI or Template badge
+- Text is **edited right in the card**, changes are saved to `body_final`
+- Buttons: `Send` (hotkey), `Regenerate paragraph`, `Skip`, `Delete`
+- At the top: counter `sent today 7 of 20`, timer until the next allowed send
+- When the limit is reached, buttons are disabled, showing when it unlocks
+- "Needs attention" tab: drafts with unfilled placeholders
 
-### 7.2 Надіслані
+### 7.2 Sent
 
-- Таблиця: компанія, дата, шаблон, мова, AI так/ні, статус, тип відповіді
-- Фільтри по статусу і періоду
-- Підсвічування тих, кому час фолоу-апити
-- Клік відкриває повний текст того, що пішло
+- Table: company, date, template, language, AI yes/no, status, reply type
+- Filters by status and period
+- Highlighting of those due for a follow-up
+- Click opens the full text of what was sent
 
-### 7.3 Шаблони
+### 7.3 Templates
 
-- Редактор шаблонів з підсвіткою плейсхолдерів
-- Прев'ю на реальній компанії з бази
-- Список доступних `facts` з чекбоксами активності
-- Валідація при збереженні: em dash, стоп-слова, довжина понад 150 слів
+- Template editor with placeholder highlighting
+- Preview on a real company from the database
+- List of available `facts` with activity checkboxes
+- Validation on save: em dash, stop words, length over 150 words
 
-### Доповнення до Статистики
+### Additions to Statistics
 
-- Конверсія по шаблонах: надіслано, відповіли, позитивні
-- Конверсія AI проти статичного абзацу
-- Частка відкатів валідації з розбивкою по причинах
-- Баунс-рейт за останні 50 листів
-- Середній час до відповіді
+- Conversion by template: sent, replied, positive
+- AI versus static paragraph conversion
+- Share of validation fallbacks broken down by reason
+- Bounce rate over the last 50 emails
+- Median time to reply
 
 ---
 
 ## 8. TELEGRAM
 
-Додати до наявних сповіщень:
-- 10:00: скільки чернеток готово, скільки фолоу-апів настало
-- Негайно: позитивна відповідь
-- Негайно: баунс-рейт перевищив поріг і відправку заблоковано
-- Негайно: Gmail-токен протух
+Add to the existing notifications:
+- 10:00: how many drafts are ready, how many follow-ups are due
+- Immediately: a positive reply
+- Immediately: bounce rate exceeded the threshold and sending is blocked
+- Immediately: Gmail token expired
 
 ---
 
-## 9. ЗАПОБІЖНИКИ
+## 9. SAFEGUARDS
 
-Список того, що система має відмовлятись робити.
+List of what the system must refuse to do.
 
-- Відправити другий лист компанії зі статусом `contacted` раніше ніж через 90 днів
-- Відправити лист компанії зі статусом `blacklist`, `rejected_by_me`, `rejected_by_them`
-- Відправити на адресу, яка вже дала hard bounce
-- Відправити більше `DAILY_SEND_LIMIT` за добу
-- Відправити раніше ніж через 3 хвилини після попереднього
-- Відправити вночі або у вихідні
-- Відправити лист з незаповненим плейсхолдером
-- Відправити лист довший за 160 слів
-- Відправити при баунс-рейті вище порогу
-- Відправити більше одного фолоу-апу
+- Send a second email to a company with status `contacted` sooner than 90 days
+- Send an email to a company with status `blacklist`, `rejected_by_me`, `rejected_by_them`
+- Send to an address that already produced a hard bounce
+- Send more than `DAILY_SEND_LIMIT` per day
+- Send sooner than 3 minutes after the previous one
+- Send at night or on weekends
+- Send an email with an unfilled placeholder
+- Send an email longer than 160 words
+- Send while the bounce rate is above the threshold
+- Send more than one follow-up
 
-Кожен запобіжник це окрема функція з тестом. Не інлайнити перевірки в UI-хендлер.
-
----
-
-## 10. ЕТАПИ
-
-**Етап 1.** Таблиці `templates`, `facts`, розширення `outreach`. Три базові шаблони,
-підстановка плейсхолдерів, генерація чернеток. Вивід у консоль.
-
-**Етап 2.** OAuth Gmail, `auth:gmail`, відправка одного тестового листа на власну адресу.
-
-**Етап 3.** Сторінка "До відправки", кнопка надсилання, всі запобіжники з тестами.
-
-**Етап 4.** AI-абзац з повною валідацією і відкатом. Порівняти вручну 10 згенерованих
-абзаців перед тим, як вмикати на потік.
-
-**Етап 5.** Детекція відповідей і баунсів, сторінка "Надіслані".
-
-**Етап 6.** Фолоу-апи, Telegram, статистика по шаблонах.
-
-Після Етапу 3 модулем уже можна користуватись щодня. AI це покращення, не блокер.
-Не відкладати початок розсилки до Етапу 6.
+Each safeguard is a separate function with a test. Do not inline checks in the UI handler.
 
 ---
 
-## 11. ТЕСТИ
+## 10. STAGES
 
-Обовʼязкові, без них етап не закритий:
+**Stage 1.** Tables `templates`, `facts`, extension of `outreach`. Three base templates,
+placeholder substitution, draft generation. Output to the console.
 
-- Кожен запобіжник з розділу 9, окремий тест на кожен
-- Валідатор AI-абзацу: em dash, вигадана назва компанії, вигадане число,
-  занадто довгий абзац, невалідний JSON, низький confidence
-- Підстановка з порожнім плейсхолдером
-- Формування RFC 2822 з кирилицею в темі і тілі (перевірка кодування)
-- Тредування фолоу-апу: правильні `In-Reply-To` і `References`
-- Логіка прогріву лімітів по днях
+**Stage 2.** Gmail OAuth, `auth:gmail`, sending one test email to the owner's own address.
 
-**Тест на кирилицю окремо і обовʼязково.** Некоректне кодування українського листа
-це мовчазний баг, який видно тільки одержувачу.
+**Stage 3.** "To send" page, send button, all safeguards with tests.
+
+**Stage 4.** AI paragraph with full validation and fallback. Manually compare 10 generated
+paragraphs before turning it on for the live flow.
+
+**Stage 5.** Reply and bounce detection, "Sent" page.
+
+**Stage 6.** Follow-ups, Telegram, statistics by template.
+
+After Stage 3 the module is already usable daily. AI is an improvement, not a blocker.
+Do not postpone starting outreach until Stage 6.
 
 ---
 
-## 12. ЩО НЕ РОБИТИ
+## 11. TESTS
 
-- Не робити автопілот відправки в жодному вигляді
-- Не робити HTML-листи і красиві підписи з картинками
-- Не робити трекінг відкриттів
-- Не генерувати весь лист через LLM, тільки перший абзац
-- Не додавати резюме файлом у холодний лист
-- Не робити A/B тести на цьому обсязі, вибірка замала для висновків
-- Не інтегрувати сторонні сервіси розсилок, це прямий шлях до блокування
+Mandatory, a stage isn't closed without them:
+
+- Every safeguard from section 9, a separate test for each
+- AI paragraph validator: em dash, invented company name, invented number,
+  paragraph too long, invalid JSON, low confidence
+- Substitution with an empty placeholder
+- Building RFC 2822 with Cyrillic in the subject and body (encoding check)
+- Follow-up threading: correct `In-Reply-To` and `References`
+- Limit warm-up logic by day
+
+**A dedicated test for Cyrillic is mandatory.** Incorrect encoding of a Ukrainian email
+is a silent bug that's only visible to the recipient.
+
+---
+
+## 12. WHAT NOT TO DO
+
+- Do not build send autopilot in any form
+- Do not build HTML emails or fancy signatures with images
+- Do not build open tracking
+- Do not generate the whole email via LLM, only the first paragraph
+- Do not attach a resume file to a cold email
+- Do not do A/B tests at this volume, the sample is too small for conclusions
+- Do not integrate third-party mailing services, that's a direct path to getting blocked

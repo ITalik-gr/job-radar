@@ -6,7 +6,7 @@ import { config } from '../config.js';
 import { setDbFactory, type DrizzleDb } from './client.js';
 import * as schema from './schema.js';
 
-/** Локальний драйвер. Імпортується тільки з Node-точок входу: CLI, main.ts, тести. */
+/** Local driver. Imported only from Node entry points: CLI, main.ts, tests. */
 export function createDb(path: string = config.dbPath) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const sqlite = new Database(path);

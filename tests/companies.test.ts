@@ -14,14 +14,14 @@ beforeAll(() => {
 });
 
 describe('upsertCompany', () => {
-  it('створює компанію і початковий стан new', async () => {
+  it('creates a company and the initial new state', async () => {
     const { company, created } = await upsertCompany({
       name: 'Acme',
       domain: 'https://www.acme.com/careers',
       source: 'csv',
       careersKind: 'greenhouse',
       careersSlug: 'acme',
-      note: 'зі списку',
+      note: 'from a list',
     });
 
     expect(created).toBe(true);
@@ -32,10 +32,10 @@ describe('upsertCompany', () => {
       .from(companyState)
       .where(eq(companyState.companyId, company.id));
     expect(state!.status).toBe('new');
-    expect(state!.reason).toBe('зі списку');
+    expect(state!.reason).toBe('from a list');
   });
 
-  it('той самий домен не створює дубль, а дописує джерело', async () => {
+  it('the same domain does not create a duplicate, it appends the source', async () => {
     const { company, created } = await upsertCompany({
       name: 'Acme Inc',
       domain: 'acme.com',
@@ -51,19 +51,19 @@ describe('upsertCompany', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('не перезаписує вже відомий ATS новим невідомим', async () => {
+  it('does not overwrite an already known ATS with a new unknown one', async () => {
     const { company } = await upsertCompany({ name: 'Acme', domain: 'acme.com', source: 'manual' });
     expect(company.careersKind).toBe('greenhouse');
     expect(company.careersSlug).toBe('acme');
   });
 
-  it('невалідний домен це помилка, а не мовчазний пропуск', async () => {
-    await expect(upsertCompany({ name: 'X', domain: 'не домен', source: 'csv' })).rejects.toThrow();
+  it('an invalid domain is an error, not a silent skip', async () => {
+    await expect(upsertCompany({ name: 'X', domain: 'not a domain', source: 'csv' })).rejects.toThrow();
   });
 });
 
 describe('companiesForAts', () => {
-  it('віддає лише компанії з потрібним ATS і непорожнім slug', async () => {
+  it('returns only companies with the given ATS and a non-empty slug', async () => {
     await upsertCompany({ name: 'NoSlug', domain: 'noslug.com', source: 'csv', careersKind: 'greenhouse' });
     await upsertCompany({ name: 'Lev', domain: 'lev.com', source: 'csv', careersKind: 'lever', careersSlug: 'lev' });
 
@@ -73,8 +73,8 @@ describe('companiesForAts', () => {
   });
 });
 
-describe('репутація і блок "Інше"', () => {
-  it('оцінка і відгуки оновлюються свіжими, решта лише доповнює порожнє', async () => {
+describe('reputation and the "Other" block', () => {
+  it('rating and reviews are updated with fresh values, the rest only fills empty fields', async () => {
     await upsertCompany({
       name: 'Rated',
       domain: 'rated.com',
@@ -84,7 +84,7 @@ describe('репутація і блок "Інше"', () => {
       hourlyRate: '$50 - $99 / hr',
       minProject: '$10,000+',
       foundedYear: 2015,
-      extra: { 'Перевірений профіль': 'так' },
+      extra: { 'Verified Profile': 'yes' },
     });
 
     const { company } = await upsertCompany({
@@ -93,21 +93,21 @@ describe('репутація і блок "Інше"', () => {
       source: 'goodfirms',
       rating: 4.8,
       reviewsCount: 21,
-      // Інший каталог показує коротшу картку. Затерти нею вже зібране не можна.
+      // Another catalog shows a shorter card. It must not overwrite what was already collected.
       hourlyRate: null,
       foundedYear: 1999,
-      extra: { 'Перевірений профіль': 'ні', Мови: 'English, Ukrainian' },
+      extra: { 'Verified Profile': 'no', Languages: 'English, Ukrainian' },
     });
 
     expect(company.rating).toBe(4.8);
     expect(company.reviewsCount).toBe(21);
     expect(company.hourlyRate).toBe('$50 - $99 / hr');
     expect(company.foundedYear).toBe(2015);
-    expect(company.extra['Перевірений профіль']).toBe('так');
-    expect(company.extra.Мови).toBe('English, Ukrainian');
+    expect(company.extra['Verified Profile']).toBe('yes');
+    expect(company.extra.Languages).toBe('English, Ukrainian');
   });
 
-  it('компанія без репутації зберігається з порожніми полями, а не з нулями', async () => {
+  it('a company without a reputation is saved with empty fields, not zeros', async () => {
     const { company } = await upsertCompany({ name: 'Plain', domain: 'plain.com', source: 'csv' });
     expect(company.rating).toBeNull();
     expect(company.reviewsCount).toBeNull();

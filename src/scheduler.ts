@@ -14,7 +14,7 @@ import { checkReplies } from './pipeline/replies.js';
 import { prepareFollowups } from './pipeline/followups.js';
 import './lib/gmail-store.node.js';
 
-/** Розклад з CLAUDE.md, розділ 8. Все всередині одного процесу, без черг і Docker. */
+/** The schedule from CLAUDE.md, section 8. All inside one process, no queues, no Docker. */
 export const SCHEDULE = {
   ats: '0 */6 * * *',
   careersInteresting: '30 3 * * *',
@@ -25,9 +25,9 @@ export const SCHEDULE = {
    * every 6 hours came several at a time and turned the bot into noise.
    */
   summary: '0 10 * * 1,4',
-  /** Відповіді і баунси. Щогодини: раніше нема сенсу, пізніше втрачається темп. */
+  /** Replies and bounces. Hourly: sooner has no point, later and the pace is lost. */
   replies: '5 * * * *',
-  /** Чернетки фолоу-апів готуються зранку, щоб о 10:00 вони вже були в списку. */
+  /** Follow-up drafts get prepared in the morning, so they are already in the list by 10:00. */
   followupDrafts: '30 9 * * *',
 } as const;
 
@@ -37,7 +37,7 @@ async function safely(name: string, task: () => Promise<unknown>): Promise<void>
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     // Log only, no Telegram push: an hourly task failing would otherwise message every hour.
-    log.error({ task: name, err: message }, 'завдання за розкладом впало');
+    log.error({ task: name, err: message }, 'scheduled task crashed');
   }
 }
 
@@ -49,12 +49,11 @@ async function runBoards(): Promise<void> {
 }
 
 /**
- * Періоди завдань для наздоганяння. Мають відповідати `SCHEDULE` вище: якщо
- * розклад змінили, а тут ні, наздоганяння або мовчатиме, або ганятиме зайве.
+ * Task periods for catch-up. Must match `SCHEDULE` above: if the schedule changes
+ * and this does not, catch-up will either stay silent or run unnecessary work.
  *
- * `source` це те, під яким іменем завдання пише в таблицю `runs`. Для прогону
- * бордів беремо greenhouse: він іде першим у пачці, і якщо відпрацював, значить
- * пачка стартувала.
+ * `source` is the name a task writes to the `runs` table under. For the board run we
+ * take greenhouse: it goes first in the batch, and if it succeeded, the batch started.
  */
 const CATCH_UP: { name: string; source: string; periodMs: number; run: () => Promise<unknown> }[] = [
   { name: 'boards', source: 'greenhouse', periodMs: 6 * 60 * 60 * 1000, run: runBoards },
@@ -73,14 +72,14 @@ const CATCH_UP: { name: string; source: string; periodMs: number; run: () => Pro
 ];
 
 /**
- * Наздоганяння пропущеного.
+ * Catching up on what was missed.
  *
- * node-cron не відпрацьовує те, що пропустив, поки процес не працював, а він
- * не працює щоночі і щоразу, коли ноут закритий. Без цього розклад "кожні 6 годин"
- * на практиці означав "коли ноут випадково був увімкнений о рівній годині".
+ * node-cron does not run what it missed while the process was down, and it is down
+ * every night and whenever the laptop is closed. Without this, a "every 6 hours"
+ * schedule in practice meant "whenever the laptop happened to be on at a round hour".
  *
- * Запускається по одному завданню за раз і з паузою: інакше після тижневої перерви
- * усі три стартують одночасно і разом лізуть до чужих сайтів.
+ * Runs one task at a time with a pause between them: otherwise, after a week-long
+ * gap, all three would start at once and hit other people's sites together.
  */
 export async function catchUp(delayBetweenMs = 30_000): Promise<string[]> {
   const done: string[] = [];
@@ -90,8 +89,8 @@ export async function catchUp(delayBetweenMs = 30_000): Promise<string[]> {
     if (!isOverdue(last, task.periodMs)) continue;
 
     log.info(
-      { task: task.name, lastAt: last ? new Date(last).toISOString() : 'ніколи' },
-      'наздоганяю пропущений запуск',
+      { task: task.name, lastAt: last ? new Date(last).toISOString() : 'never' },
+      'catching up on a missed run',
     );
     await safely(`catchUp:${task.name}`, task.run);
     done.push(task.name);
@@ -99,7 +98,7 @@ export async function catchUp(delayBetweenMs = 30_000): Promise<string[]> {
     if (delayBetweenMs > 0) await new Promise((resolve) => setTimeout(resolve, delayBetweenMs));
   }
 
-  if (done.length === 0) log.info('наздоганяти нічого, розклад не відставав');
+  if (done.length === 0) log.info('nothing to catch up on, the schedule was not behind');
   return done;
 }
 
@@ -112,9 +111,9 @@ export function startScheduler(): void {
   cron.schedule(SCHEDULE.summary, () => void safely('notify:summary', () => notify.summary()), { timezone });
 
   /*
-   * Розсилка живе тільки локально: токен Gmail лежить файлом на ноутбуці, і на
-   * Workers цих двох задач немає. Якщо пошта не підключена, обидві мовчки нічого
-   * не роблять, тому вмикати їх окремим прапорцем не треба.
+   * Outreach lives only locally: the Gmail token sits as a file on the laptop, and
+   * on Workers these two tasks do not exist. If mail is not connected, both do
+   * nothing silently, so there is no need to gate them behind a separate flag.
    */
   cron.schedule(
     SCHEDULE.replies,
@@ -129,9 +128,9 @@ export function startScheduler(): void {
 
   log.info(
     { timezone, schedule: SCHEDULE, llmLimit: config.llm.dailyCallLimit },
-    'планувальник запущено',
+    'scheduler started',
   );
 
-  // Не блокуємо старт процесу: API має піднятись одразу, а наздоганяння почекає хвилину.
+  // Not blocking process startup: the API must come up immediately, catch-up can wait a minute.
   setTimeout(() => void catchUp(), 60_000).unref?.();
 }

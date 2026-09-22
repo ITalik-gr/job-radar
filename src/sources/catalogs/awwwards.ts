@@ -4,25 +4,25 @@ import { log } from '../../lib/log.js';
 import type { CatalogSource, RawCompany } from '../registry.js';
 
 /**
- * Awwwards як каталог дизайн-студій.
+ * Awwwards as a design studio catalog.
  *
- * Навіщо: це саме та ніша, про яку казав власник, студії з живим фронтендом,
- * куди пишуть не на вакансію, а з пропозицією допомогти. Пункт 5 у "Далі,
- * за пріоритетом" у STATUS.md.
+ * Why: this is exactly the niche the owner talked about, studios with a living
+ * front end, where you write not about a vacancy but with an offer to help. Item 5
+ * in "Next, by priority" in STATUS.md.
  *
- * robots.txt дозволяє `/directory/`, заборонені пошук і `/websites/?`. Тому
- * ходимо тільки на каталог і на профілі студій, пошуком не користуємось.
+ * robots.txt allows `/directory/`, search and `/websites/?` are disallowed. So we
+ * only go to the catalog and to studio profiles, we don't use search.
  *
- * Домен студії лежить на третьому рівні: каталог дає посилання на профіль,
- * і лише в профілі є справжній сайт. Тому один запит на студію, як і в Getro.
+ * A studio's domain sits at the third level: the catalog gives a link to the
+ * profile, and only the profile has the real site. So it's one request per studio, same as with Getro.
  */
 
 const BASE = 'https://www.awwwards.com';
 
 /**
- * Службові розділи сайту. Каталог і навігація віддаються однаковими посиланнями
- * виду `/щось/`, і без цього переліку в компанії потрапили б "Політика cookie"
- * і "Академія".
+ * The site's utility sections. The catalog and navigation both use links shaped
+ * like `/something/`, and without this list "Cookie Policy" and "Academy" would end
+ * up counted as companies.
  */
 const NOT_A_PROFILE = new Set([
   'about-us',
@@ -49,7 +49,7 @@ const NOT_A_PROFILE = new Set([
   'login',
 ]);
 
-/** Соцмережі і сервіси. Сайт студії це не вони. */
+/** Social networks and services. A studio's site is not one of these. */
 const NOT_A_SITE =
   /(facebook|twitter|x\.com|linkedin|instagram|youtube|vimeo|behance|dribbble|github|medium|tiktok|pinterest|awwwards|google|gstatic|cloudflare|typekit|fontawesome)/i;
 
@@ -67,8 +67,8 @@ export function parseDirectory(html: string): string[] {
 }
 
 /**
- * Складені домени верхнього рівня. Без цього переліку `resn.co.nz` зводився до
- * `co.nz`, і в базі зʼявлялась компанія з доменом суфікса замість сайта.
+ * Compound top-level domains. Without this list `resn.co.nz` collapsed to `co.nz`,
+ * and the database ended up with a company whose "domain" was a suffix instead of a real site.
  */
 const MULTI_TLD = new Set([
   'co.uk', 'co.nz', 'co.za', 'co.jp', 'co.kr', 'co.in', 'co.il',
@@ -76,7 +76,7 @@ const MULTI_TLD = new Set([
   'org.uk', 'net.au', 'net.nz', 'ac.uk', 'gov.uk',
 ]);
 
-/** Звести домен до кореня з урахуванням складених доменів. */
+/** Reduces a domain to its root, accounting for compound top-level domains. */
 function registrable(domain: string): string {
   const parts = domain.split('.');
   if (parts.length <= 2) return domain;
@@ -84,18 +84,19 @@ function registrable(domain: string): string {
   return MULTI_TLD.has(lastTwo) ? parts.slice(-3).join('.') : lastTwo;
 }
 
-/** Для порівняння з назвою студії: тільки літери і цифри. */
+/** For comparing against the studio's name: letters and digits only. */
 function squash(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**
- * Сайт студії з її профілю.
+ * A studio's site from its profile.
  *
- * Спершу шукається домен, схожий на назву або slug студії. Тільки якщо такого
- * немає, береться найчастіший. Причина: у профілі поруч лежать роботи для клієнтів,
- * і в студії з одним великим клієнтом його домен трапляється частіше за власний.
- * На живих даних Immersive Garden отримав cartier.com, а AQuest gucci.com.
+ * A domain resembling the studio's name or slug is searched for first. Only if
+ * there's none is the most frequent one taken. The reason: a profile also lists work
+ * done for clients, and for a studio with one big client, that client's domain shows
+ * up more often than the studio's own. On live data Immersive Garden got cartier.com,
+ * and AQuest got gucci.com.
  */
 export function parseProfile(html: string, slug: string): RawCompany | null {
   const body = html.slice(Math.max(0, html.indexOf('<body')));
@@ -113,7 +114,7 @@ export function parseProfile(html: string, slug: string): RawCompany | null {
     if (NOT_A_SITE.test(url)) continue;
     const domain = normalizeDomain(url);
     if (!domain) continue;
-    // Піддомени зводяться до кореня: obys.agency і library.obys.agency це один сайт.
+    // Subdomains are reduced to their root: obys.agency and library.obys.agency are the same site.
     const root = registrable(domain);
     counts.set(root, (counts.get(root) ?? 0) + 1);
   }
@@ -138,8 +139,8 @@ export function parseProfile(html: string, slug: string): RawCompany | null {
     sizeHint: null,
     careersUrl: null,
     sourceUrl: `${BASE}/${slug}/`,
-    // Тег ставимо самі: у профілі немає рубрикатора, але сам факт присутності
-    // в каталозі Awwwards означає студію з сильним фронтендом.
+    // We set the tag ourselves: the profile has no category listing, but simply
+    // being present in the Awwwards catalog already means a studio with a strong front end.
     tags: ['Web Design', 'UI/UX Design'],
     description: null,
     openVacancies: null,
@@ -151,7 +152,7 @@ export const awwwards: CatalogSource = {
   kind: 'catalog',
 
   parse(payload: string): RawCompany[] {
-    // Для smoke-тесту приймаємо сторінку профілю: саме вона дає компанію.
+    // For the smoke test we accept a profile page: that's exactly what produces a company.
     const company = parseProfile(payload, 'fixture');
     return company ? [company] : [];
   },
@@ -167,11 +168,11 @@ export const awwwards: CatalogSource = {
         const company = parseProfile(profile.body, slug);
         if (company) companies.push(company);
       } catch {
-        // Слуг міг виявитись службовою сторінкою або профіль закритий.
+        // The slug could have turned out to be a utility page, or the profile was taken down.
       }
     }
 
-    log.info({ slugs: slugs.length, companies: companies.length }, 'awwwards: каталог зібрано');
+    log.info({ slugs: slugs.length, companies: companies.length }, 'awwwards: catalog collected');
     return companies;
   },
 };

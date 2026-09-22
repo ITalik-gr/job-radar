@@ -10,14 +10,14 @@ import type { RawVacancy } from '../src/sources/registry.js';
 
 const fixture = (path: string) => readFileSync(`fixtures/${path}`, 'utf8');
 
-/** Спільні інваріанти: якщо їх немає, адаптер вважається зламаним. */
+/** Shared invariants: without them, an adapter is considered broken. */
 function expectSane(items: RawVacancy[], source: string, min = 3) {
   expect(items.length).toBeGreaterThanOrEqual(min);
   for (const item of items) {
     expect(item.source).toBe(source);
-    expect(item.title, `порожній title у ${source}`).toBeTruthy();
+    expect(item.title, `empty title in ${source}`).toBeTruthy();
     expect(item.url).toMatch(/^https?:\/\//);
-    expect(item.rawText.length, `порожній rawText у ${source}: ${item.title}`).toBeGreaterThan(50);
+    expect(item.rawText.length, `empty rawText in ${source}: ${item.title}`).toBeGreaterThan(50);
     expect(item.rawText).not.toMatch(/<(div|p|script|span)\b/i);
     expect(item.rawText).not.toMatch(/&lt;|&nbsp;/);
   }
@@ -26,9 +26,9 @@ function expectSane(items: RawVacancy[], source: string, min = 3) {
 describe('greenhouse', () => {
   const items = parseGreenhouse(fixture('greenhouse/vercel-jobs.json'));
 
-  it('парсить фікстуру', () => expectSane(items, 'greenhouse'));
+  it('parses the fixture', () => expectSane(items, 'greenhouse'));
 
-  it('витягує назву, id, локацію і компанію', () => {
+  it('extracts the title, id, location and company', () => {
     const job = items[0]!;
     expect(job.externalId).toMatch(/^\d+$/);
     expect(job.companyName).toBe('Vercel');
@@ -36,11 +36,11 @@ describe('greenhouse', () => {
     expect(job.postedAt).toBeGreaterThan(Date.parse('2020-01-01'));
   });
 
-  it('розгортає подвійно екранований HTML опису', () => {
+  it('unescapes double-escaped description HTML', () => {
     expect(items[0]!.rawText).toContain('Vercel');
   });
 
-  it('порожня дошка це порожній масив, не виняток', () => {
+  it('an empty board is an empty array, not an exception', () => {
     expect(parseGreenhouse('{"jobs":[],"meta":{"total":0}}')).toEqual([]);
   });
 });
@@ -48,16 +48,16 @@ describe('greenhouse', () => {
 describe('lever', () => {
   const items = parseLever(fixture('lever/spotify-postings.json'));
 
-  it('парсить фікстуру', () => expectSane(items, 'lever'));
+  it('parses the fixture', () => expectSane(items, 'lever'));
 
-  it('склеює кілька локацій і читає workplaceType', () => {
+  it('joins several locations and reads workplaceType', () => {
     const job = items[0]!;
     expect(job.url).toContain('jobs.lever.co');
     expect(job.location).toBeTruthy();
     expect([true, false, null]).toContain(job.remote);
   });
 
-  it('кидає помилку на несподіваній формі відповіді', () => {
+  it('throws on an unexpected response shape', () => {
     expect(() => parseLever('{"postings":[]}')).toThrow();
   });
 });
@@ -65,15 +65,15 @@ describe('lever', () => {
 describe('ashby', () => {
   const items = parseAshby(fixture('ashby/ramp-board.json'));
 
-  it('парсить фікстуру', () => expectSane(items, 'ashby'));
+  it('parses the fixture', () => expectSane(items, 'ashby'));
 
-  it('бере вилку з compensation і прапорець isRemote', () => {
+  it('takes the salary range from compensation and the isRemote flag', () => {
     const withSalary = items.find((i) => i.rawText.includes('Compensation:'));
     expect(withSalary).toBeDefined();
     expect(items.some((i) => i.remote === true)).toBe(true);
   });
 
-  it('відкидає неопубліковані вакансії', () => {
+  it('drops unpublished vacancies', () => {
     const payload = JSON.stringify({
       jobs: [{ id: 'x', title: 'Hidden', jobUrl: 'https://jobs.ashbyhq.com/x/1', isListed: false }],
     });
@@ -84,14 +84,14 @@ describe('ashby', () => {
 describe('remoteok', () => {
   const items = parseRemoteOk(fixture('remoteok/api.json'));
 
-  it('парсить фікстуру', () => expectSane(items, 'remoteok'));
+  it('parses the fixture', () => expectSane(items, 'remoteok'));
 
-  it('викидає юридичну примітку з першого елемента', () => {
+  it('drops the legal notice from the first item', () => {
     expect(items.every((i) => i.title !== null)).toBe(true);
     expect(items.some((i) => i.rawText.includes('API Terms of Service'))).toBe(false);
   });
 
-  it('додає теги і вилку в текст', () => {
+  it('adds tags and the salary range to the text', () => {
     expect(items.some((i) => i.rawText.includes('Tags:'))).toBe(true);
   });
 });
@@ -109,26 +109,26 @@ describe('rss', () => {
       const source = createRssSource(byId[id]!);
       const items = source.parse(fixture(file));
 
-      it('парсить фікстуру', () => expectSane(items, id, 3));
+      it('parses the fixture', () => expectSane(items, id, 3));
 
-      it('визначає компанію', () => {
+      it('determines the company', () => {
         expect(items.every((i) => Boolean(i.companyName))).toBe(true);
       });
 
-      it('має дату публікації', () => {
+      it('has a posted date', () => {
         expect(items.every((i) => typeof i.postedAt === 'number')).toBe(true);
       });
     });
   }
 
-  it('weworkremotely відрізає компанію від назви', () => {
+  it('weworkremotely cuts the company off the title', () => {
     const source = createRssSource(byId['rss:weworkremotely']!);
     const items = source.parse(fixture('rss/weworkremotely.xml'));
     expect(items[0]!.companyName).toBe('Vercel');
     expect(items[0]!.title).not.toContain(':');
   });
 
-  it('порожній фід дає порожній масив', () => {
+  it('an empty feed gives an empty array', () => {
     const source = createRssSource(byId['rss:remotive']!);
     expect(source.parse('<rss><channel><title>x</title></channel></rss>')).toEqual([]);
   });

@@ -6,29 +6,28 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	// Фронт віддається як статика тим самим воркером, окремий Pages не потрібен.
+	// The frontend is served as static assets by the same worker, no separate Pages needed.
 	"assets": {
 		"directory": "web/dist",
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
 		/*
-		 * Без цього рядка навігація браузера на /api/* не доходить до воркера.
-		 * SPA-фолбек віддає index.html будь-якому запиту з Accept: text/html,
-		 * тому curl бачив JSON, а браузер на тій самій адресі бачив інтерфейс.
-		 * Через це мовчки ламався і колбек Google: він приходить саме навігацією.
+		 * Without this line, browser navigation to /api/* never reaches the worker.
+		 * The SPA fallback serves index.html to any request with Accept: text/html,
+		 * so curl saw JSON while a browser at the same address saw the interface.
+		 * This silently broke the Google callback too: it arrives as navigation.
 		 */
 		"run_worker_first": ["/api/*"]
 	},
-	// Workers AI: вектори компаній і, за LLM_PROVIDER=workers-ai, класифікація вакансій.
+	// Workers AI: company vectors and, with LLM_PROVIDER=workers-ai, vacancy classification.
 	"ai": {
 		"binding": "AI"
 	},
 	/*
-	 * No database_id on purpose: the schema marks it optional, and wrangler binds
-	 * the database by name at deploy time. That keeps one person's database out of
-	 * everyone else's checkout, which matters now that this repo is meant to be
-	 * cloned. Create yours once with `wrangler d1 create job-radar`, or rename it
-	 * here and create it under that name.
+	 * No database_id here on purpose: it is one person's database. Put yours in
+	 * wrangler.local.jsonc (gitignored, see wrangler.local.example.jsonc), and
+	 * `pnpm deploy` merges it in. Create the database once with
+	 * `wrangler d1 create job-radar`.
 	 */
 	"d1_databases": [
 		{
@@ -48,32 +47,28 @@
 			"0 5 * * 2",
 			// Telegram summary, Monday and Thursday. UTC: 07:00 here is 10:00 in Kyiv.
 			"0 7 * * MON,THU",
-			// Розсилка. Час у Cron Triggers завжди UTC: 06:30 тут це 09:30 за Києвом.
+			// Mail sending. Cron Triggers time is always UTC: 06:30 here is 09:30 in Kyiv.
 			"5 * * * *",
 			"30 6 * * *"
 		]
 	},
 	"vars": {
 		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001",
-		// Перший абзац листа. Сильніша модель: викликів десятки, а текст читає людина.
+		// First paragraph of the letter. A stronger model: there are dozens of calls and a human reads the text.
 		"OUTREACH_MODEL": "claude-sonnet-5",
-		// anthropic | workers-ai. Друге це включена квота платного плану замість рахунку за токени.
+		// anthropic | workers-ai. The latter is the included quota of the paid plan instead of a token bill.
 		"LLM_PROVIDER": "anthropic",
 		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 	},
 	/*
-	 * Everything that identifies a person lives outside this file, as secrets:
-	 * `wrangler secret put NAME`. Secrets survive a deploy, plain vars here do not,
-	 * so putting them in this list would mean every fork overwriting them with the
-	 * author's values on the next push.
-	 *
-	 * Set these after the first deploy:
+	 * Everything that identifies a person lives outside this file. Plain values
+	 * (From name, Gmail redirect URI, AI Gateway account and name) go into
+	 * wrangler.local.jsonc as vars. Real secrets are set once with
+	 * `wrangler secret put NAME` and survive every deploy:
 	 *   RADAR_TOKEN          password for the API, without it the worker is open to anyone
 	 *   ANTHROPIC_API_KEY    classification and the company verdict
-	 *   CF_AI_ACCOUNT_ID     your Cloudflare account, only needed for AI Gateway
-	 *   AI_GATEWAY_ID        gateway name, same
-	 *   GMAIL_FROM_NAME      the name letters are signed with
-	 *   GMAIL_REDIRECT_URI   https://<your-worker>/api/gmail/callback, must match Google console
+	 *   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   the twice-weekly summary
+	 *   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_FROM_EMAIL   mail
 	 */
 	"observability": {
 		"enabled": true

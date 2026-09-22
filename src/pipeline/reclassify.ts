@@ -12,14 +12,15 @@ export interface ReclassifyStats {
   taken: number;
   classified: number;
   needsReview: number;
-  /** Відсіяні безкоштовними правилами, без виклику моделі. */
+  /** Filtered out by free rules, no model call. */
   skipped: number;
 }
 
 /**
- * Догнати вакансії, які лежать у базі без класифікації: збережені під час --skip-llm,
- * при вичерпаному бюджеті або після невдалої відповіді моделі.
- * Беруться зверху за рахунком, бо бюджет обмежений і найцінніші мають пройти першими.
+ * Catches up on vacancies sitting in the database without a classification: saved during
+ * --skip-llm, with the budget exhausted, or after a failed model response.
+ * Taken from the top by score, because the budget is limited and the most valuable
+ * ones must go through first.
  */
 export async function classifyPending(limit = 20, options: ClassifyOptions = {}): Promise<ReclassifyStats> {
   const db = getDb();
@@ -40,7 +41,7 @@ export async function classifyPending(limit = 20, options: ClassifyOptions = {})
   const stats: ReclassifyStats = { taken: rows.length, classified: 0, needsReview: 0, skipped: 0 };
 
   for (const { vacancy: row, company } of rows) {
-    // Та сама перевірка, що й на вході: модель не кличемо там, де вона нічого не змінить.
+    // The same check as on ingest: the model isn't called where it wouldn't change anything.
     const preliminary = scoreVacancy({
       text: row.rawText ?? '',
       title: row.title,
@@ -102,7 +103,7 @@ export async function classifyPending(limit = 20, options: ClassifyOptions = {})
       .where(eq(vacancies.id, row.id));
 
     stats.classified += 1;
-    log.debug({ id: row.id, score: breakdown.score, relevance: llm.relevance }, 'вакансію докласифіковано');
+    log.debug({ id: row.id, score: breakdown.score, relevance: llm.relevance }, 'vacancy classified');
   }
 
   return stats;

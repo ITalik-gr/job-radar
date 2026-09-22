@@ -5,14 +5,14 @@ import { normalizeDomain } from '../../lib/normalize.js';
 import type { BoardSource, RawVacancy } from '../registry.js';
 
 /**
- * "Ask HN: Who is hiring?", щомісячна гілка на Hacker News.
+ * "Ask HN: Who is hiring?", a monthly thread on Hacker News.
  *
- * Найгустіше джерело стартапів із тих, що взагалі є: дві сотні компаній на
- * місяць, майже всі маленькі, майже всі з прямим контактом засновника, і жодна
- * з них не платить рекрутинговому агентству. Саме те, чого не дають ATS-борди.
+ * The densest source of startups there is at all: two hundred companies a month,
+ * almost all small, almost all with direct founder contact, and none of them pay a
+ * recruiting agency. Exactly what ATS boards don't give.
  *
- * Ходимо через Algolia API самого HN: публічний, без ключів, віддає гілку одним
- * JSON. Скрейпити сторінку не треба.
+ * We go through HN's own Algolia API: public, no keys, returns the whole thread as
+ * one JSON. No need to scrape the page.
  */
 
 const SOURCE = 'hn:hiring';
@@ -39,11 +39,11 @@ interface AlgoliaItem {
 }
 
 /**
- * Заголовок оголошення це перший рядок, розділений вертикальними рисками:
+ * A posting's header is the first line, split by vertical bars:
  * "Company | Role | Location | REMOTE | $150k | https://...".
  *
- * Формат не стандарт, а звичай, тому все, крім назви компанії, необовʼязкове.
- * Порожні поля лишаються порожніми, а не вгадуються.
+ * The format is a convention, not a standard, so everything except the company name
+ * is optional. Empty fields stay empty rather than being guessed.
  */
 export function parseHeader(line: string): {
   company: string | null;
@@ -62,8 +62,9 @@ export function parseHeader(line: string): {
   const remote = /\bremote\b/i.test(line) ? true : /\bonsite|on-site|hybrid\b/i.test(line) ? false : null;
 
   /*
-   * Роль це перший шматок після назви, який схожий на посаду. Інакше в назву
-   * ролі потрапляє "Full-time" або вилка, і вакансія стає "Acme, $150k".
+   * The role is the first chunk after the name that looks like a job title.
+   * Otherwise "Full-time" or a salary range ends up as the role, and the vacancy
+   * becomes "Acme, $150k".
    */
   const roleWords =
     /engineer|developer|designer|scientist|manager|lead|architect|devops|sre|swe|sde|analyst|intern|founder|cto|programmer|full-?stack|front-?end|back-?end/i;
@@ -77,7 +78,7 @@ export function parseHeader(line: string): {
   return { company: parts[0]!, title, location, remote };
 }
 
-/** Перше зовнішнє посилання в оголошенні. Воно ж дає домен компанії. */
+/** The first external link in the posting. It also gives the company domain. */
 export function firstLink(html: string): string | null {
   const matches = html.matchAll(/href="([^"]+)"/g);
   for (const match of matches) {
@@ -104,8 +105,8 @@ export function parseHnThread(payload: string): RawVacancy[] {
 
     const link = firstLink(html);
     /*
-     * Без домену вакансія однаково не збережеться: компанія створюється лише
-     * коли є і назва, і домен, а вигадувати домен з назви не можна.
+     * Without a domain the vacancy won't be saved anyway: a company is only created
+     * when there's both a name and a domain, and a domain can't be made up from a name.
      */
     const domain = link ? normalizeDomain(link) : null;
     if (!domain) continue;
@@ -113,7 +114,7 @@ export function parseHnThread(payload: string): RawVacancy[] {
     posts.push({
       source: SOURCE,
       externalId: String(comment.id),
-      // Посилання на сам коментар: там і оригінал тексту, і контакт для відповіді.
+      // A link to the comment itself: it holds both the original text and the reply contact.
       url: `https://news.ycombinator.com/item?id=${comment.id}`,
       title,
       rawText: text,
@@ -125,11 +126,11 @@ export function parseHnThread(payload: string): RawVacancy[] {
     });
   }
 
-  log.debug({ found: posts.length, total: item.children?.length ?? 0 }, 'HN who is hiring розібрано');
+  log.debug({ found: posts.length, total: item.children?.length ?? 0 }, 'HN who is hiring parsed');
   return posts;
 }
 
-/** Найсвіжіша гілка "Who is hiring". Сусідня "Who wants to be hired" не потрібна. */
+/** The most recent "Who is hiring" thread. The neighboring "Who wants to be hired" isn't needed. */
 export async function latestThreadId(): Promise<string | null> {
   const body = await fetchJson<{ hits?: AlgoliaHit[] }>(SEARCH);
   const hit = (body.hits ?? []).find((row) => /who is hiring/i.test(row.title ?? ''));
@@ -141,7 +142,7 @@ export const hnHiring: BoardSource = {
   kind: 'board',
   async fetch() {
     const id = await latestThreadId();
-    if (!id) throw new Error('HN: не знайшов свіжої гілки "Who is hiring"');
+    if (!id) throw new Error('HN: could not find a recent "Who is hiring" thread');
 
     return parseHnThread(JSON.stringify(await fetchJson<AlgoliaItem>(`${ITEM}/${id}`)));
   },

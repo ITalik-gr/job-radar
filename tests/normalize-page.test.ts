@@ -10,46 +10,46 @@ const noise = page('acme-v1-noise');
 const v2 = page('acme-v2');
 
 describe('scrubText', () => {
-  it('прибирає відносний час двома мовами', () => {
-    // Мітка "Posted" зникає разом із часом, вона нічого не додає до змісту.
+  it('strips relative time in two languages', () => {
+    // The "Posted" label disappears along with the time, it adds nothing to the content.
     expect(scrubText('Posted 2 days ago')).toBe('');
     expect(scrubText('оновлено 3 дні тому')).toBe('оновлено');
     expect(scrubText('Just now')).toBe('');
   });
 
-  it('прибирає абсолютні дати і час', () => {
+  it('strips absolute dates and time', () => {
     expect(scrubText('deployed 12.08.2026 14:32')).toBe('deployed');
     expect(scrubText('Last updated 12 August 2026')).toBe('last updated');
     expect(scrubText('2026-09-03T10:00:00Z build')).toBe('build');
   });
 
-  it('прибирає лічильники переглядів і кандидатів', () => {
+  it('strips view and applicant counters', () => {
     expect(scrubText('37 applicants')).toBe('');
     expect(scrubText('viewed 4821 times')).toBe('');
     expect(scrubText('12 people applied')).toBe('');
     expect(scrubText('148 переглядів')).toBe('');
   });
 
-  it('прибирає випадкові хеші, але лишає звичайні слова', () => {
+  it('strips random hashes but keeps ordinary words', () => {
     expect(scrubText('build a91f3c77de24b8e0f5c1 ok')).toBe('build ok');
     expect(scrubText('react typescript nestjs')).toBe('react typescript nestjs');
   });
 
-  it('схлопує пробіли і викидає порожні рядки', () => {
+  it('collapses whitespace and drops empty lines', () => {
     expect(scrubText('  a  \n\n\n  b  ')).toBe('a\nb');
   });
 });
 
 describe('cleanHref', () => {
-  it('прибирає utm і ref з відносного посилання', () => {
+  it('strips utm and ref from a relative link', () => {
     expect(cleanHref('/careers/dev?utm_source=x&ref=nav&id=3')).toBe('/careers/dev?id=3');
   });
 
-  it('нормалізує абсолютне посилання', () => {
+  it('normalizes an absolute link', () => {
     expect(cleanHref('https://www.Acme.com/careers/dev/?gh_src=y')).toBe('https://acme.com/careers/dev');
   });
 
-  it('відкидає якорі і javascript', () => {
+  it('drops anchors and javascript', () => {
     expect(cleanHref('#top')).toBeNull();
     expect(cleanHref('javascript:void(0)')).toBeNull();
     expect(cleanHref(undefined)).toBeNull();
@@ -57,19 +57,19 @@ describe('cleanHref', () => {
 });
 
 describe('normalizePage', () => {
-  it('викидає банер згоди, чат-віджет, футер і скрипти', () => {
+  it('drops the consent banner, chat widget, footer and scripts', () => {
     expect(v1.text).not.toContain('cookie');
     expect(v1.text).not.toContain('chat with us');
     expect(v1.text).not.toContain('all rights reserved');
     expect(v1.text).not.toContain('window.__build__');
   });
 
-  it('лишає корисний текст вакансій', () => {
+  it('keeps the useful vacancy text', () => {
     expect(v1.text).toContain('senior frontend engineer');
     expect(v1.text).toContain('react, typescript, next.js');
   });
 
-  it('знаходить блоки вакансій з чистими посиланнями', () => {
+  it('finds vacancy blocks with clean links', () => {
     expect(v1.blocks).toHaveLength(4);
     expect(v1.blocks.map((b) => b.url)).toEqual([
       '/careers/senior-frontend-engineer',
@@ -80,18 +80,18 @@ describe('normalizePage', () => {
     expect(v1.blocks[0]!.title).toBe('senior frontend engineer');
   });
 
-  it('те саме наповнення з іншими датами, лічильниками і білд-хешами дає той самий хеш', () => {
+  it('the same content with different dates, counters and build hashes gives the same hash', () => {
     expect(noise.contentHash).toBe(v1.contentHash);
     expect(noise.blocks.map((b) => b.hash)).toEqual(v1.blocks.map((b) => b.hash));
   });
 
-  it('реальна зміна змінює хеш', () => {
+  it('a real change changes the hash', () => {
     expect(v2.contentHash).not.toBe(v1.contentHash);
   });
 });
 
 describe('diffBlocks', () => {
-  it('шумова версія не дає жодної зміни', () => {
+  it('a noisy version gives no changes at all', () => {
     const diff = diffBlocks(
       v1.blocks.map((b) => b.hash),
       noise.blocks,
@@ -100,7 +100,7 @@ describe('diffBlocks', () => {
     expect(diff.unchanged).toBe(4);
   });
 
-  it('бачить рівно одну нову і одну зниклу вакансію', () => {
+  it('sees exactly one new and one missing vacancy', () => {
     const diff = diffBlocks(
       v1.blocks.map((b) => b.hash),
       v2.blocks,
@@ -112,7 +112,7 @@ describe('diffBlocks', () => {
     expect(diff.changed).toBe(true);
   });
 
-  it('перший обхід дає всі блоки як нові', () => {
+  it('the first pass gives every block as new', () => {
     const diff = diffBlocks([], v1.blocks);
     expect(diff.added).toHaveLength(4);
     expect(diff.removed).toHaveLength(0);
@@ -125,25 +125,25 @@ describe('diffByExternalId', () => {
     { externalId: '2', url: 'https://acme.com/jobs/2' },
   ];
 
-  it('нові id це нові вакансії, зниклі це закриті', () => {
+  it('new ids are new vacancies, missing ones are closed', () => {
     const diff = diffByExternalId(['1', '9'], items);
     expect(diff.added.map((i) => i.externalId)).toEqual(['2']);
     expect(diff.removed).toEqual(['9']);
     expect(diff.unchanged).toBe(1);
   });
 
-  it('без змін нічого не рухається', () => {
+  it('nothing moves when nothing changed', () => {
     expect(diffByExternalId(['1', '2'], items).changed).toBe(false);
   });
 
-  it('падає назад на url, якщо джерело не дало id', () => {
+  it('falls back to url when the source gave no id', () => {
     const diff = diffByExternalId(['https://acme.com/jobs/3'], [
       { externalId: null, url: 'https://acme.com/jobs/3' },
     ]);
     expect(diff.changed).toBe(false);
   });
 
-  it('дублі в одній відповіді рахуються один раз', () => {
+  it('duplicates in one response are counted once', () => {
     const diff = diffByExternalId([], [...items, items[0]!]);
     expect(diff.added).toHaveLength(2);
   });

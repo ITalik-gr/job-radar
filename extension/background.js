@@ -64,15 +64,15 @@ async function bumpStats(result) {
 }
 
 /*
- * Стан автообходу живе в service worker, а не в content script.
+ * Auto-walk state lives in the service worker, not in the content script.
  *
- * Причина: content script це untrusted context, і chrome.storage.session йому за
- * замовчуванням недоступний. Звідти й падала помилка "Access to storage is not
- * allowed from this context", через яку автообхід не працював зовсім. Service
- * worker це trusted context, тому читає і пише сам, а сторінка лише питає.
+ * Reason: the content script is an untrusted context, and chrome.storage.session
+ * is not available to it by default. That is what threw the "Access to storage is
+ * not allowed from this context" error, which broke auto-walk entirely. The service
+ * worker is a trusted context, so it reads and writes itself, and the page just asks.
  *
- * Саме session, а не local: обхід не має продовжуватись після перезапуску браузера,
- * це разова дія на один сеанс.
+ * Session, not local, on purpose: the walk must not continue after a browser restart,
+ * it is a one-off action for a single session.
  */
 async function walkState() {
   const { walk = null } = await chrome.storage.session.get({ walk: null });
@@ -138,30 +138,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 /**
- * Обхід сайтів, які малює скрипт.
+ * Walking sites that a script renders.
  *
- * Серверний обхід читає сирий HTML, і на React-сайті там порожній каркас: ні пошти,
- * ні згадок стеку. Тому такі домени радар складає в окрему чергу, а розширення
- * відкриває їх тут, у справжньому браузері, де сторінка вже намальована.
+ * The server-side crawl reads raw HTML, and on a React site that is an empty shell:
+ * no email, no stack mentions. So the radar puts such domains into a separate queue,
+ * and the extension opens them here, in a real browser, where the page is already
+ * rendered.
  *
- * Вкладка створюється **неактивною**: власника нікуди не перекидає, він продовжує
- * робити своє. Після зчитування вкладка закривається сама.
+ * The tab is created **inactive**: it never switches the owner away, he keeps doing
+ * his own thing. Once read, the tab closes itself.
  *
- * Темп людський, як вимагає розділ 4 CLAUDE.md: пауза між сайтами не менша за три
- * секунди і ліміт доменів за прохід. Це чужі сайти, і ходити ними треба так, як
- * ходить людина.
+ * The pace is human, as section 4 of CLAUDE.md requires: the pause between sites is
+ * never less than three seconds, and there is a limit of domains per pass. These are
+ * other people's sites, and they must be visited the way a human would.
  */
 const BROWSER_WALK = {
   minGapMs: 3500,
   settleMs: 2500,
   loadTimeoutMs: 20000,
   /*
-   * Пауза між сторінками одного сайту і скільки їх за один домен.
+   * The pause between pages of one site, and how many pages per domain.
    *
-   * Три секунди це нижня межа з розділу 4 CLAUDE.md, і тут вона доречна вдвічі:
-   * це не пагінація каталогу, а чужий сайт студії, який зараз читає "людина".
-   * Чотири сторінки це головна плюс контакти, про нас і вакансії, тобто рівно ті,
-   * де лежить те, по що прийшли. Глибше йти нема за чим, а часу коштує більше.
+   * Three seconds is the floor from section 4 of CLAUDE.md, and it fits doubly well
+   * here: this is not catalog pagination, it is another studio's own site, and a
+   * "human" is reading it right now. Four pages is the home page plus contacts,
+   * about, and vacancies, exactly the ones where what we came for lives. Going
+   * deeper has no point and only costs more time.
    */
   pageGapMs: 3000,
   maxPages: 4,
@@ -183,7 +185,7 @@ async function waitForLoad(tabId, timeoutMs) {
       if (id === tabId && info.status === 'complete') finish(true);
     };
 
-    // Сторінка могла завантажитись ще до підписки, тому стан перевіряється і напряму.
+    // The page might have loaded before the listener was attached, so the state is also checked directly.
     chrome.tabs.onUpdated.addListener(listener);
     chrome.tabs.get(tabId).then((tab) => tab?.status === 'complete' && finish(true)).catch(() => finish(false));
     const timer = setTimeout(() => finish(false), timeoutMs);
@@ -194,7 +196,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function readPage(tabId) {
   await waitForLoad(tabId, BROWSER_WALK.loadTimeoutMs);
-  // Завантаження це ще не намальована сторінка: рендер і запити даних ідуть після.
+  // Loaded does not mean rendered yet: rendering and data requests happen afterward.
   await pause(BROWSER_WALK.settleMs);
 
   const [injected] = await chrome.scripting.executeScript({
@@ -205,7 +207,7 @@ async function readPage(tabId) {
   return injected?.result ?? null;
 }
 
-/** Друга і наступні сторінки доливаються в те, що вже зібрано з головної. */
+/** The second and following pages are merged into what was already collected from the home page. */
 function mergePage(into, page) {
   const known = new Set(into.emails.map((item) => item.email));
   for (const item of page.emails) {
@@ -222,15 +224,16 @@ function mergePage(into, page) {
 }
 
 /**
- * Обхід одного сайту: головна, а далі те, на що вона посилається.
+ * Walking one site: the home page, then whatever it links to.
  *
- * Читати лише головну було помилкою, і мовчазною: сторінка відкривалась, скрипт
- * відпрацьовував, а назад приходив нуль, бо на головній студії стоїть презентація,
- * а пошта лежить на "контактах" і імена на "про нас". Виглядало це як зламаний
- * збір, хоча збір працював і дивився не туди.
+ * Reading only the home page used to be a bug, and a silent one: the page would open,
+ * the script would run, and nothing would come back, because the studio's home page
+ * holds a pitch, while the email lives on "contact" and the names on "about". It
+ * looked like the collection was broken, though it was working and just looking in
+ * the wrong place.
  *
- * Вкладка на весь обхід одна: вона просто переходить за адресами, як це робила б
- * людина. Так само неактивна, власника нікуди не перекидає.
+ * There is one tab for the whole walk: it simply navigates to each address, the way
+ * a human would. Also inactive, never switching the owner away.
  */
 async function readSite(target) {
   const tab = await chrome.tabs.create({ url: `https://${target.domain}`, active: false });
@@ -247,7 +250,7 @@ async function readSite(target) {
       lastPostAt: home.lastPostAt,
       textLength: home.textLength,
       pages: [{ url: home.url, lines: home.lines }],
-      /** Адреси, на які не вдалось зайти. Порожній результат має пояснення, а не мовчання. */
+      /** Addresses that could not be reached. An empty result needs an explanation, not silence. */
       failed: [],
     };
 
@@ -293,16 +296,16 @@ async function browserWalk(limit) {
         report.contacts += saved.contactsAdded ?? 0;
         report.people += saved.peopleFound ?? 0;
         /*
-         * Порожньо це коли сервер нічого не впізнав, а не коли не було пошти.
-         * Ім'я техліда без адреси теж знахідка: далі по ньому шукається пошта.
+         * Empty means the server recognized nothing, not that there was no email.
+         * A tech lead's name without an address is also a find: the email is looked up from it later.
          */
         if (!saved.emailsFound && !saved.peopleFound) {
           report.empty += 1;
-          report.errors.push(`${target.domain}: ${found.pages.length} стор. прочитано, нічого не знайдено`);
+          report.errors.push(`${target.domain}: read ${found.pages.length} page(s), found nothing`);
         }
       } else {
         report.empty += 1;
-        report.errors.push(`${target.domain}: сторінка не прочиталась`);
+        report.errors.push(`${target.domain}: page could not be read`);
       }
       report.done += 1;
     } catch (error) {

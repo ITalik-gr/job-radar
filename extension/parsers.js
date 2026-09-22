@@ -1,9 +1,10 @@
 /**
- * Розбір карток каталогів. Кожен сайт має свій набір селекторів, а якщо жоден
- * не підійшов, працює запасний шлях через JSON-LD, який віддає більшість каталогів.
+ * Parsing catalog cards. Every site has its own set of selectors, and if none of
+ * them fit, a fallback path through JSON-LD kicks in, which most catalogs provide.
  *
- * Розбирається сторінка, яку відкрив користувач у своєму браузері. Нічого не
- * обходиться: навігацією керує людина, скрипт лише читає готовий DOM.
+ * The page being parsed is the one the user opened in their own browser. Nothing
+ * navigates on its own: a human drives the navigation, the script only reads the
+ * DOM that is already there.
  */
 (() => {
   const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
@@ -14,7 +15,7 @@
     if (!href) return null;
     try {
       const url = new URL(href, window.location.origin);
-      // Каталоги ховають сайт компанії в параметрі редиректу.
+      // Catalogs hide the company's site in a redirect parameter.
       const inner =
         url.searchParams.get('u') ||
         url.searchParams.get('url') ||
@@ -51,11 +52,12 @@
   };
 
   /*
-   * База для відносних посилань це повна поточна адреса, а не origin.
+   * The base for relative links is the full current address, not the origin.
    *
-   * Пагінація на каталогах часто виглядає як href="?page=2". Від origin таке
-   * посилання розкривалось у "https://clutch.co/?page=2", тобто на головну
-   * замість наступної сторінки списку, і обхід зривався на першому ж переході.
+   * Pagination on catalogs often looks like href="?page=2". Resolved against the
+   * origin, such a link used to expand to "https://clutch.co/?page=2", i.e. the
+   * home page instead of the next listing page, and the walk broke on the very
+   * first navigation.
    */
   const absolute = (path) => {
     if (!path) return null;
@@ -66,15 +68,15 @@
     }
   };
 
-  // Розмір команди легко сплутати з бюджетом ("$10,000+"), тому число з доларом не рахуємо.
+  // Team size is easy to confuse with a budget ("$10,000+"), so a number with a dollar sign is not counted.
   const SIZE = /(?<![$\d])\b\d{1,3}(?:,\d{3})?\s*(?:[-\u2013\u2014]|to)\s*\d{1,3}(?:,\d{3})?\b(?!\s*\/?\s*hr)|(?<![$\d])\b\d{1,3},?\d{0,3}\+\s*(?:employees|people|staff|специалист|спеціаліст)/i;
   const RATE = /\$\s?\d+\s*(?:[-\u2013\u2014]|to)\s*\$?\d+\s*\/?\s*hr/i;
   const MIN_PROJECT = /\$\s?[\d,]+\+/;
 
   /*
-   * Репутація в картці каталогу. Спершу мікророзмітка schema.org: її дають Clutch,
-   * GoodFirms і TheManifest, і вона не ламається від зміни верстки. Далі текст,
-   * бо DesignRush і Sortlist розмітки не ставлять.
+   * Reputation in a catalog card. First the schema.org microdata: Clutch, GoodFirms,
+   * and TheManifest provide it, and it does not break when the markup changes. Then
+   * plain text, because DesignRush and Sortlist do not add the markup.
    */
   const REVIEWS = /(\d[\d,]*)\s*(?:reviews?|відгук\w*|отзыв\w*)/i;
   const RATING_TEXT = /\b([0-5](?:[.,]\d)?)\s*(?:\/\s*5|out of 5|stars?|зірок)/i;
@@ -109,18 +111,19 @@
   }
 
   /**
-   * Блок "Інше": усе, що каталог показав понад відомі поля.
+   * The "Other" block: everything the catalog showed beyond the known fields.
    *
-   * Беруться два джерела. Перше це підписані елементи: тултип або aria-label дає
-   * підпис, текст елемента значення ("Min. project size" плюс "$10,000+"). Друге це
-   * пари "Підпис: значення" в тексті картки. Відомі підписи пропускаються, бо в них
-   * уже є свої колонки, а решта осідає сюди без правки коду під кожен новий каталог.
+   * Two sources feed it. The first is labeled elements: a tooltip or aria-label gives
+   * the label, the element's text gives the value ("Min. project size" plus
+   * "$10,000+"). The second is "Label: value" pairs in the card's text. Known labels
+   * are skipped, because they already have their own columns, and the rest lands here
+   * without touching the code for every new catalog.
    */
   const KNOWN_LABEL = /(min\.? project|hourly rate|employees|location|company size|team size)/i;
   /*
-   * Підписи кнопок і посилань це не дані. Без цього фільтра в "Інше" сипалось
-   * "See X Reviews", "Show more about provider" і лічильники послуг з тултипів
-   * діаграми, тобто блок ставав нечитабельним рівно там, де він мав допомагати.
+   * Button and link labels are not data. Without this filter, "Other" filled up with
+   * "See X Reviews", "Show more about provider", and service counters from chart
+   * tooltips, i.e. the block became unreadable exactly where it was meant to help.
    */
   const LABEL_NOISE = /^(see|show|view|open|close|read|visit|hide|more|less|next|prev|\d+%)\b/i;
   const VALUE_NOISE = /^(\+\d+\s*services?|show more|read more|\d[\d,]*\s*(reviews?|відгук\w*))$/i;
@@ -141,8 +144,8 @@
     };
 
     /*
-     * Тільки підписані елементи: тултип каталогу і списки означень. `aria-label`
-     * навмисно не читається, бо ним підписані кнопки, а не поля картки.
+     * Only labeled elements: the catalog's tooltip and definition lists. `aria-label`
+     * is deliberately not read, because it labels buttons, not card fields.
      */
     for (const node of card.querySelectorAll('[data-tooltip-content], dt')) {
       const label = clean(
@@ -157,19 +160,19 @@
       put(match[1], match[2]);
     }
 
-    // Значок перевіреного профілю це окремий сигнал: такі студії відповідають частіше.
+    // A verified profile badge is a separate signal: such studios reply more often.
     if (/\bverified\b/i.test(clean(card.querySelector('[class*="verif" i]')?.textContent))) {
-      extra['Перевірений профіль'] = 'так';
+      extra['Verified profile'] = 'yes';
     }
 
     return extra;
   }
 
   /*
-   * Каталоги мішають у ті самі вузли підписи діаграм, оцінки і кнопки. У фільтрі
-   * за тегами вони заважають, у скорингу не важать нічого, тому відсіюються тут,
-   * а не осідають у базі. Той самий перелік продубльований у backfill-catalog.ts
-   * для вже зібраних компаній.
+   * Catalogs mix chart labels, ratings, and buttons into the same nodes. They get in
+   * the way of the tag filter and carry no weight in scoring, so they are filtered
+   * out here instead of landing in the database. The same list is duplicated in
+   * backfill-catalog.ts for companies already collected.
    */
   const TAG_NOISE = /(allocation|expertise by|read more|see profile|\+\d+\s*service|^\d+%$|view profile|visit website|was this helpful|^service focus|^\d+(?:\.\d+)?\/\d+\b|reviews? mention|^\d[\d,]*\s*reviews?$|^(see|show|read|view)\b|\d+%)/i;
 
@@ -189,8 +192,8 @@
       if (!raw || raw.length < 2 || raw.length > 40) continue;
       if (TAG_NOISE.test(raw)) continue;
 
-      // Ключ без пробілів і невидимих символів: інакше "Mobile App Development"
-      // і той самий тег з нерозривним пробілом рахуються як різні.
+      // A key without spaces and invisible characters: otherwise "Mobile App Development"
+      // and the same tag with a non-breaking space would count as different.
       const key = raw.toLowerCase().replace(/[^a-z0-9а-яіїєґ]/gi, '');
       if (seen.has(key)) continue;
       seen.add(key);
@@ -202,7 +205,7 @@
 
   function common(card) {
     const cardText = clean(card.textContent);
-    // Явний елемент із кількістю людей надійніший за регексп по всьому тексту картки.
+    // An explicit element with the headcount is more reliable than a regex over the whole card text.
     const sizeNode = text(card, [
       '.employees-count',
       '[class*="employee" i]',
@@ -232,7 +235,7 @@
     };
   }
 
-  /** Опис одного каталогу: як знайти картки, назву, сайт і профіль. */
+  /** Description of one catalog: how to find its cards, name, website, and profile. */
   const SITES = [
     {
       id: 'clutch.co',
@@ -299,7 +302,7 @@
     },
   ];
 
-  /** Наступна сторінка: спершу опис сайту, далі загальні ознаки пагінації. */
+  /** Next page: the site's own description first, then generic pagination markers. */
   const GENERIC_NEXT = [
     'a[rel="next"]',
     'link[rel="next"]',
@@ -327,7 +330,7 @@
     return SITES.find((site) => site.match.test(hostname.replace(/^www\./, ''))) ?? null;
   }
 
-  /** Загальні селектори на випадок незнайомого каталогу. */
+  /** Generic selectors for the case of an unfamiliar catalog. */
   const GENERIC_CARDS = [
     'li[class*="provider" i]',
     '[class*="agency-card" i]',
@@ -360,8 +363,8 @@
           city: base.city,
           country: base.country,
           sizeHint: base.sizeHint,
-          // Ставка і мінімальний проєкт більше не теги: у них свої поля, і в тегах
-          // вони лише засмічували фільтр за послугами.
+          // Rate and minimum project are no longer tags: they have their own fields,
+          // and in tags they only cluttered the service filter.
           tags: tagsFrom(card),
           description: base.description,
           sourceUrl: absolute(profile),
@@ -376,7 +379,7 @@
       .filter(Boolean);
   }
 
-  /** Запасний шлях: ItemList у JSON-LD. Дає назви і профілі, домен рідше. */
+  /** Fallback path: ItemList in JSON-LD. Gives names and profiles, a domain less often. */
   function parseJsonLd() {
     const items = [];
     for (const node of document.querySelectorAll('script[type="application/ld+json"]')) {

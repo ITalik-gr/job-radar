@@ -4,32 +4,33 @@ import { companies } from '../db/schema.js';
 import { log } from '../lib/log.js';
 
 /**
- * Перенести ставку і мінімальний проєкт з тегів у власні колонки.
+ * Move the rate and minimum project size out of the tags and into their own columns.
  *
- * До появи колонок каталоги клали "$50 - $99 / hr" і "$10,000+" просто в теги,
- * поруч з послугами. Це видно в фільтрі за тегами як сміття, а нові фільтри
- * і CSV читають колонки, тобто для вже зібраних компаній вони порожні.
+ * Before the columns existed, catalogs put "$50 - $99 / hr" and "$10,000+" right in
+ * the tags, next to services. This shows up as noise in the tag filter, and the new
+ * filters and CSV export read the columns, which are empty for already collected companies.
  *
- * Перезбирати каталоги заради цього не треба: дані вже лежать у базі, їх
- * достатньо розкласти по місцях. Оцінку і кількість відгуків так відновити
- * не можна, їх у тегах ніколи не було, тому вони зʼявляться лише на новому зборі.
+ * There's no need to re-collect the catalogs just for this: the data is already in the
+ * database, it just needs sorting into place. The rating and review count can't be
+ * recovered this way, they were never in the tags, so they will only appear on a fresh collection.
  */
 
 /**
- * "$50 - $99 / hr", "$50-$99/hr", "< $25 / hr", "$300+ / hr". Тире буває звичайне,
- * довге і середнє, а межі діапазону каталоги пишуть і знаком менше, і плюсом.
+ * "$50 - $99 / hr", "$50-$99/hr", "< $25 / hr", "$300+ / hr". The dash can be a regular
+ * hyphen, an en dash or an em dash, and catalogs write the range bounds with both a
+ * less-than sign and a plus.
  */
 const RATE = /^[<>]?\s?\$\s?\d[\d,]*\s*(?:(?:[-–—]|to)\s*\$?\d[\d,]*)?\+?\s*\/?\s*hr\.?$/i;
-/** "$10,000+", "$5,000+". Без "/hr", інакше це ставка. */
+/** "$10,000+", "$5,000+". Without "/hr", otherwise it's a rate. */
 const MIN_PROJECT = /^\$\s?\d[\d,]*\+$/;
 /** "Founded 2015", "Since 2009". */
 const FOUNDED = /^(?:founded|established|since)\D{0,4}(19\d{2}|20\d{2})$/i;
 
 /**
- * Сміття, яке каталоги віддають разом із послугами. Це не теги: це підписи діаграм
- * ("Allocation of expertise by %"), оцінки рейтингу ("9.5/10 Market Presence"),
- * кнопки ("Was this helpful?") і лічильники відгуків. У фільтрі за тегами вони
- * заважають, у скорингу не важать нічого, а в картці просто займають місце.
+ * Noise that catalogs hand over together with services. These aren't tags: they're
+ * chart labels ("Allocation of expertise by %"), rating scores ("9.5/10 Market Presence"),
+ * buttons ("Was this helpful?") and review counters. They get in the way in the tag
+ * filter, carry no weight in scoring, and just take up space on the card.
  */
 const TAG_NOISE = [
   /^allocation of expertise/i,
@@ -39,13 +40,13 @@ const TAG_NOISE = [
   /reviews? mention/i,
   /^\d[\d,]*\s*reviews?$/i,
   /^(see|show|read|view)\b/i,
-  // Після зняття частки спереду будь-який відсоток усередині означає підпис діаграми,
-  // а не назву послуги: "Web Design 45% Other" це хвіст "Service focus 50% ...".
+  // After stripping a leading percentage, any percent sign left inside means it's a
+  // chart label, not a service name: "Web Design 45% Other" is the tail of "Service focus 50% ...".
   /\d+%/,
   /^\+?\d+\s*services?$/i,
 ];
 
-/** "25% Web Development" це та сама послуга, просто з часткою від діаграми попереду. */
+/** "25% Web Development" is the same service, just with a chart percentage tacked on in front. */
 function cleanTag(tag: string): string {
   return tag
     .trim()
@@ -55,16 +56,16 @@ function cleanTag(tag: string): string {
 }
 
 export interface BackfillStats {
-  /** Скільки компаній переглянуто. */
+  /** How many companies were reviewed. */
   seen: number;
   rate: number;
   minProject: number;
   founded: number;
-  /** Скільки тегів прибрано, бо вони переїхали в колонки або виявились сміттям. */
+  /** How many tags were removed because they moved into columns or turned out to be noise. */
   tagsRemoved: number;
 }
 
-/** Почистити теги однієї компанії: зняти частки, прибрати сміття, звести дублі. */
+/** Clean up one company's tags: strip percentages, remove noise, collapse duplicates. */
 export function cleanTags(tags: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -93,7 +94,7 @@ export async function backfillCatalogFields(): Promise<BackfillStats> {
     const minProject = row.tags.find((tag) => MIN_PROJECT.test(tag.trim()));
     const founded = row.tags.map((tag) => FOUNDED.exec(tag.trim())).find(Boolean);
 
-    // Уже заповнене не чіпаємо: свіжий збір точніший за тег, який лежить роками.
+    // Don't touch what's already filled in: a fresh collection is more accurate than a tag that's been sitting there for years.
     const nextRate = row.hourlyRate ?? rate ?? null;
     const nextMinProject = row.minProject ?? minProject ?? null;
     const nextFounded = row.foundedYear ?? (founded ? Number(founded[1]) : null);
@@ -124,6 +125,6 @@ export async function backfillCatalogFields(): Promise<BackfillStats> {
       .where(eq(companies.id, row.id));
   }
 
-  log.info(stats, 'поля каталогу розкладені по колонках');
+  log.info(stats, 'catalog fields sorted into columns');
   return stats;
 }

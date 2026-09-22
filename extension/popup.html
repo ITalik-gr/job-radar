@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <!--
-      Розширення не має збірки, тому Mantine тут не підключити. Токени кольорів,
-      відступів і розмірів навмисно ті самі, що у веб-застосунку, щоб попап
-      і радар виглядали одним інструментом.
+      The extension has no build step, so Mantine cannot be wired in here. The color,
+      spacing and size tokens are deliberately the same as in the web app, so the popup
+      and the radar read as one tool.
     -->
     <link rel="stylesheet" href="popup.css" />
   </head>
@@ -21,7 +21,7 @@
 
       <span class="status" id="health">
         <i class="dot" data-tone="idle"></i>
-        <span id="healthText">перевіряю</span>
+        <span id="healthText">checking</span>
       </span>
     </header>
 
@@ -32,108 +32,108 @@
         Shown first and on its own so that it cannot be missed.
       -->
       <section id="setup" class="card" hidden>
-        <b>Спершу вкажи адресу свого радара</b>
+        <b>Set your radar address first</b>
         <span class="hint">
-          Локально це http://localhost:3000, або адреса твого воркера на Cloudflare.
-          Поки поле порожнє, збір вимкнений: розширенню нема куди слати дані.
+          Locally this is http://localhost:3000, or the address of your Cloudflare worker.
+          While the field is empty, collection is off: the extension has nowhere to send data.
         </span>
         <div class="field">
-          <span class="field-label">Адреса радара</span>
+          <span class="field-label">Radar address</span>
           <input type="text" id="setupUrl" spellcheck="false" placeholder="http://localhost:3000" />
         </div>
         <div class="field">
-          <span class="field-label">Токен, якщо задеплоєно</span>
+          <span class="field-label">Token, if deployed</span>
           <input type="password" id="setupToken" />
         </div>
-        <button id="setupSave" class="btn wide primary">Зберегти</button>
+        <button id="setupSave" class="btn wide primary">Save</button>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <span class="label">Ця сторінка</span>
-          <span class="pill" id="site">перевіряю</span>
+          <span class="label">This page</span>
+          <span class="pill" id="site">checking</span>
         </div>
 
         <div class="metrics two" id="pageMetrics">
-          <div><b id="found">0</b><span>карток на сторінці</span></div>
-          <div><b id="withDomain">0</b><span>з доменом</span></div>
+          <div><b id="found">0</b><span>cards on page</span></div>
+          <div><b id="withDomain">0</b><span>with domain</span></div>
         </div>
 
         <p class="note" id="pageNote" hidden></p>
       </section>
 
       <div class="actions">
-        <button id="walk" class="btn primary">Автообхід пагінації</button>
-        <button id="collect" class="btn">Зібрати цю сторінку</button>
+        <button id="walk" class="btn primary">Auto-walk pagination</button>
+        <button id="collect" class="btn">Collect this page</button>
       </div>
 
       <section class="card">
         <div class="card-head">
-          <span class="label">Сьогодні зібрано</span>
+          <span class="label">Collected today</span>
         </div>
         <div class="metrics">
-          <div><b id="pages">0</b><span>сторінок</span></div>
-          <div><b id="created">0</b><span>нових</span></div>
-          <div><b id="updated">0</b><span>оновлено</span></div>
+          <div><b id="pages">0</b><span>pages</span></div>
+          <div><b id="created">0</b><span>new</span></div>
+          <div><b id="updated">0</b><span>updated</span></div>
         </div>
       </section>
 
       <!--
-        Сайти, які малює скрипт. Серверний обхід із них нічого не дістає, тому їх
-        відкриває саме браузер, фоновими вкладками, і читає з готової сторінки.
+        Sites rendered by a script. A server-side crawl gets nothing from them, so the
+        browser itself opens them, in background tabs, and reads the finished page.
       -->
       <section id="jsBox" class="card">
         <div class="row">
           <b id="jsCount">0</b>
-          <span>сайтів чекають на браузер</span>
+          <span>sites waiting for the browser</span>
         </div>
-        <button id="jsWalk" class="btn wide">Обійти в фоні</button>
-        <span class="hint" id="jsNote">Вкладки відкриваються неактивними і закриваються самі.</span>
+        <button id="jsWalk" class="btn wide">Walk in background</button>
+        <span class="hint" id="jsNote">Tabs open inactive and close on their own.</span>
       </section>
 
       <details id="catalogsBox">
-        <summary>Куди піти по студії</summary>
+        <summary>Where to look for studios</summary>
         <div class="links" id="catalogs"></div>
       </details>
 
       <details id="settingsBox">
-        <summary>Налаштування</summary>
+        <summary>Settings</summary>
 
         <div class="settings">
           <label class="check">
             <input type="checkbox" id="auto" />
-            <span>збирати автоматично при відкритті каталогу</span>
+            <span>collect automatically when opening a catalog</span>
           </label>
 
           <div class="field">
-            <span class="field-label">Пауза між сторінками, секунди</span>
+            <span class="field-label">Pause between pages, seconds</span>
             <div class="row">
               <input type="number" id="minDelay" min="3" max="60" />
-              <span class="sep">до</span>
+              <span class="sep">to</span>
               <input type="number" id="maxDelay" min="3" max="90" />
             </div>
-            <span class="hint">Не менше трьох: гортаємо не швидше за людину.</span>
+            <span class="hint">At least three: we do not scroll faster than a human.</span>
           </div>
 
           <div class="field">
-            <span class="field-label">Сторінок за один прохід</span>
+            <span class="field-label">Pages per pass</span>
             <input type="number" id="maxPages" min="1" max="50" />
-            <span class="hint">Стеля 50, далі обхід зупиняється сам.</span>
+            <span class="hint">Ceiling of 50, after that the walk stops on its own.</span>
           </div>
 
           <div class="field">
-            <span class="field-label">Адреса радара</span>
+            <span class="field-label">Radar address</span>
             <input type="text" id="apiUrl" spellcheck="false" />
           </div>
 
           <div class="field">
-            <span class="field-label">Токен, якщо задеплоєно</span>
+            <span class="field-label">Token, if deployed</span>
             <input type="password" id="token" />
           </div>
         </div>
       </details>
 
-      <button id="open" class="btn wide">Відкрити Job Radar</button>
+      <button id="open" class="btn wide">Open Job Radar</button>
     </main>
 
     <script src="catalogs.js"></script>

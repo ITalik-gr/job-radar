@@ -1,11 +1,11 @@
 import type { Company } from '../db/schema.js';
 
 /**
- * Тип компанії. Визначається детерміновано з тегів, джерел і опису, без моделі.
+ * The company's kind. Determined deterministically from tags, sources and description, no model.
  *
- * Навіщо: сценарії листів різні. Дизайн-студії пишеться "можу стати вашим
- * розробником і ви розширите послуги", стартапу "був у стартапі, можу закрити
- * фронт", аутстафу взагалі нічого. Без типу все це один список.
+ * Why: letter scenarios differ. A design studio gets "I could become your
+ * developer and you'd expand your services", a startup gets "I was at a startup, I can
+ * cover the front end", an outstaff company gets nothing at all. Without a kind, it's all one list.
  */
 export type CompanyKind = 'studio' | 'design' | 'startup' | 'product' | 'outstaff' | 'unknown';
 
@@ -39,10 +39,10 @@ const DEV_TAGS = [
 
 const OUTSTAFF_TAGS = ['it staff augmentation', 'staff augmentation', 'outstaffing', 'outsourcing'];
 
-/** Джерела, які за визначенням приносять стартапи. */
+/** Sources that by definition bring in startups. */
 const STARTUP_SOURCES = ['getro', 'yc', 'wellfound', 'eu-startups', 'startups.gallery'];
 
-/** Джерела, які за визначенням приносять агенції і студії. */
+/** Sources that by definition bring in agencies and studios. */
 const AGENCY_SOURCES = ['clutch', 'goodfirms', 'designrush', 'sortlist', 'themanifest', 'upcity', 'techbehemoths'];
 
 function has(haystack: string[], needles: string[]): number {
@@ -50,9 +50,9 @@ function has(haystack: string[], needles: string[]): number {
 }
 
 /**
- * Порядок правил має значення і саме такий навмисно:
- * джерело сильніше за теги, бо каталог агенцій не показує стартапів і навпаки,
- * а вже всередині агенцій дизайн відділяється від розробки за перевагою тегів.
+ * The order of the rules matters, and it's deliberately this order:
+ * a source outweighs tags, because an agency catalog doesn't show startups and vice
+ * versa, and only within agencies is design separated from development by tag weight.
  */
 export function detectKind(
   company: Pick<Company, 'tags' | 'sources' | 'description' | 'sizeHint'> & { careersKind?: string },
@@ -67,7 +67,7 @@ export function detectKind(
   const design = has(tags, DESIGN_TAGS);
   const dev = has(tags, DEV_TAGS);
 
-  // Аутстаф має бути помітною часткою профілю, а не одним тегом з двадцяти.
+  // Outstaff has to be a noticeable share of the profile, not one tag out of twenty.
   if (outstaff > 0 && outstaff >= design && outstaff >= dev) return 'outstaff';
   if (design > 0 && design > dev) return 'design';
   if (dev > 0 || design > 0) return 'studio';
@@ -75,10 +75,10 @@ export function detectKind(
   if (sources.some((source) => AGENCY_SOURCES.some((known) => source.includes(known)))) return 'studio';
 
   /*
-   * Продуктова компанія впізнається за власним ATS без тегів каталогу.
-   * Саме `careersKind`, а не джерело: Vercel і Stripe потрапили в базу з CSV-сіда,
-   * і за міткою джерела лишались би `unknown`, тобто показувались би в Студіях,
-   * куди холодний лист "можу допомогти з проєктом" писати марно.
+   * A product company is recognized by having its own ATS with no catalog tags.
+   * Specifically `careersKind`, not the source: Vercel and Stripe entered the database
+   * from a CSV seed, and by source tag alone they'd stay `unknown`, meaning they'd show
+   * up in Studios, where a cold letter saying "I can help with a project" is pointless.
    */
   const ats = ['greenhouse', 'lever', 'ashby', 'workable', 'recruitee', 'personio'];
   if (company.careersKind && ats.includes(company.careersKind)) return 'product';
@@ -90,10 +90,12 @@ export function detectKind(
   if (/\b(agency|studio|агенц|студі)\b/.test(text)) return 'studio';
   return 'unknown';
 }
+// NOTE: the regex above intentionally keeps the Ukrainian stems "агенц" (agency) and
+// "студі" (studio), since it matches text scraped from Ukrainian-language sites.
 
 /**
- * Проставити тип усім компаніям, у яких він ще `unknown`. Потрібно один раз після
- * міграції, а далі тип виставляється сам при кожному `upsertCompany`.
+ * Set the kind for every company that still has `unknown`. Needed once after the
+ * migration, after that the kind sets itself on every `upsertCompany`.
  */
 export async function backfillKinds(force = false): Promise<Record<CompanyKind, number>> {
   const { getDb } = await import('../db/client.js');

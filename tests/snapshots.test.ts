@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 
 describe('saveSnapshot', () => {
-  it('перший знімок позначається як first, усі блоки нові', async () => {
+  it('the first snapshot is marked as first, every block is new', async () => {
     const result = await saveSnapshot(companyId, URL, html('acme-v1'));
     expect(result.first).toBe(true);
     expect(result.diff.added).toHaveLength(4);
@@ -28,14 +28,14 @@ describe('saveSnapshot', () => {
     expect(result.snapshot.textNormalized).toContain('senior frontend engineer');
   });
 
-  it('той самий вміст з іншим шумом не вважається зміною', async () => {
+  it('the same content with different noise does not count as a change', async () => {
     const result = await saveSnapshot(companyId, URL, html('acme-v1-noise'));
     expect(result.diff.changed).toBe(false);
     expect(result.noiseOnly).toBe(false);
     expect(result.first).toBe(false);
   });
 
-  it('реальна зміна дає одну нову і одну зниклу вакансію і оновлює last_change_at', async () => {
+  it('a real change gives one new and one missing vacancy and updates last_change_at', async () => {
     const result = await saveSnapshot(companyId, URL, html('acme-v2'));
     expect(result.diff.added.map((b) => b.url)).toEqual(['/careers/full-stack-engineer-ai']);
     expect(result.diff.removed).toHaveLength(1);
@@ -45,19 +45,19 @@ describe('saveSnapshot', () => {
     expect(company!.lastChecked).toBeGreaterThan(0);
   });
 
-  it('останній знімок це справді останній', async () => {
+  it('the last snapshot is really the last one', async () => {
     const snapshot = await lastSnapshot(companyId, URL);
     expect(snapshot!.blockHashes).toHaveLength(4);
     expect(snapshot!.textNormalized).toContain('full-stack engineer');
   });
 
-  it('на компанію лишається не більше пʼяти знімків', async () => {
+  it('no more than five snapshots are kept per company', async () => {
     for (let i = 0; i < 5; i += 1) await saveSnapshot(companyId, URL, html('acme-v2'));
     const rows = await getDb().select().from(snapshots).where(eq(snapshots.companyId, companyId));
     expect(rows).toHaveLength(config.pipeline.snapshotsPerCompany);
   });
 
-  it('різні URL однієї компанії живуть окремо', async () => {
+  it('different URLs of the same company live separately', async () => {
     const other = await saveSnapshot(companyId, `${URL}/design`, html('acme-v1'));
     expect(other.first).toBe(true);
   });

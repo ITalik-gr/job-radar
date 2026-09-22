@@ -28,7 +28,7 @@ import {
   updateTemplate,
 } from '../src/pipeline/templates.js';
 
-/** Запис листування потребує компанії, бо `outreach.company_id` це справжній звʼязок. */
+/** An outreach record needs a company, since `outreach.company_id` is a real relation. */
 async function companyForOutreach(domain: string): Promise<number> {
   const { company } = await upsertCompany({ name: domain, domain, source: 'test' });
   return company.id;
@@ -39,8 +39,9 @@ beforeAll(() => {
   runMigrations().sqlite.close();
 });
 
-// Файл бази між тестами не видаляємо: зʼєднання вже відкрите і після rmSync далі
-// пише в той самий inode, тобто чистки не відбувається. Чистимо самі таблиці.
+// We do not delete the database file between tests: the connection is already open, and
+// after rmSync it keeps writing to the same inode, so no actual cleanup happens. We clear
+// the tables themselves instead.
 beforeEach(async () => {
   await getDb().delete(settings);
   await getDb().delete(templates);
@@ -48,13 +49,13 @@ beforeEach(async () => {
   await refreshRulesFromDb();
 });
 
-describe('правила з бази', () => {
-  it('без запису в базі беруться вшиті значення', async () => {
+describe('rules from the database', () => {
+  it('with no record in the database, the built-in values are used', async () => {
     expect(rulesSource()).not.toBe('db');
     expect(rules().threshold).toBe(loadRules().threshold);
   });
 
-  it('збережені правила перекривають вшиті і виживають скидання кешу', async () => {
+  it('saved rules override the built-in ones and survive a cache reset', async () => {
     await saveRules({ ...loadRules(), threshold: 42 });
     expect(rules().threshold).toBe(42);
     expect(rulesSource()).toBe('db');
@@ -65,11 +66,11 @@ describe('правила з бази', () => {
   });
 
   /*
-   * Секція репутації зʼявилась пізніше за конфіг. Конфіг, збережений з інтерфейсу
-   * до її появи, мусить лишатись валідним, інакше скоринг мовчки відкотився б
-   * до вшитого, і правки порогів з інтерфейсу перестали б діяти.
+   * The reputation section appeared after the config format did. Config saved from the UI
+   * before it existed must stay valid, otherwise scoring would silently fall back to the
+   * built-in values, and threshold edits from the UI would stop taking effect.
    */
-  it('репутація студій зберігається з інтерфейсу і має дефолти в старому конфізі', async () => {
+  it('studio reputation is saved from the UI and has defaults in an old config', async () => {
     const base = loadRules();
     const withoutReputation = { ...base, companies: { ...base.companies, reputation: undefined } };
 
@@ -83,15 +84,15 @@ describe('правила з бази', () => {
     expect(rules().companies.reputation.goodRatingBonus).toBe(7);
   });
 
-  it('невалідний конфіг не потрапляє в базу', async () => {
-    await expect(saveRules({ threshold: 'багато' })).rejects.toThrow();
+  it('an invalid config does not reach the database', async () => {
+    await expect(saveRules({ threshold: 'a lot' })).rejects.toThrow();
 
     const rows = await getDb().select().from(settings).where(eq(settings.key, RULES_KEY));
     expect(rows).toHaveLength(0);
     expect(rules().threshold).toBe(loadRules().threshold);
   });
 
-  it('скидання прибирає запис і вертає значення за замовчуванням', async () => {
+  it('a reset removes the record and returns the default value', async () => {
     await saveRules({ ...loadRules(), threshold: 42 });
     await resetRules();
 
@@ -100,7 +101,7 @@ describe('правила з бази', () => {
     expect(await getDb().select().from(settings)).toHaveLength(0);
   });
 
-  it('стоп-слово і вага термінa зберігаються як частина повного конфіга', async () => {
+  it('a stop word and a term weight are saved as part of the full config', async () => {
     const current = loadRules();
     await saveRules({ ...current, stopWords: [...current.stopWords, 'kotlin'].sort() });
     expect(rules().stopWords).toContain('kotlin');
@@ -114,63 +115,63 @@ describe('правила з бази', () => {
   });
 });
 
-describe('шаблони', () => {
-  it('стартовий набір доливається один раз', async () => {
+describe('templates', () => {
+  it('the starter set is seeded once', async () => {
     expect(await seedTemplates()).toBeGreaterThan(0);
     const first = await listTemplates();
     expect(await seedTemplates()).toBe(0);
     expect(await listTemplates()).toHaveLength(first.length);
   });
 
-  it('slug робиться з назви і лишається стабільним при перейменуванні', async () => {
-    const created = await createTemplate({ name: 'Пітч для студій', body: 'текст' });
-    expect(created.slug).toBe(slugify('Пітч для студій'));
+  it('the slug is made from the name and stays stable across a rename', async () => {
+    const created = await createTemplate({ name: 'Studio Pitch', body: 'text' });
+    expect(created.slug).toBe(slugify('Studio Pitch'));
 
-    const renamed = await updateTemplate(created.id, { name: 'Інша назва' });
-    expect(renamed.name).toBe('Інша назва');
+    const renamed = await updateTemplate(created.id, { name: 'Different Name' });
+    expect(renamed.name).toBe('Different Name');
     expect(renamed.slug).toBe(created.slug);
   });
 
   /*
-   * Форма редактора шле всі поля одним патчем. Тест тримає рівно цей набір, бо
-   * саме він одного разу розʼїхався: мова, роль і перший абзац не доїжджали до бази.
+   * The editor form sends every field in one patch. The test keeps exactly this set, since
+   * this is what broke once: language, role and the first paragraph never reached the database.
    */
-  it('патч зберігає всі редаговані поля разом', async () => {
-    const created = await createTemplate({ name: 'Повний набір' });
+  it('a patch saves every editable field together', async () => {
+    const created = await createTemplate({ name: 'Full Set' });
 
     const saved = await updateTemplate(created.id, {
-      name: 'Повний набір 2',
+      name: 'Full Set 2',
       slug: created.slug,
       kind: 'studio',
       forKind: 'design',
-      subject: 'Тема для {{company}}',
-      intro: 'Перший абзац про {{company}}',
-      body: '{{intro}} далі текст',
-      note: 'коли доречно',
+      subject: 'Subject for {{company}}',
+      intro: 'First paragraph about {{company}}',
+      body: '{{intro}} more text',
+      note: 'when it fits',
       language: 'en',
       targetType: 'studio_named',
     });
 
     expect(saved).toMatchObject({
-      name: 'Повний набір 2',
+      name: 'Full Set 2',
       kind: 'studio',
       forKind: 'design',
-      subject: 'Тема для {{company}}',
-      intro: 'Перший абзац про {{company}}',
-      body: '{{intro}} далі текст',
-      note: 'коли доречно',
+      subject: 'Subject for {{company}}',
+      intro: 'First paragraph about {{company}}',
+      body: '{{intro}} more text',
+      note: 'when it fits',
       language: 'en',
       targetType: 'studio_named',
     });
   });
 
-  it('універсальний шаблон зберігається порожнім типом компанії', async () => {
-    const created = await createTemplate({ name: 'Універсальний', forKind: 'design' });
+  it('a universal template is saved with an empty company type', async () => {
+    const created = await createTemplate({ name: 'Universal', forKind: 'design' });
     expect((await updateTemplate(created.id, { forKind: null })).forKind).toBeNull();
   });
 
-  it('архів ховає шаблон і повертає його назад', async () => {
-    const created = await createTemplate({ name: 'Разовий' });
+  it('archiving hides a template and brings it back', async () => {
+    const created = await createTemplate({ name: 'One-off' });
     await archiveTemplate(created.id);
     expect((await getDb().select().from(templates).where(eq(templates.id, created.id)))[0]!.archived).toBe(true);
 
@@ -178,8 +179,8 @@ describe('шаблони', () => {
     expect((await getDb().select().from(templates).where(eq(templates.id, created.id)))[0]!.archived).toBe(false);
   });
 
-  it('видалення стирає шаблон, а історія листування лишається читабельною', async () => {
-    const created = await createTemplate({ name: 'На видалення' });
+  it('deleting erases the template, but the outreach history stays readable', async () => {
+    const created = await createTemplate({ name: 'To Delete' });
     const companyId = await companyForOutreach('delete-me.com');
     await getDb().insert(outreach).values({ companyId, channel: 'email', templateUsed: created.slug });
 
@@ -189,12 +190,12 @@ describe('шаблони', () => {
     const rows = await getDb().select().from(templates).where(eq(templates.id, created.id));
     expect(rows).toHaveLength(0);
 
-    // Ключ у листуванні це знімок на момент листа, тому переживає видалення шаблона.
+    // The key in outreach is a snapshot taken at the time of the letter, so it survives the template's deletion.
     const history = await getDb().select().from(outreach).where(eq(outreach.companyId, companyId));
     expect(history[0]!.templateUsed).toBe(created.slug);
   });
 
-  it('видалений стартовий шаблон не воскресає на наступному відкритті сторінки', async () => {
+  it('a deleted starter template does not come back the next time the page opens', async () => {
     await seedTemplates();
     const [seeded] = await getDb().select().from(templates).where(eq(templates.slug, 'referral'));
     await deleteTemplate(seeded!.id);
@@ -203,11 +204,13 @@ describe('шаблони', () => {
     expect(await getDb().select().from(templates).where(eq(templates.slug, 'referral'))).toHaveLength(0);
   });
 
-  it('перейменування ключа переписує історію листування на новий ключ', async () => {
-    const created = await createTemplate({ name: 'Старий ключ' });
+  it('renaming the key rewrites the outreach history to the new key', async () => {
+    const created = await createTemplate({ name: 'Old Key' });
     const companyId = await companyForOutreach('rename-me.com');
     await getDb().insert(outreach).values({ companyId, channel: 'email', templateUsed: created.slug });
 
+    // The slug function keeps Cyrillic letters as is (only lowercasing and joining with
+    // underscores), which matters for templates the owner writes in Ukrainian.
     const renamed = await updateTemplate(created.id, { slug: 'Новий Ключ 2' });
     expect(renamed.slug).toBe('новий_ключ_2');
 
@@ -215,24 +218,24 @@ describe('шаблони', () => {
     expect(history[0]!.templateUsed).toBe('новий_ключ_2');
   });
 
-  it('зайнятий ключ отримує суфікс замість помилки', async () => {
-    const first = await createTemplate({ name: 'Однакова назва' });
-    const second = await createTemplate({ name: 'Однакова назва' });
+  it('a taken key gets a suffix instead of an error', async () => {
+    const first = await createTemplate({ name: 'Same Name' });
+    const second = await createTemplate({ name: 'Same Name' });
     expect(second.slug).toBe(`${first.slug}_2`);
   });
 
-  it('дублікат це окремий шаблон з власним ключем і тим самим текстом', async () => {
-    const created = await createTemplate({ name: 'Оригінал', kind: 'studio', body: 'текст листа' });
+  it('a duplicate is a separate template with its own key and the same text', async () => {
+    const created = await createTemplate({ name: 'Original', kind: 'studio', body: 'letter text' });
     const copy = await duplicateTemplate(created.id);
 
     expect(copy.id).not.toBe(created.id);
     expect(copy.slug).not.toBe(created.slug);
-    expect(copy.body).toBe('текст листа');
+    expect(copy.body).toBe('letter text');
     expect(copy.kind).toBe('studio');
   });
 
-  it('список показує, скільки листів написано кожним шаблоном', async () => {
-    const created = await createTemplate({ name: 'Робочий' });
+  it('the list shows how many letters were written with each template', async () => {
+    const created = await createTemplate({ name: 'Active' });
     const companyId = await companyForOutreach('usage.com');
     await getDb().insert(outreach).values({ companyId, channel: 'email', templateUsed: created.slug });
 
@@ -240,19 +243,19 @@ describe('шаблони', () => {
     expect(row!.usageCount).toBe(1);
   });
 
-  it('шаблон можна прив язати до типу компанії і відвʼязати назад', async () => {
-    const created = await createTemplate({ name: 'Під дизайн', kind: 'studio', forKind: 'design' });
+  it('a template can be tied to a company type and untied again', async () => {
+    const created = await createTemplate({ name: 'For Design', kind: 'studio', forKind: 'design' });
     expect(created.forKind).toBe('design');
 
     const universal = await updateTemplate(created.id, { forKind: null });
     expect(universal.forKind).toBeNull();
   });
 
-  it('без привʼязки шаблон універсальний', async () => {
-    expect((await createTemplate({ name: 'Універсальний' })).forKind).toBeNull();
+  it('without a tie, a template is universal', async () => {
+    expect((await createTemplate({ name: 'Universal' })).forKind).toBeNull();
   });
 
-  it('фільтр за типом віддає лише свій вид', async () => {
+  it('filtering by type returns only its own kind', async () => {
     await seedTemplates();
     const studio = await listTemplates('studio');
     expect(studio.length).toBeGreaterThan(0);

@@ -6,16 +6,16 @@ import { rules } from './rules.js';
 import { scoreVacancy } from './score.js';
 
 export interface RecalcStats {
-  переглянуто: number;
-  змінено: number;
-  'відсіяно гео': number;
-  'відсіяно роллю': number;
-  'вище порогу': number;
+  reviewed: number;
+  changed: number;
+  rejectedGeo: number;
+  rejectedRole: number;
+  aboveThreshold: number;
 }
 
 /**
- * Перерахунок рахунків після правки config/scoring.json.
- * Модель не викликається: у базі вже є все, що вона колись повернула.
+ * Recalculating scores after editing config/scoring.json.
+ * The model is not called: the database already has everything it ever returned.
  */
 export async function recalcScores(): Promise<RecalcStats> {
   const db = getDb();
@@ -26,11 +26,11 @@ export async function recalcScores(): Promise<RecalcStats> {
     .leftJoin(companyState, eq(companyState.companyId, vacancies.companyId));
 
   const stats: RecalcStats = {
-    переглянуто: rows.length,
-    змінено: 0,
-    'відсіяно гео': 0,
-    'відсіяно роллю': 0,
-    'вище порогу': 0,
+    reviewed: rows.length,
+    changed: 0,
+    rejectedGeo: 0,
+    rejectedRole: 0,
+    aboveThreshold: 0,
   };
 
   for (const { vacancy, status, company } of rows) {
@@ -49,16 +49,16 @@ export async function recalcScores(): Promise<RecalcStats> {
       blacklisted: status === 'blacklist',
     });
 
-    if (breakdown.rejectedBy?.startsWith('гео')) stats['відсіяно гео'] += 1;
-    if (breakdown.rejectedBy?.startsWith('не та роль')) stats['відсіяно роллю'] += 1;
-    if (breakdown.score >= rules().threshold) stats['вище порогу'] += 1;
+    if (breakdown.rejectedBy?.startsWith('geo')) stats.rejectedGeo += 1;
+    if (breakdown.rejectedBy?.startsWith('wrong role')) stats.rejectedRole += 1;
+    if (breakdown.score >= rules().threshold) stats.aboveThreshold += 1;
 
     if (breakdown.score !== vacancy.score) {
       await db.update(vacancies).set({ score: breakdown.score }).where(eq(vacancies.id, vacancy.id));
-      stats.змінено += 1;
+      stats.changed += 1;
     }
   }
 
-  log.info(stats, 'рахунки перераховано');
+  log.info(stats, 'scores recalculated');
   return stats;
 }

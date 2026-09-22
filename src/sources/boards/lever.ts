@@ -30,7 +30,7 @@ export function boardUrl(slug: string): string {
 
 export function parse(payload: string, ctx: SourceContext = {}): RawVacancy[] {
   const postings = JSON.parse(payload) as LeverPosting[];
-  if (!Array.isArray(postings)) throw new Error('lever: очікувався масив вакансій');
+  if (!Array.isArray(postings)) throw new Error('lever: expected an array of vacancies');
 
   return postings.map((post) => {
     const locations = post.categories?.allLocations?.filter(Boolean) ?? [];
@@ -61,7 +61,7 @@ export const lever: BoardSource = {
   parse,
   async fetch(ctx: SourceContext) {
     const slug = ctx.slug ?? ctx.company?.careersSlug;
-    if (!slug) throw new Error('lever: потрібен slug дошки');
+    if (!slug) throw new Error('lever: board slug required');
     const res = await fetchText(boardUrl(slug));
     return parse(res.body, ctx);
   },

@@ -18,14 +18,14 @@ export interface CatalogStats {
   errors: string[];
 }
 
-/** Компанія без домену не піддається дедупу, тому не записується, а йде в skipped. */
+/** A company without a domain can't be deduped, so it isn't saved, it goes into skipped. */
 export async function saveCompanies(items: RawCompany[], source: string): Promise<CatalogStats> {
   const stats: CatalogStats = { itemsFound: items.length, itemsNew: 0, updated: 0, skipped: [], errors: [] };
 
   for (const item of items) {
     const domain = item.domain ? normalizeDomain(item.domain) : null;
     if (!domain) {
-      stats.skipped.push({ name: item.name, reason: 'немає домену' });
+      stats.skipped.push({ name: item.name, reason: 'no domain' });
       continue;
     }
 
@@ -53,14 +53,14 @@ export async function saveCompanies(items: RawCompany[], source: string): Promis
     } catch (error) {
       const message = `${item.name}: ${error instanceof Error ? error.message : String(error)}`;
       stats.errors.push(message);
-      log.warn({ err: message }, 'компанію не вдалось зберегти');
+      log.warn({ err: message }, 'failed to save company');
     }
   }
 
   return stats;
 }
 
-/** Ручний імпорт збережених сторінок каталогу і CSV-списків. */
+/** Manual import of saved catalog pages and CSV lists. */
 export async function importFiles(paths: string[], source = 'clutch'): Promise<CatalogStats> {
   return withRun(`import:${source}`, async () => {
     const items: RawCompany[] = [];
@@ -87,16 +87,16 @@ export async function importFiles(paths: string[], source = 'clutch'): Promise<C
           }
         } else {
           const parsed = parseClutch(body);
-          // Мовчазний нуль це найгірший результат: файл прочитався, а розмітка чужа.
+          // A silent zero is the worst outcome: the file read fine, but the markup doesn't match.
           if (parsed.length === 0) {
-            errors.push(`${path}: жодної картки не розпізнано, розмітка не схожа на Clutch`);
+            errors.push(`${path}: no cards recognized, markup does not look like Clutch`);
           }
           items.push(...parsed);
         }
       } catch (error) {
         const message = `${path}: ${error instanceof Error ? error.message : String(error)}`;
         errors.push(message);
-        log.warn({ err: message }, 'файл імпорту не прочитався');
+        log.warn({ err: message }, 'failed to read import file');
       }
     }
 
@@ -115,15 +115,15 @@ const browserItemSchema = z.object({
   description: z.string().nullable().optional(),
   sourceUrl: z.string().nullable().optional(),
   /*
-   * Репутація з каталогу. Усі поля необовʼязкові: старіша версія розширення
-   * їх не шле, і сторінка від неї має прийматись, а не відкидатись валідацією.
+   * Reputation data from the catalog. All fields are optional: an older version of the
+   * extension doesn't send them, and a page from it should be accepted, not rejected by validation.
    */
   rating: z.number().min(0).max(5).nullable().optional(),
   reviewsCount: z.number().int().min(0).nullable().optional(),
   minProject: z.string().nullable().optional(),
   hourlyRate: z.string().nullable().optional(),
   foundedYear: z.number().int().min(1900).max(2100).nullable().optional(),
-  /** Блок "Інше": пари підпис-значення, які каталог показав у картці. */
+  /** The "Other" block: caption-value pairs the catalog showed on the card. */
   extra: z.record(z.string(), z.string()).default({}),
 });
 
@@ -136,8 +136,9 @@ export interface BrowserImportResult {
 }
 
 /**
- * Прийом сторінки каталогу зі збирача в браузері. Розбір робить сам браузер у вкладці,
- * яку відкрила людина, тому сюди приходить уже готовий список, а не HTML.
+ * Receives a catalog page from the in-browser collector. The parsing is done by the
+ * browser itself, in the tab the person opened, so what arrives here is already a
+ * ready list, not HTML.
  */
 export async function importFromBrowser(payload: {
   source?: string;
@@ -193,15 +194,15 @@ export async function syncDou(options: FetchCatalogOptions = {}): Promise<Catalo
 }
 
 /**
- * Прогін будь-якого зареєстрованого каталогу. DOU має власну функцію через свої
- * параметри (типи бізнесу, домени), решта каталогів працює за спільним контрактом
- * `CatalogSource` і не потребує окремого коду на кожен.
+ * Runs any registered catalog. DOU has its own function because of its own parameters
+ * (business types, domains), the rest of the catalogs work off the shared `CatalogSource`
+ * contract and need no separate code per catalog.
  */
 export async function syncCatalog(id: string): Promise<CatalogStats> {
   const { getSource } = await import('../sources/registry.js');
   const source = getSource(id);
-  if (!source) throw new Error(`невідоме джерело: ${id}`);
-  if (source.kind !== 'catalog') throw new Error(`джерело ${id} не є каталогом компаній`);
+  if (!source) throw new Error(`unknown source: ${id}`);
+  if (source.kind !== 'catalog') throw new Error(`source ${id} is not a company catalog`);
 
   return withRun(id, async () => saveCompanies(await source.fetch({}), id));
 }

@@ -5,14 +5,14 @@ import { DOU_CATEGORIES, parseDou } from '../src/sources/boards/dou.js';
 const frontend = readFileSync('fixtures/dou/vacancies-frontend.html', 'utf8');
 const node = readFileSync('fixtures/dou/vacancies-node.html', 'utf8');
 
-describe('dou як борд вакансій', () => {
-  it('розбирає сторінку категорії і не повертає нуль', () => {
-    // Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх.
+describe('dou as a vacancy board', () => {
+  it('parses the category page and does not return zero', () => {
+    // Rule 3 in CLAUDE.md: an empty result is an error, not a success.
     expect(parseDou(frontend).length).toBeGreaterThan(10);
     expect(parseDou(node).length).toBeGreaterThan(10);
   });
 
-  it('бере назву, посилання, зовнішній id і компанію', () => {
+  it('takes the title, link, external id and company', () => {
     const row = parseDou(frontend)[0]!;
 
     expect(row.source).toBe('dou:vacancies');
@@ -23,13 +23,13 @@ describe('dou як борд вакансій', () => {
     expect(row.companySlug).toBeTruthy();
   });
 
-  it('назва компанії без сміття від іконки', () => {
+  it('the company name has no leftover markup from the icon', () => {
     for (const row of parseDou(frontend)) {
       expect(row.companyName ?? '').not.toMatch(/<|img|src=/);
     }
   });
 
-  it('українське "віддалено" читається як remote', () => {
+  it('the Ukrainian "remote" word is read as remote', () => {
     const rows = parseDou(frontend);
     const remote = rows.find((row) => /віддален/i.test(row.location ?? ''));
 
@@ -37,22 +37,22 @@ describe('dou як борд вакансій', () => {
     expect(remote!.remote).toBe(true);
   });
 
-  it('вилка потрапляє в текст, бо окремого поля в схемі немає', () => {
+  it('the salary ends up in the text, since there is no separate field in the schema', () => {
     const rows = parseDou(frontend).concat(parseDou(node));
     const withSalary = rows.filter((row) => /\$|\d{3,}/.test(row.rawText));
     expect(withSalary.length).toBeGreaterThan(0);
   });
 
-  it('домен компанії зі списку невідомий і чесно лишається null', () => {
-    // DOU не показує сайт у списку. Домен доважується окремим запитом у fetch.
+  it('the company domain from the list is unknown and honestly stays null', () => {
+    // DOU does not show the site in the list. The domain is added later by a separate fetch.
     expect(parseDou(frontend).every((row) => row.companyDomain === null)).toBe(true);
   });
 
-  it('порожній html дає порожній список, а не падіння', () => {
-    expect(parseDou('<html><body>нічого</body></html>')).toEqual([]);
+  it('empty html gives an empty list, not a crash', () => {
+    expect(parseDou('<html><body>nothing</body></html>')).toEqual([]);
   });
 
-  it('категорії описані конфігом, а не зашиті в код', () => {
+  it('the categories are described by config, not hardcoded', () => {
     expect(DOU_CATEGORIES).toContain('Front End');
     expect(DOU_CATEGORIES.length).toBeGreaterThan(1);
   });

@@ -4,11 +4,11 @@ import { outreach } from '../db/schema.js';
 import { recentBounceRate } from './replies.js';
 
 /**
- * Статистика розсилки, доповнення до розділу 7 OUTREACH.md.
+ * Outreach statistics, a supplement to section 7 of OUTREACH.md.
  *
- * Найважливіше тут не конверсія, а частка відкатів валідації з розбивкою по
- * причинах: вище 30 відсотків означає поганий промпт, і без цієї цифри це
- * помітно лише через сотню посередніх листів.
+ * The most important thing here isn't conversion, it's the share of validation
+ * fallbacks broken down by reason: above 30 percent means a bad prompt, and without
+ * this number that's only noticeable after a hundred mediocre letters.
  */
 
 export interface TemplateConversion {
@@ -25,7 +25,7 @@ export interface OutreachStats {
   fallbacks: { reason: string; count: number }[];
   fallbackShare: number;
   bounceRate: number;
-  /** Медіана, а не середнє: один лист з відповіддю через місяць зсуває середнє. */
+  /** Median, not mean: one letter answered a month later would skew the mean. */
   medianReplyHours: number | null;
   drafts: number;
   needsAttention: number;
@@ -44,7 +44,7 @@ export async function outreachStats(): Promise<OutreachStats> {
 
   const byTemplate = new Map<string, TemplateConversion>();
   for (const row of sent) {
-    const key = row.templateUsed ?? 'без шаблона';
+    const key = row.templateUsed ?? 'no template';
     const entry = byTemplate.get(key) ?? { template: key, sent: 0, replied: 0, positive: 0 };
     entry.sent += 1;
     if (row.replyAt) entry.replied += 1;
@@ -65,13 +65,12 @@ export async function outreachStats(): Promise<OutreachStats> {
     .groupBy(outreach.aiFallbackReason);
 
   /*
-   * Причини складаються в групи за першим словом: "слів 84" і "слів 12" це та
-   * сама проблема промпта, і в розрізі по точному тексту вона розпадається на
-   * десяток однакових рядків по одному.
+   * Reasons are grouped by their first word: "84 words" and "12 words" are the same
+   * prompt problem, and broken down by exact text it splits into a dozen identical rows of one.
    */
   const grouped = new Map<string, number>();
   for (const row of fallbackRows) {
-    const reason = (row.reason ?? '').split(':')[0]!.replace(/\s+\d.*$/, '').trim() || 'інше';
+    const reason = (row.reason ?? '').split(':')[0]!.replace(/\s+\d.*$/, '').trim() || 'other';
     grouped.set(reason, (grouped.get(reason) ?? 0) + Number(row.count));
   }
 

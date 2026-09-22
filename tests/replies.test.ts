@@ -26,7 +26,7 @@ function message(over: Partial<ThreadMessage> = {}): ThreadMessage {
     from: 'Anton <anton@acme.com>',
     subject: 'Re: Front-end for Acme',
     date: 'Thu, 10 Sep 2026 12:00:00 +0300',
-    snippet: 'Дякую, давайте поговоримо наступного тижня.',
+    snippet: 'Thanks, let\'s talk next week.',
     autoSubmitted: null,
     ...over,
   };
@@ -43,7 +43,7 @@ async function sentLetter(over: Record<string, unknown> = {}): Promise<number> {
       gmailThreadId: 't1',
       contactEmail: 'anton@acme.com',
       subjectFinal: 'Front-end for Acme',
-      bodyFinal: 'текст',
+      bodyFinal: 'text',
       ...over,
     })
     .returning({ id: outreach.id });
@@ -66,8 +66,8 @@ beforeEach(async () => {
   await db.update(companyState).set({ status: 'new' });
 });
 
-describe('баунси', () => {
-  it('mailer-daemon з "address not found" це hard', () => {
+describe('bounces', () => {
+  it('mailer-daemon with "address not found" is hard', () => {
     expect(
       detectBounce(
         message({
@@ -79,7 +79,7 @@ describe('баунси', () => {
     ).toEqual({ isBounce: true, type: 'hard' });
   });
 
-  it('тимчасова помилка це soft, адреса лишається живою', () => {
+  it('a temporary error is soft, the address stays alive', () => {
     expect(
       detectBounce(
         message({
@@ -91,25 +91,25 @@ describe('баунси', () => {
     ).toEqual({ isBounce: true, type: 'soft' });
   });
 
-  it('звичайна відповідь не баунс', () => {
+  it('an ordinary reply is not a bounce', () => {
     expect(detectBounce(message()).isBounce).toBe(false);
   });
 });
 
-describe('автовідповіді', () => {
-  it('заголовок Auto-Submitted достатній, модель не потрібна', () => {
+describe('autoreplies', () => {
+  it('the Auto-Submitted header is enough, no model needed', () => {
     expect(detectAuto(message({ autoSubmitted: 'auto-replied' }))).toBe('autoreply');
   });
 
-  it('out of office у темі це ooo', () => {
+  it('out of office in the subject is ooo', () => {
     expect(detectAuto(message({ subject: 'Out of office until Monday' }))).toBe('ooo');
   });
 
-  it('жива відповідь не має ознак автомата', () => {
+  it('a live reply has no signs of a bot', () => {
     expect(detectAuto(message())).toBeNull();
   });
 
-  it('автовідповідь не доходить до моделі', async () => {
+  it('an autoreply does not reach the model', async () => {
     const classifier = vi.fn();
     expect(await classifyReply(message({ autoSubmitted: 'auto-generated' }), classifier)).toBe(
       'autoreply',
@@ -117,14 +117,14 @@ describe('автовідповіді', () => {
     expect(classifier).not.toHaveBeenCalled();
   });
 
-  it('падіння класифікатора дає unclear, а не помилку', async () => {
+  it('a classifier failure gives unclear, not an error', async () => {
     const classifier = vi.fn().mockRejectedValue(new Error('502'));
     expect(await classifyReply(message(), classifier)).toBe('unclear');
   });
 });
 
 describe('checkReplies', () => {
-  it('позитивна відповідь міняє статус листа і компанії', async () => {
+  it('a positive reply changes the status of the letter and the company', async () => {
     const id = await sentLetter();
     const report = await checkReplies({
       fetchThread: async () => [message({ from: OWN }), message()],
@@ -146,7 +146,7 @@ describe('checkReplies', () => {
     expect(state?.status).toBe('replied');
   });
 
-  it('відмова переводить компанію в rejected_by_them', async () => {
+  it('a rejection moves the company to rejected_by_them', async () => {
     await sentLetter();
     await checkReplies({
       fetchThread: async () => [message()],
@@ -162,7 +162,7 @@ describe('checkReplies', () => {
     expect(state?.status).toBe('rejected_by_them');
   });
 
-  it('автовідповідь не міняє стан компанії', async () => {
+  it('an autoreply does not change the company state', async () => {
     await sentLetter();
     await checkReplies({
       fetchThread: async () => [message({ autoSubmitted: 'auto-replied' })],
@@ -177,7 +177,7 @@ describe('checkReplies', () => {
     expect(state?.status).toBe('new');
   });
 
-  it('hard bounce вбиває адресу, але не компанію', async () => {
+  it('a hard bounce kills the address, but not the company', async () => {
     const id = await sentLetter();
     await checkReplies({
       fetchThread: async () => [
@@ -207,7 +207,7 @@ describe('checkReplies', () => {
     expect(state?.status).toBe('new');
   });
 
-  it('тред тільки з власними листами це ще не відповідь', async () => {
+  it('a thread with only our own letters is not a reply yet', async () => {
     await sentLetter();
     const report = await checkReplies({
       fetchThread: async () => [message({ from: `Olena <${OWN}>` })],
@@ -217,13 +217,13 @@ describe('checkReplies', () => {
     expect(report.replies).toBe(0);
   });
 
-  it('лист із уже відомою відповіддю вдруге не перевіряється', async () => {
+  it('a letter with an already known reply is not checked a second time', async () => {
     await sentLetter({ replyAt: NOW.getTime(), replyType: 'positive', status: 'replied' });
     const report = await checkReplies({ fetchThread: async () => [message()], ownEmail: OWN, now: NOW });
     expect(report.checked).toBe(0);
   });
 
-  it('помилка Gmail не зупиняє обхід решти листів', async () => {
+  it('a Gmail error does not stop the rest of the letters from being checked', async () => {
     await sentLetter({ gmailThreadId: 't1' });
     await sentLetter({ gmailThreadId: 't2' });
     const report = await checkReplies({
@@ -240,8 +240,8 @@ describe('checkReplies', () => {
   });
 });
 
-describe('баунс-рейт', () => {
-  it('рахується по останніх листах', async () => {
+describe('bounce rate', () => {
+  it('is computed over the most recent letters', async () => {
     await sentLetter({ status: 'bounced', bounceType: 'hard' });
     await sentLetter();
     await sentLetter();
@@ -249,7 +249,7 @@ describe('баунс-рейт', () => {
     expect(await recentBounceRate(50)).toBeCloseTo(0.25);
   });
 
-  it('без листів це нуль', async () => {
+  it('no letters means zero', async () => {
     expect(await recentBounceRate(50)).toBe(0);
   });
 });

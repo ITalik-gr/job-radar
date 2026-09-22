@@ -1,0 +1,25 @@
+// Copy to wrangler.local.jsonc and fill in. That file is gitignored: everything that
+// identifies you or your Cloudflare account goes there, never into wrangler.jsonc.
+//
+// `pnpm deploy` merges it over wrangler.jsonc into wrangler.deploy.json. For deploys from
+// GitHub Actions, store the whole file as the WRANGLER_LOCAL_JSONC repository secret:
+//   gh secret set WRANGLER_LOCAL_JSONC < wrangler.local.jsonc
+{
+	// From `pnpm wrangler d1 create job-radar`. With the id present, wrangler does not
+	// look the database up by name, so the deploy token needs no D1 permissions.
+	"d1_databases": [
+		{ "binding": "DB", "database_id": "" },
+		{ "binding": "job_radar", "database_id": "" }
+	],
+	// Plain vars, merged key by key over the ones in wrangler.jsonc. Real secrets
+	// (API keys, tokens) still go through `wrangler secret put`.
+	"vars": {
+		// The name letters are signed with
+		"GMAIL_FROM_NAME": "",
+		// https://<your-worker>/api/gmail/callback, must match the Google console
+		"GMAIL_REDIRECT_URI": "",
+		// AI Gateway, optional: your Cloudflare account id and the gateway name
+		"CF_AI_ACCOUNT_ID": "",
+		"AI_GATEWAY_ID": ""
+	}
+}

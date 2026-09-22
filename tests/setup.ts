@@ -1,2 +1,2 @@
-/** Підключає локальний драйвер SQLite для всіх тестів. */
+/** Loads the local SQLite driver for all tests. */
 import '../src/db/client.node.js';

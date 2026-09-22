@@ -1,11 +1,12 @@
 /**
- * Складання листа у форматі RFC 2822 і кодування під `users.messages.send`.
+ * Building a letter in RFC 2822 format and encoding it for `users.messages.send`.
  *
- * Винесено окремим файлом без залежностей від Node і від бази: це чиста функція
- * з тестами, і саме тут ховається найтихіший баг усього модуля. Некоректно
- * закодований український лист виглядає нормально у відправника, у логах і в базі,
- * а одержувач бачить кракозябри в темі. Тому кодування тут явне і перевірене
- * тестом, а не залишене на замовчування бібліотеки.
+ * Pulled out into its own file with no dependency on Node or the database: it is a
+ * pure function with tests, and this is exactly where the quietest bug in the whole
+ * module hides. An incorrectly encoded Ukrainian letter looks fine to the sender, in
+ * the logs, and in the database, while the recipient sees garbled characters in the
+ * subject. So the encoding here is explicit and covered by a test, not left to a
+ * library's default.
  */
 
 export interface MimeMessage {
@@ -14,9 +15,9 @@ export interface MimeMessage {
   to: string;
   subject: string;
   body: string;
-  /** Message-Id листа, на який відповідаємо. Порожнє означає новий лист. */
+  /** The Message-Id of the letter being replied to. Empty means a new letter. */
   inReplyTo?: string | null;
-  /** Ланцюжок Message-Id від початку треду, включно з `inReplyTo`. */
+  /** The chain of Message-Ids from the start of the thread, including `inReplyTo`. */
   references?: string[];
 }
 
@@ -32,7 +33,7 @@ function base64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** base64url без вирівнювання: саме цього чекає Gmail API в полі `raw`. */
+/** base64url without padding: exactly what the Gmail API expects in the `raw` field. */
 export function base64Url(value: string): string {
   return base64(utf8(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -47,9 +48,9 @@ export function fromBase64Url(value: string): string {
 const ASCII_ONLY = /^[\x20-\x7e]*$/;
 
 /**
- * Заголовок з кирилицею кодується в encoded-word, RFC 2047. Латиниця лишається
- * як є: зайве кодування теми теж працює, але робить її нечитабельною в логах
- * і в деяких старих клієнтах.
+ * A header with Cyrillic gets encoded as an encoded-word, RFC 2047. Latin text is
+ * left as is: encoding the subject unnecessarily also works, but makes it unreadable
+ * in logs and in some older clients.
  */
 export function encodeHeader(value: string): string {
   if (ASCII_ONLY.test(value)) return value;
@@ -57,9 +58,10 @@ export function encodeHeader(value: string): string {
 }
 
 /**
- * Імʼя перед адресою. Кирилиця йде в encoded-word, а латиниця зі спецсимволом
- * береться в лапки: кома в незакритому імені розриває заголовок на дві адреси,
- * і лист або не доходить, або доходить не туди.
+ * The name before the address. Cyrillic goes into an encoded-word, and Latin text
+ * with a special character gets quoted: a comma in an unquoted name splits the
+ * header into two addresses, and the letter either does not arrive or arrives at
+ * the wrong place.
  */
 const HEADER_SPECIALS = /[(),.:;<>@\[\]\\"]/;
 
@@ -72,15 +74,15 @@ export function formatAddress(name: string, email: string): string {
   return `${display} <${email}>`;
 }
 
-/** Тіло переноситься в base64 рядками по 76 символів, як вимагає RFC 2045. */
+/** The body is wrapped in base64 lines of 76 characters, as required by RFC 2045. */
 function base64Body(value: string): string {
   const encoded = base64(utf8(value.replace(/\r?\n/g, CRLF)));
   return (encoded.match(/.{1,76}/g) ?? []).join(CRLF);
 }
 
 /**
- * Тільки `text/plain`. HTML-лист від незнайомця фільтрується жорсткіше, і це
- * рішення з OUTREACH.md, а не спрощення реалізації.
+ * Only `text/plain`. An HTML letter from a stranger gets filtered more aggressively,
+ * and this is a decision from OUTREACH.md, not an implementation shortcut.
  */
 export function buildMime(message: MimeMessage): string {
   const headers: string[] = [
@@ -94,9 +96,9 @@ export function buildMime(message: MimeMessage): string {
   ];
 
   /*
-   * Фолоу-ап без цих двох заголовків приходить окремим листом. Формально він
-   * доставлений, але виглядає як друга розсилка тій самій людині, а не як
-   * продовження розмови, і читається саме так.
+   * A follow-up without these two headers arrives as a separate letter. Formally it
+   * is delivered, but it looks like a second blast to the same person rather than a
+   * continuation of the conversation, and that is exactly how it reads.
    */
   if (message.inReplyTo) headers.push(`In-Reply-To: ${message.inReplyTo}`);
   const references = message.references?.filter(Boolean) ?? [];
@@ -105,7 +107,7 @@ export function buildMime(message: MimeMessage): string {
   return `${headers.join(CRLF)}${CRLF}${CRLF}${base64Body(message.body)}${CRLF}`;
 }
 
-/** Готовий лист у вигляді, який приймає Gmail API. */
+/** The finished letter in the form the Gmail API accepts. */
 export function encodeMessage(message: MimeMessage): string {
   return base64Url(buildMime(message));
 }

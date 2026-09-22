@@ -6,12 +6,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Smoke-тест читача намальованої сторінки, правило 2 в CLAUDE.md.
+ * Smoke test for the rendered-page reader, rule 2 in CLAUDE.md.
  *
- * Цей скрипт інжектиться у фонову вкладку і бачить уже готовий DOM, тому перевіряти
- * його треба так само: покласти в jsdom справжню сторінку і подивитись, що він з неї
- * дістав. Без тесту зміна в ньому ламала б збір тихо, а виглядало б це як "на сайті
- * нічого немає", і власник ходив би вписувати пошту руками.
+ * This script is injected into a background tab and sees an already rendered DOM, so it
+ * has to be checked the same way: load a real page into jsdom and see what it pulled out
+ * of it. Without this test a change to it would break collection silently, and it would
+ * look like "the site has nothing", with the owner going in to type in the email by hand.
  */
 declare const document: { open(): void; write(html: string): void; close(): void };
 
@@ -31,7 +31,7 @@ function readSite(html: string): SiteResult {
   document.write(html);
   document.close();
 
-  // Останній вираз файла це результат, який забирає chrome.scripting.
+  // The file's last expression is the result that chrome.scripting picks up.
   // eslint-disable-next-line no-eval
   return (0, eval)(readFileSync('extension/site.js', 'utf8')) as SiteResult;
 }
@@ -54,37 +54,37 @@ const page = `
   </body></html>
 `;
 
-describe('читач намальованої сторінки', () => {
+describe('rendered page reader', () => {
   const result = readSite(page);
 
-  it('бере пошту з посилань і з тексту', () => {
+  it('takes emails from links and from text', () => {
     expect(result.emails.map((item) => item.email)).toEqual(
       expect.arrayContaining(['hello@studio.example.com', 'anna@studio.example.com']),
     );
   });
 
   /*
-   * Іменна адреса цінніша за hello@: її читає людина, а не менеджер із загальної
-   * скриньки. Порядок тут визначає, кого сервер запише контактом першим.
+   * A named address is worth more than hello@: a person reads it, not a manager at a
+   * shared mailbox. The order here decides who the server records as the first contact.
    */
-  it('іменна адреса йде поперед загальної', () => {
+  it('a named address comes ahead of a generic one', () => {
     expect(result.emails[0]?.email).toBe('anna@studio.example.com');
     expect(result.emails.find((item) => item.email.startsWith('hello@'))?.generic).toBe(true);
   });
 
-  it('бере стек і з тексту, і з розмітки', () => {
+  it('takes the stack from both the text and the markup', () => {
     expect(result.techHints).toEqual(
       expect.arrayContaining(['headless cms', 'shopify', 'sanity', 'next.js']),
     );
   });
 
-  it('бере ознаки живості і домен без www', () => {
+  it('takes liveness signs and the domain without www', () => {
     expect(result.copyrightYear).toBe(2026);
     expect(result.lastPostAt).toBe(Date.parse('2026-08-14'));
     expect(result.domain).toBe('studio.example.com');
   });
 
-  it('порожня сторінка не вигадує нічого', () => {
+  it('an empty page invents nothing', () => {
     const empty = readSite('<html><body><div id="root"></div></body></html>');
     expect(empty.emails).toEqual([]);
     expect(empty.techHints).toEqual([]);
@@ -93,21 +93,21 @@ describe('читач намальованої сторінки', () => {
   });
 
   /*
-   * Рядки розбирає сервер тим самим кодом, яким розбирає сторінки, завантажені
-   * ним самим. Тому межа тега має рвати рядок так само, як у `toLines`: ім'я і
-   * посада мусять лишитись сусідніми рядками, а не злитись в один.
+   * Rows are parsed by the server with the same code it uses for pages it fetched itself.
+   * So a tag boundary has to break a row the same way `toLines` does: a name and a role
+   * must stay on adjacent rows, not merge into one.
    */
-  it('віддає текст рядками по межах тегів', () => {
+  it('returns text as rows split at tag boundaries', () => {
     expect(result.lines).toEqual(expect.arrayContaining(['Studio', 'Anna Koval, CTO:']));
     expect(result.lines.some((line) => line.includes('<'))).toBe(false);
   });
 
   /*
-   * Куди йти далі. Контакти першими, бо там пошта, потім "про нас", потім вакансії.
-   * Саме через відсутність цього кроку обхід повертався з нулем: на головній
-   * студії стоїть презентація, а адреси лежать на сусідніх сторінках.
+   * Where to go next. Contacts first, since that's where the email is, then "about us",
+   * then vacancies. It was exactly the absence of this step that made a crawl come back
+   * with zero: the studio's homepage is a presentation, and the addresses sit on nearby pages.
    */
-  it('дає посилання далі в порядку цінності, без чужих доменів', () => {
+  it('gives links to follow in order of value, without foreign domains', () => {
     expect(result.links).toEqual([
       'https://studio.example.com/contact',
       'https://studio.example.com/about-us',

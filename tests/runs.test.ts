@@ -19,12 +19,12 @@ async function lastRun() {
 }
 
 describe('withRun', () => {
-  it('перший порожній прогін це ok, історії ще немає', async () => {
+  it('the first empty run is ok, there is no history yet', async () => {
     await withRun('test:source', async () => ({ itemsFound: 0, itemsNew: 0, errors: [] }));
     expect((await lastRun()).status).toBe('ok');
   });
 
-  it('успішний прогін записує знайдене', async () => {
+  it('a successful run records what was found', async () => {
     await withRun('test:source', async () => ({ itemsFound: 12, itemsNew: 3, errors: [] }));
     const row = await lastRun();
     expect(row.status).toBe('ok');
@@ -32,36 +32,36 @@ describe('withRun', () => {
     expect(row.finishedAt).toBeGreaterThan(0);
   });
 
-  it('нуль після непорожньої історії це warn, а не успіх', async () => {
+  it('zero after a non-empty history is warn, not success', async () => {
     await withRun('test:source', async () => ({ itemsFound: 0, itemsNew: 0, errors: [] }));
     expect((await lastRun()).status).toBe('warn');
   });
 
-  it('часткові помилки дають warn', async () => {
+  it('partial errors give warn', async () => {
     await withRun('test:source', async () => ({ itemsFound: 5, itemsNew: 1, errors: ['acme: 500'] }));
     const row = await lastRun();
     expect(row.status).toBe('warn');
     expect(row.errors).toEqual(['acme: 500']);
   });
 
-  it('виняток дає status error і не ковтається', async () => {
+  it('an exception gives status error and is not swallowed', async () => {
     await expect(
       withRun('test:source', async () => {
-        throw new Error('дошка впала');
+        throw new Error('board crashed');
       }),
-    ).rejects.toThrow('дошка впала');
+    ).rejects.toThrow('board crashed');
 
     const row = await lastRun();
     expect(row.status).toBe('error');
-    expect(row.errors).toEqual(['дошка впала']);
+    expect(row.errors).toEqual(['board crashed']);
   });
 });
 
-describe('обірвані прогони', () => {
-  it('підвислий running закривається як обірваний перед новим запуском', async () => {
+describe('stale runs', () => {
+  it('a stuck running row is closed as stale before a new run starts', async () => {
     const db = getDb();
 
-    // Прогін, який "убили" дві години тому і який лишився в running назавжди.
+    // A run that was "killed" two hours ago and stayed in running forever.
     const [stale] = await db
       .insert(runs)
       .values({
@@ -78,7 +78,7 @@ describe('обірвані прогони', () => {
     expect(after!.finishedAt).not.toBeNull();
   });
 
-  it('свіжий running не чіпається: він може бути справді робочим', async () => {
+  it('a fresh running row is left alone: it may really be in progress', async () => {
     const db = getDb();
     const [fresh] = await db
       .insert(runs)
@@ -92,27 +92,27 @@ describe('обірвані прогони', () => {
   });
 });
 
-describe('наздоганяння пропущених запусків', () => {
-  it('час запускати, якщо завдання не відпрацьовувало ніколи', () => {
+describe('catching up on missed runs', () => {
+  it('it is time to run if the job never ran', () => {
     expect(isOverdue(null, 6 * 60 * 60 * 1000)).toBe(true);
   });
 
-  it('час запускати, якщо минуло більше за період', () => {
+  it('it is time to run if more time passed than the period', () => {
     const now = Date.now();
     expect(isOverdue(now - 7 * 60 * 60 * 1000, 6 * 60 * 60 * 1000, now)).toBe(true);
   });
 
-  it('не час, якщо щойно відпрацювало', () => {
+  it('not time yet if it just ran', () => {
     const now = Date.now();
     expect(isOverdue(now - 60 * 1000, 6 * 60 * 60 * 1000, now)).toBe(false);
   });
 
-  it('останній успіх береться з успішних прогонів, а не з будь-яких', async () => {
+  it('the last success is taken from successful runs, not from any run', async () => {
     const db = getDb();
     const source = 'catchup-source';
 
-    // Невдалий прогін не має вважатись відпрацьованим, інакше після падіння
-    // наздоганяння вирішить, що все гаразд, і джерело мовчатиме до наступного разу.
+    // A failed run must not count as done, otherwise catch-up would decide after a
+    // failure that everything is fine and the source would stay silent until next time.
     await db.insert(runs).values({
       source,
       status: 'error',
@@ -137,7 +137,7 @@ describe('наздоганяння пропущених запусків', () =>
     expect(await lastSuccessAt(source)).toBe(finished);
   });
 
-  it('джерело без жодного прогону не має останнього успіху', async () => {
-    expect(await lastSuccessAt('джерела-такого-немає')).toBeNull();
+  it('a source with no runs at all has no last success', async () => {
+    expect(await lastSuccessAt('source-that-does-not-exist')).toBeNull();
   });
 });

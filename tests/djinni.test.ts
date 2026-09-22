@@ -6,13 +6,13 @@ const javascript = readFileSync('fixtures/djinni/jobs-javascript.html', 'utf8');
 const fullstack = readFileSync('fixtures/djinni/jobs-fullstack.html', 'utf8');
 
 describe('djinni', () => {
-  it('розбирає сторінку пошуку і не повертає нуль', () => {
-    // Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх.
+  it('parses the search page and does not return zero', () => {
+    // Rule 3 in CLAUDE.md: an empty result is an error, not a success.
     expect(parseDjinni(javascript).length).toBeGreaterThan(5);
     expect(parseDjinni(fullstack).length).toBeGreaterThan(5);
   });
 
-  it('бере назву, посилання і зовнішній id', () => {
+  it('takes the title, link and external id', () => {
     const row = parseDjinni(javascript)[0]!;
 
     expect(row.source).toBe('djinni');
@@ -21,11 +21,11 @@ describe('djinni', () => {
     expect(row.externalId).toMatch(/^\d+$/);
   });
 
-  it('бере назву компанії, коли вона не прихована', () => {
+  it('takes the company name when it is not hidden', () => {
     expect(parseDjinni(javascript).some((row) => row.companyName)).toBe(true);
   });
 
-  it('українське "тільки віддалено" читається як remote', () => {
+  it('the Ukrainian "remote only" phrase is read as remote', () => {
     const rows = parseDjinni(javascript);
     const remote = rows.find((row) => /тільки віддалено/i.test(row.rawText));
 
@@ -33,29 +33,29 @@ describe('djinni', () => {
     expect(remote!.remote).toBe(true);
   });
 
-  it('число замість назви компанії це не компанія', () => {
-    // В анонімних вакансіях на цьому місці стоїть лічильник переглядів.
+  it('a number instead of a company name is not a company', () => {
+    // In anonymous vacancies a view counter sits in that spot.
     for (const row of parseDjinni(javascript).concat(parseDjinni(fullstack))) {
       if (row.companyName) expect(row.companyName).not.toMatch(/^\d+$/);
     }
   });
 
-  it('домен компанії лишається null: Djinni не веде на сайт роботодавця', () => {
-    // Вигадувати домен з адреси борду не можна, це склеїло б усі вакансії в одну компанію.
+  it('the company domain stays null: Djinni does not link to the employer site', () => {
+    // The domain cannot be guessed from the board's own address, that would merge all vacancies into one company.
     expect(parseDjinni(javascript).every((row) => row.companyDomain === null)).toBe(true);
   });
 
-  it('текст картки потрапляє в rawText, бо вилки окремим полем немає', () => {
+  it('the card text ends up in rawText, since there is no separate salary field', () => {
     for (const row of parseDjinni(javascript)) {
       expect(row.rawText.length).toBeGreaterThan(row.title!.length);
     }
   });
 
-  it('порожній html дає порожній список, а не падіння', () => {
-    expect(parseDjinni('<html><body>нічого</body></html>')).toEqual([]);
+  it('empty html gives an empty list, not a crash', () => {
+    expect(parseDjinni('<html><body>nothing</body></html>')).toEqual([]);
   });
 
-  it('ключові слова описані конфігом, а не зашиті в код', () => {
+  it('the keywords are described by config, not hardcoded', () => {
     expect(DJINNI_KEYWORDS).toContain('JavaScript');
     expect(DJINNI_KEYWORDS.length).toBeGreaterThan(1);
   });

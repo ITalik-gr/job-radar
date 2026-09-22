@@ -15,24 +15,25 @@ export interface SyncOptions {
   slug?: string;
   limit?: number;
   skipLlm?: boolean;
-  /** Не довантажувати сторінку вакансії, навіть якщо блок короткий. */
+  /** Don't fetch the vacancy page even if the block is short. */
   noDetail?: boolean;
 }
 
-/** Довантаження опису для коротких блоків: без нього вилка і англійська будуть null. */
+/** Fetches the description for short blocks: without it, the salary range and English requirement stay null. */
 async function fetchDetail(vacancy: RawVacancy): Promise<string | null> {
   try {
     const res = await fetchText(vacancy.url);
     /*
-     * Спершу вбудований JSON, і лише потім розмітка. На Next.js-бордах у HTML
-     * лежить хедер мережі на десятки тисяч символів, а опис вакансії тільки в
-     * `__NEXT_DATA__`, тому зворотний порядок давав меню замість вакансії.
+     * The embedded JSON first, and only then the markup. On Next.js boards the HTML
+     * carries the network's header running tens of thousands of characters, while the
+     * vacancy description sits only in `__NEXT_DATA__`, so the reverse order returned
+     * the menu instead of the vacancy.
      */
     const embedded = jobTextFromNextData(res.body);
     if (embedded) return anyToText(embedded).slice(0, 20000);
     return anyToText(res.body).slice(0, 20000) || null;
   } catch (error) {
-    log.warn({ url: vacancy.url, err: String(error) }, 'не вдалось довантажити сторінку вакансії');
+    log.warn({ url: vacancy.url, err: String(error) }, 'failed to fetch the vacancy page');
     return null;
   }
 }
@@ -44,11 +45,11 @@ export interface SyncResult extends IngestStats {
   closed: number;
 }
 
-/** Повний прохід джерела: забрати, класифікувати, зберегти, закрити зниклі. */
+/** A full pass over a source: fetch, classify, save, close missing ones. */
 export async function syncSource(id: string, options: SyncOptions = {}): Promise<SyncResult> {
   const source = getSource(id);
-  if (!source) throw new Error(`невідоме джерело: ${id}`);
-  if (source.kind !== 'board') throw new Error(`джерело ${id} не є бордом вакансій`);
+  if (!source) throw new Error(`unknown source: ${id}`);
+  if (source.kind !== 'board') throw new Error(`source ${id} is not a vacancy board`);
 
   return withRun(id, async () => {
     const errors: string[] = [];
@@ -80,7 +81,7 @@ export async function syncSource(id: string, options: SyncOptions = {}): Promise
         ? [{ slug: options.slug }]
         : (await companiesForAts(id)).map((company) => ({ slug: company.careersSlug!, company }));
 
-      if (targets.length === 0) log.warn({ source: id }, 'немає компаній із цим ATS');
+      if (targets.length === 0) log.warn({ source: id }, 'no companies with this ATS');
 
       for (const target of targets.slice(0, options.limit ?? targets.length)) {
         try {
@@ -97,13 +98,14 @@ export async function syncSource(id: string, options: SyncOptions = {}): Promise
         } catch (error) {
           const message = `${target.slug}: ${error instanceof Error ? error.message : String(error)}`;
           errors.push(message);
-          log.warn({ source: id, err: message }, 'помилка на одному slug, йду далі');
+          log.warn({ source: id, err: message }, 'error on one slug, moving on');
         }
       }
     } else {
       /*
-       * Slug тут не обовʼязковий, але передається: Getro читає його як id мережі
-       * і робить за раз тільки її. Решта джерел цього поля не помічає.
+       * A slug isn't required here, but it's passed anyway: Getro reads it as a
+       * network id and does only that one network per call. The other sources don't
+       * notice this field.
        */
       const items = await source.fetch({ slug: options.slug });
       found += items.length;
@@ -114,7 +116,7 @@ export async function syncSource(id: string, options: SyncOptions = {}): Promise
   });
 }
 
-/** Компанії, які мають бути перевірені на цьому проході. */
+/** Companies that need to be checked on this pass. */
 export async function companyByDomain(domain: string): Promise<Company | undefined> {
   const [row] = await getDb().select().from(companies).where(eq(companies.domain, domain));
   return row;
@@ -128,15 +130,15 @@ export interface RefreshDetailsReport {
 }
 
 /**
- * Перечитати сторінки вакансій одного джерела свіжим витягом.
+ * Re-reads the vacancy pages of one source with a fresh fetch.
  *
- * Потрібно після виправлення парсера: у базі вже лежать вакансії, де описом
- * записане меню мережі, і перекласифікувати їх без свіжого тексту немає сенсу,
- * модель побачить те саме меню.
+ * Needed after fixing a parser: the database already has vacancies whose description
+ * is a network's menu, and reclassifying them without fresh text is pointless, the
+ * model would see the same menu.
  *
- * Відбір іде за джерелом, а не спробою вгадати сміття за виглядом тексту.
- * Спроба була, і вона не працює: у тих самих Techstars частина сторінок
- * віддає опис, частина ні, тому спільного вигляду в сміття немає.
+ * Selection is by source, not by trying to guess garbage from what the text looks
+ * like. That was tried, and it doesn't work: within the same Techstars, some pages
+ * hand back a description and some don't, so there's no shared shape to the garbage.
  */
 export async function refreshDetails(
   options: { source?: string; limit?: number } = {},
@@ -168,8 +170,8 @@ export async function refreshDetails(
     }
 
     /*
-     * needsReview ставить вакансію в чергу перекласифікації: стара думка моделі
-     * складалась про меню сайту, і лишати її означало б довіряти сміттю.
+     * needsReview puts the vacancy into the reclassification queue: the model's old
+     * opinion was formed about the site's menu, and keeping it would mean trusting garbage.
      */
     await db
       .update(vacancies)
@@ -178,6 +180,6 @@ export async function refreshDetails(
     report.fixed += 1;
   }
 
-  log.info({ source, ...report }, 'опис вакансій перечитано');
+  log.info({ source, ...report }, 'vacancy descriptions re-read');
   return report;
 }

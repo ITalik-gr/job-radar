@@ -32,13 +32,13 @@ export interface UpsertResult {
 }
 
 /**
- * Компанія ідентифікується доменом. Повторний імпорт того самого домену не створює
- * дубль, а дописує джерело і заповнює порожні поля. Наявні дані не перезаписуються.
+ * A company is identified by its domain. Re-importing the same domain doesn't create
+ * a duplicate, it appends the source and fills in empty fields. Existing data is never overwritten.
  */
 export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> {
   const db = getDb();
   const domain = normalizeDomain(input.domain);
-  if (!domain) throw new Error(`невалідний домен: ${input.domain}`);
+  if (!domain) throw new Error(`invalid domain: ${input.domain}`);
 
   const [existing] = await db.select().from(companies).where(eq(companies.domain, domain));
 
@@ -86,8 +86,8 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
   const tags = [...new Set([...existing.tags, ...(input.tags ?? [])])];
 
   /*
-   * Тип перераховується на кожному оновленні: компанія могла прийти спершу з ATS
-   * без тегів, а потім з каталогу з тегами, і тільки тоді стає видно, що це студія.
+   * The kind is recomputed on every update: a company could first arrive from an ATS
+   * with no tags, then from a catalog with tags, and only then does it become clear it's a studio.
    */
   const [updated] = await db
     .update(companies)
@@ -110,17 +110,18 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
         existing.careersKind !== 'unknown' ? existing.careersKind : input.careersKind ?? 'unknown',
       careersSlug: existing.careersSlug ?? input.careersSlug ?? null,
       /*
-       * Оцінка і кількість відгуків це поточний стан, а не факт першої зустрічі,
-       * тому свіже значення перезаписує старе. Решта полів лише доповнює порожнє:
-       * рік заснування і вилка проєкту не змінюються, а перезапис зіпсував би їх,
-       * коли інший каталог показує ту саму студію коротшою карткою.
+       * The rating and review count are a current state, not a fact from the first
+       * encounter, so a fresh value overwrites the old one. The rest of the fields only
+       * fill in what's empty: the founding year and project range don't change, and
+       * overwriting them would break things when another catalog shows the same studio
+       * with a shorter card.
        */
       rating: input.rating ?? existing.rating,
       reviewsCount: input.reviewsCount ?? existing.reviewsCount,
       minProject: existing.minProject ?? input.minProject ?? null,
       hourlyRate: existing.hourlyRate ?? input.hourlyRate ?? null,
       foundedYear: existing.foundedYear ?? input.foundedYear ?? null,
-      // Уже збережене має перевагу: два каталоги пишуть те саме поле по-різному.
+      // Already saved data wins: two catalogs write the same field differently.
       extra: { ...(input.extra ?? {}), ...existing.extra },
     })
     .where(eq(companies.id, existing.id))
@@ -129,7 +130,7 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
   return { company: updated!, created: false };
 }
 
-/** Компанії, у яких є slug конкретного ATS. */
+/** Companies that have a slug for a specific ATS. */
 export async function companiesForAts(kind: string): Promise<Company[]> {
   const db = getDb();
   const rows = await db.select().from(companies).where(eq(companies.careersKind, kind));

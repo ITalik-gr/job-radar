@@ -6,8 +6,8 @@ import type { BoardSource, RawVacancy, SourceContext } from '../registry.js';
 const SOURCE = 'remoteok';
 
 /**
- * RSS RemoteOK вимкнений (віддає 410), тому працюємо через їх публічний JSON.
- * Перший елемент масиву це юридична примітка, а не вакансія, її треба відкидати.
+ * RemoteOK's RSS is disabled (returns 410), so we work through their public JSON
+ * instead. The first element of the array is a legal notice, not a vacancy, and has to be dropped.
  */
 export const API_URL = 'https://remoteok.com/api';
 
@@ -31,7 +31,7 @@ interface RemoteOkJob {
 
 export function parse(payload: string, _ctx: SourceContext = {}): RawVacancy[] {
   const rows = JSON.parse(payload) as RemoteOkJob[];
-  if (!Array.isArray(rows)) throw new Error('remoteok: очікувався масив');
+  if (!Array.isArray(rows)) throw new Error('remoteok: expected an array');
 
   return rows
     .filter((row) => !row.legal && Boolean(row.id) && Boolean(row.position))

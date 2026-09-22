@@ -1,10 +1,10 @@
 /**
- * Збирач каталогів. Працює у вкладці, яку ти вже відкрив руками, розбирає видиму
- * сторінку і шле результат у локальний Job Radar. Нічого не обходить: сторінку
- * відкрив браузер, а не скрипт, тому Cloudflare тут ні до чого.
+ * Catalog collector. Runs in a tab you already opened by hand, parses the visible
+ * page and sends the result to the local Job Radar. It bypasses nothing: the page
+ * was opened by the browser, not a script, so Cloudflare has nothing to do with it.
  *
- * Ставиться як закладка: скопіювати вміст dist-рядка з `pnpm cli bookmarklet`
- * і вставити в адресу нової закладки.
+ * Installed as a bookmark: copy the dist-string content from `pnpm cli bookmarklet`
+ * and paste it into the address of a new bookmark.
  */
 (function collect() {
   const API = 'http://localhost:3000/api/import/catalog';
@@ -42,7 +42,7 @@
     return null;
   };
 
-  /** Картки різних каталогів. Порядок від конкретного до загального. */
+  /** Cards from various catalogs. Order goes from specific to general. */
   const CARD_SELECTORS = [
     'li.provider-list-item',
     '.provider-row',
@@ -104,7 +104,7 @@
           .filter((tag) => tag && tag.length < 40)
           .slice(0, 12);
 
-        // Навмисно не `location`: воно затінює window.location, і sourceUrl падає.
+        // Intentionally not `location`: it shadows window.location, and sourceUrl breaks.
         const city =
           pickText(card, ['[itemprop="addressLocality"]', '[class*="location" i]', '[class*="address" i]']) || null;
         const country = card.querySelector('[itemprop="addressCountry"]')?.getAttribute('content') || null;
@@ -123,7 +123,7 @@
       .filter((item) => item.name);
   }
 
-  /** Запасний шлях: багато каталогів віддають ItemList у JSON-LD. */
+  /** Fallback path: many catalogs emit an ItemList in JSON-LD. */
   function fromJsonLd() {
     const items = [];
     for (const node of document.querySelectorAll('script[type="application/ld+json"]')) {
@@ -157,7 +157,7 @@
   const withDomain = items.filter((item) => item.domain);
 
   if (items.length === 0) {
-    alert('Job Radar: карток на сторінці не знайдено. Скинь мені URL, додам розбір для цього каталогу.');
+    alert('Job Radar: no cards found on this page. Send me the URL, I will add parsing for this catalog.');
     return;
   }
 
@@ -169,11 +169,11 @@
     .then((response) => response.json())
     .then((result) => {
       alert(
-        `Job Radar: на сторінці ${items.length}, з доменом ${withDomain.length}\n` +
-          `нових ${result.itemsNew}, оновлено ${result.updated}, без домену ${result.skipped}`,
+        `Job Radar: ${items.length} on the page, ${withDomain.length} with a domain\n` +
+          `${result.itemsNew} new, ${result.updated} updated, ${result.skipped} without a domain`,
       );
     })
     .catch(() => {
-      alert('Job Radar: не достукався до localhost:3000. Запусти pnpm start і спробуй ще раз.');
+      alert('Job Radar: could not reach localhost:3000. Run pnpm start and try again.');
     });
 })();

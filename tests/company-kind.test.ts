@@ -3,19 +3,19 @@ import { detectKind } from '../src/pipeline/company-kind.js';
 
 const base = { tags: [], sources: [], description: null, sizeHint: null };
 
-describe('тип компанії', () => {
-  it('джерело стартапів сильніше за будь-які теги', () => {
+describe('company kind', () => {
+  it('a startup source outweighs any tags', () => {
     expect(detectKind({ ...base, sources: ['getro'], tags: ['Web Development'] })).toBe('startup');
     expect(detectKind({ ...base, sources: ['yc'] })).toBe('startup');
   });
 
-  it('перевага дизайнерських тегів дає design', () => {
+  it('a majority of design tags gives design', () => {
     expect(
       detectKind({ ...base, sources: ['clutch'], tags: ['Web Design', 'UI/UX Design', 'Branding'] }),
     ).toBe('design');
   });
 
-  it('перевага розробницьких тегів дає studio', () => {
+  it('a majority of development tags gives studio', () => {
     expect(
       detectKind({
         ...base,
@@ -25,15 +25,15 @@ describe('тип компанії', () => {
     ).toBe('studio');
   });
 
-  it('рівна кількість тегів це studio, бо розробка ширша', () => {
+  it('an equal number of tags gives studio, because development is broader', () => {
     expect(detectKind({ ...base, sources: ['clutch'], tags: ['Web Design', 'Web Development'] })).toBe('studio');
   });
 
-  it('аутстаф відділяється, туди писати нема сенсу', () => {
+  it('outstaff is set apart, there is no point writing there', () => {
     expect(detectKind({ ...base, sources: ['clutch'], tags: ['IT Staff Augmentation'] })).toBe('outstaff');
   });
 
-  it('один тег аутстафу серед розробницьких не робить компанію аутстафом', () => {
+  it('one outstaff tag among development tags does not make the company outstaff', () => {
     expect(
       detectKind({
         ...base,
@@ -43,33 +43,33 @@ describe('тип компанії', () => {
     ).toBe('studio');
   });
 
-  it('компанія з ATS-джерела без тегів каталогу це продукт', () => {
+  it('a company from an ATS source without catalog tags is a product', () => {
     expect(detectKind({ ...base, sources: ['greenhouse'] })).toBe('product');
     expect(detectKind({ ...base, sources: ['rss:remotive'] })).toBe('product');
   });
 
-  it('власний ATS без тегів каталогу це продуктова компанія', () => {
-    // Vercel і Stripe прийшли з CSV-сіда, за міткою джерела лишались би unknown
-    // і показувались би в Студіях, куди їм писати холодний лист марно.
+  it('its own ATS without catalog tags is a product company', () => {
+    // Vercel and Stripe came from the CSV seed, by source label alone they would stay unknown
+    // and show up under Studios, where a cold letter would be pointless.
     expect(detectKind({ ...base, sources: ['csv'], careersKind: 'greenhouse' })).toBe('product');
     expect(detectKind({ ...base, sources: ['csv'], careersKind: 'ashby' })).toBe('product');
   });
 
-  it('ATS не перебиває теги каталогу: студія теж може мати greenhouse', () => {
+  it('the ATS does not override catalog tags: a studio can also have greenhouse', () => {
     expect(
       detectKind({ ...base, sources: ['clutch'], tags: ['Web Development'], careersKind: 'greenhouse' }),
     ).toBe('studio');
   });
 
-  it('каталог агенцій без тегів усе одно студія', () => {
+  it('an agency catalog without tags is still a studio', () => {
     expect(detectKind({ ...base, sources: ['designrush'] })).toBe('studio');
   });
 
-  it('опис підказує, коли тегів і знайомих джерел немає', () => {
+  it('the description helps when there are no tags and no familiar sources', () => {
     expect(detectKind({ ...base, description: 'We are a web design studio from Kyiv' })).toBe('studio');
   });
 
-  it('порожня картка це unknown, а не вгадування', () => {
+  it('an empty card is unknown, not a guess', () => {
     expect(detectKind(base)).toBe('unknown');
   });
 });

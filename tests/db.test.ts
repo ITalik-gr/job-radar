@@ -22,8 +22,8 @@ afterAll(() => {
   rmSync(`${dbPath}-shm`, { force: true });
 });
 
-describe('схема', () => {
-  it('зберігає компанію з масивами як JSON', async () => {
+describe('schema', () => {
+  it('stores a company with arrays as JSON', async () => {
     const [company] = await ctx.db
       .insert(companies)
       .values({
@@ -40,13 +40,13 @@ describe('схема', () => {
     expect(company!.firstSeen).toBeGreaterThan(0);
   });
 
-  it('домен унікальний', async () => {
+  it('the domain is unique', async () => {
     await expect(
-      ctx.db.insert(companies).values({ name: 'Acme дубль', domain: 'acme.com' }),
+      ctx.db.insert(companies).values({ name: 'Acme duplicate', domain: 'acme.com' }),
     ).rejects.toThrow();
   });
 
-  it('dedupe_key унікальний, повторна вакансія не дублюється', async () => {
+  it('dedupe_key is unique, a repeated vacancy is not duplicated', async () => {
     const [company] = await ctx.db
       .select()
       .from(companies)
@@ -64,7 +64,7 @@ describe('схема', () => {
     await expect(ctx.db.insert(vacancies).values(values)).rejects.toThrow();
   });
 
-  it('стан компанії один на компанію і чистить каскадом', async () => {
+  it('a company has one state and it cascades on delete', async () => {
     const [company] = await ctx.db
       .insert(companies)
       .values({ name: 'Temp', domain: 'temp.dev' })

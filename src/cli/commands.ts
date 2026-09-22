@@ -12,7 +12,7 @@ export interface CsvRow {
   careers_url?: string;
 }
 
-/** Мінімальний CSV-парсер: кома як розділювач, лапки з подвоєнням усередині. */
+/** Minimal CSV parser: comma as the separator, quotes doubled up inside a field. */
 export function parseCsv(input: string): Record<string, string>[] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -82,7 +82,7 @@ export async function importCsvFile(path: string, source = 'csv'): Promise<Impor
     const domain = normalizeDomain(row.domain ?? '');
 
     if (!name || !domain) {
-      report.skipped.push({ line, reason: !name ? 'немає name' : `невалідний domain: ${row.domain}` });
+      report.skipped.push({ line, reason: !name ? 'missing name' : `invalid domain: ${row.domain}` });
       continue;
     }
 

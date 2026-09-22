@@ -3,7 +3,7 @@ import { getDb } from '../db/client.js';
 import { companies, vacancies } from '../db/schema.js';
 import { funnel } from './actions.js';
 
-/** Аналітика рівно та, що описана в CLAUDE.md, без спроб зробити з неї продукт. */
+/** Analytics exactly as described in CLAUDE.md, with no attempt to turn it into a product. */
 
 export interface TechCount {
   tech: string;
@@ -44,7 +44,7 @@ export interface SalaryRow {
   count: number;
 }
 
-/** Медіанна вилка по грейдах і країнах. Беремо середину вилки, коли є обидві межі. */
+/** Median salary range by seniority and country. We take the midpoint when both bounds exist. */
 export async function medianSalaries(by: 'seniority' | 'country' = 'seniority'): Promise<SalaryRow[]> {
   const db = getDb();
   const rows = await db
@@ -60,7 +60,7 @@ export async function medianSalaries(by: 'seniority' | 'country' = 'seniority'):
 
   const groups = new Map<string, number[]>();
   for (const row of rows) {
-    const key = (by === 'seniority' ? row.seniority : row.country) ?? 'невідомо';
+    const key = (by === 'seniority' ? row.seniority : row.country) ?? 'unknown';
     const value = row.max ? (row.min! + row.max) / 2 : row.min!;
     groups.set(key, [...(groups.get(key) ?? []), value]);
   }
@@ -77,8 +77,9 @@ export interface LifetimeStats {
 }
 
 /**
- * Час життя вакансії. Різниця first_seen і closed_at це майбутній датасет власника,
- * тому вакансії не видаляються ніколи. Ті, що висять понад 120 днів, підозрілі.
+ * Vacancy lifetime. The difference between first_seen and closed_at is the owner's
+ * future dataset, so vacancies are never deleted. Ones hanging around for more than
+ * 120 days are suspicious.
  */
 export async function lifetimes(ghostAfterDays = 120): Promise<LifetimeStats> {
   const db = getDb();

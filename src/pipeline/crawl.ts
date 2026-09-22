@@ -4,7 +4,7 @@ import { log } from '../lib/log.js';
 import { companiesForAts } from './companies.js';
 
 export interface CrawlOptions {
-  /** Явний slug, щоб прогнати джерело без запису компанії в базі. */
+  /** An explicit slug, to run the source without a company record in the database. */
   slug?: string;
   limit?: number;
 }
@@ -17,14 +17,14 @@ export interface CrawlResult {
 }
 
 /**
- * Прогін одного джерела. На Етапі 2 результат тільки повертається назовні,
- * запис вакансій у базу зʼявиться після дедупу і скорингу на Етапі 4,
- * тому `itemsNew` поки дорівнює `itemsFound`.
+ * Runs a single source. At Stage 2 the result is only returned to the caller, saving
+ * vacancies to the database appears after dedup and scoring at Stage 4, so `itemsNew`
+ * equals `itemsFound` for now.
  */
 export async function crawlSource(id: string, options: CrawlOptions = {}): Promise<CrawlResult> {
   const source = getSource(id);
-  if (!source) throw new Error(`невідоме джерело: ${id}`);
-  if (source.kind !== 'board') throw new Error(`джерело ${id} не є бордом вакансій`);
+  if (!source) throw new Error(`unknown source: ${id}`);
+  if (source.kind !== 'board') throw new Error(`source ${id} is not a vacancy board`);
 
   return withRun(id, async () => {
     const vacancies: RawVacancy[] = [];
@@ -36,7 +36,7 @@ export async function crawlSource(id: string, options: CrawlOptions = {}): Promi
         : (await companiesForAts(id)).map((company) => ({ slug: company.careersSlug!, company }));
 
       if (targets.length === 0) {
-        log.warn({ source: id }, 'немає компаній із цим ATS, додай їх через companies:add');
+        log.warn({ source: id }, 'no companies with this ATS, add them via companies:add');
       }
 
       for (const target of targets.slice(0, options.limit ?? targets.length)) {
@@ -45,7 +45,7 @@ export async function crawlSource(id: string, options: CrawlOptions = {}): Promi
         } catch (error) {
           const message = `${target.slug}: ${error instanceof Error ? error.message : String(error)}`;
           errors.push(message);
-          log.warn({ source: id, err: message }, 'помилка на одному slug, йду далі');
+          log.warn({ source: id, err: message }, 'error on one slug, moving on');
         }
       }
     } else {

@@ -9,8 +9,8 @@ function unslug(value: string): string {
 }
 
 /**
- * WeWorkRemotely кладе компанію в заголовок як "Company: Position", а локацію в
- * власний тег <region>.
+ * WeWorkRemotely puts the company in the title as "Company: Position", and the
+ * location in its own <region> tag.
  */
 const weworkremotely: FeedConfig = {
   id: 'rss:weworkremotely',
@@ -27,7 +27,7 @@ const weworkremotely: FeedConfig = {
   location: (item) => item.extra.region ?? null,
 };
 
-/** Himalayas не дає компанію окремим тегом, вона є у шляху /companies/<slug>/jobs/<slug>. */
+/** Himalayas doesn't give the company as a separate tag, it's in the path /companies/<slug>/jobs/<slug>. */
 const himalayas: FeedConfig = {
   id: 'rss:himalayas',
   url: 'https://himalayas.app/jobs/rss',

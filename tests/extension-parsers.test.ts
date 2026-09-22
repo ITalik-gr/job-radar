@@ -6,19 +6,21 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * Smoke-тест збирача каталогів. Правило 2 в CLAUDE.md вимагає тест на фікстурі
- * для кожного адаптера джерела, а розширення це такий самий адаптер, просто
- * виконується в браузері власника. Без цього тесту зміна верстки Clutch ламала б
- * збір тихо: сторінка відкрилась, карток нуль, і це виглядає як порожній каталог.
+ * Smoke test for the catalog collector. Rule 2 in CLAUDE.md requires a fixture test
+ * for every source adapter, and the extension is just such an adapter, it just runs
+ * in the owner's browser. Without this test a Clutch layout change would break
+ * collection silently: the page opens, zero cards come back, and it looks like an
+ * empty catalog.
  *
- * Парсер написаний як звичайний скрипт для сторінки, тому виконується як є,
- * у jsdom, і читає той самий `document`, що й у справжній вкладці.
+ * The parser is written as a plain page script, so it runs as is, in jsdom, and
+ * reads the same `document` it would in a real tab.
  */
 
 /*
- * DOM-типи навмисно не додані в tsconfig проєкту: воркер і CLI не мають доступу
- * до document, і глобальний lib "DOM" дозволив би написати там браузерний код,
- * який упаде тільки в проді. Тому оголошення локальні, рівно на цей файл.
+ * DOM types are deliberately not added to the project's tsconfig: the worker and the
+ * CLI have no access to `document`, and the global "DOM" lib would let browser code
+ * be written there that only crashes in production. So the declarations are local,
+ * scoped to this file alone.
  */
 declare const document: { open(): void; write(html: string): void; close(): void };
 declare const window: unknown;
@@ -49,40 +51,40 @@ function loadParsers(html: string): Parsers {
   document.write(html);
   document.close();
 
-  // Скрипт кладе себе у window.JobRadarParsers, як і в справжній вкладці.
+  // The script attaches itself to window.JobRadarParsers, just like in a real tab.
   // eslint-disable-next-line no-eval
   (0, eval)(readFileSync('extension/parsers.js', 'utf8'));
   return (window as unknown as { JobRadarParsers: Parsers }).JobRadarParsers;
 }
 
-describe('парсер каталогів у розширенні', () => {
+describe('extension catalog parser', () => {
   let result: ReturnType<Parsers['parse']>;
 
   beforeAll(() => {
     result = loadParsers(readFileSync('fixtures/clutch/web-developers.html', 'utf8')).parse();
   });
 
-  it('впізнає Clutch і розбирає картки, а не запасний JSON-LD', () => {
+  it('recognizes Clutch and parses the cards, not the JSON-LD fallback', () => {
     expect(result.site).toBe('clutch.co');
     expect(result.known).toBe(true);
     expect(result.method).toBe('cards');
     expect(result.items.length).toBeGreaterThan(0);
   });
 
-  // Правило 3: нуль карток при живій сторінці це помилка, а не порожній каталог.
-  it('на чужій розмітці повертає нуль, а не вигадані картки', () => {
+  // Rule 3: zero cards on a live page is an error, not an empty catalog.
+  it('returns zero on unfamiliar markup, not made-up cards', () => {
     const empty = loadParsers('<html><body><p>Just a moment...</p></body></html>').parse();
     expect(empty.items).toEqual([]);
   });
 
-  it('бере назву і домен компанії, а не посилання на сам каталог', () => {
+  it('takes the company name and domain, not a link to the catalog itself', () => {
     const first = result.items[0]!;
     expect(first.name).toBe('Imaginovation');
     expect(first.domain).toBe('imaginovation.net');
     expect(result.items.every((item) => !/clutch\.co/.test(item.domain ?? ''))).toBe(true);
   });
 
-  it('бере оцінку, кількість відгуків, ставку і мінімальний проєкт', () => {
+  it('takes the rating, review count, rate and minimum project', () => {
     const first = result.items[0]!;
     expect(first.rating).toBe(4.9);
     expect(first.reviewsCount).toBe(16);
@@ -91,25 +93,25 @@ describe('парсер каталогів у розширенні', () => {
     expect(first.sizeHint).toBe('10 - 49');
   });
 
-  it('ставка і мінімальний проєкт не дублюються в тегах послуг', () => {
+  it('the rate and minimum project are not duplicated in the service tags', () => {
     const first = result.items[0]!;
     expect(first.tags).not.toContain('$50 - $99 / hr');
     expect(first.tags.some((tag) => /Web Development/i.test(tag))).toBe(true);
   });
 
-  it('блок "Інше" не тягне підписи кнопок і лічильники послуг', () => {
+  it('the "Other" block does not pull in button labels and service counters', () => {
     for (const item of result.items) {
       for (const [label, value] of Object.entries(item.extra)) {
-        // "See X Reviews", "Show more about provider" це підписи кнопок, не дані.
+        // "See X Reviews", "Show more about provider" are button labels, not data.
         expect(label).not.toMatch(/^(see|show|view|read|visit|\d+%)\b/i);
         expect(value).not.toMatch(/^(\+\d+ services?|show more|\d+ reviews?)$/i);
       }
     }
-    // Перевірений профіль на Clutch це справжня ознака, вона лишається.
-    expect(result.items[0]!.extra['Перевірений профіль']).toBe('так');
+    // A verified profile on Clutch is a genuine signal, it stays.
+    expect(result.items[0]!.extra['Verified profile']).toBe('yes');
   });
 
-  it('блок "Інше" не тягне підписи, у яких уже є свої колонки', () => {
+  it('the "Other" block does not pull in labels that already have their own columns', () => {
     for (const item of result.items) {
       const labels = Object.keys(item.extra).join(' ');
       expect(labels).not.toMatch(/min\.? project|hourly rate|employees|location/i);
@@ -121,7 +123,7 @@ describe('парсер каталогів у розширенні', () => {
     }
   });
 
-  it('оцінка лишається в межах шкали, а відгуки цілим числом', () => {
+  it('the rating stays within scale, and reviews are a whole number', () => {
     for (const item of result.items) {
       if (item.rating !== null) {
         expect(item.rating).toBeGreaterThan(0);

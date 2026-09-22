@@ -1,9 +1,9 @@
 import { isoWeek, normalizeDomain, slugify } from '../lib/normalize.js';
 
 /**
- * Одна вакансія буде на сайті компанії, на Djinni і на DOU одночасно.
- * Ключ навмисно грубий: домен, назва, тиждень першої появи. При збігу запис не
- * дублюється, а до наявного дописується джерело.
+ * The same vacancy can be on the company's site, on Djinni and on DOU at the same time.
+ * The key is deliberately coarse: domain, title, the week it first appeared. On a match
+ * the record is not duplicated, the source is appended to the existing one instead.
  */
 export function dedupeKey(input: {
   domain: string | null;

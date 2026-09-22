@@ -14,28 +14,28 @@ import { refreshRulesFromDb } from './pipeline/rules.js';
 import { setAiBinding } from './lib/workers-ai.js';
 import { checkReplies } from './pipeline/replies.js';
 import { prepareFollowups } from './pipeline/followups.js';
-// Токен Gmail на Workers приходить секретом, файлової системи тут немає.
+// The Gmail token on Workers arrives as a secret, there is no file system here.
 import './lib/gmail-store.env.js';
 
 /**
- * Точка входу для Cloudflare Workers. Той самий Hono-застосунок, що й локально,
- * плюс планувальник на Cron Triggers замість node-cron.
+ * Entry point for Cloudflare Workers. The same Hono app as locally, plus a scheduler
+ * on Cron Triggers instead of node-cron.
  *
- * База приходить біндінгом D1 на кожен запит, тому інстанс підставляється перед
- * обробкою: у Workers немає довгоживучого процесу, куди її можна покласти один раз.
+ * The database arrives as a D1 binding on every request, so the instance gets set
+ * before processing: on Workers there is no long-lived process to put it into once.
  */
 export interface Env {
   DB: D1Database;
   /**
-   * Workers AI. Вектори компаній рахуються тут завжди, а класифікація тоді,
-   * коли `LLM_PROVIDER=workers-ai`: це включена квота платного плану замість
-   * окремого рахунку за токени Anthropic.
+   * Workers AI. Company vectors are always computed here, and classification is too
+   * when `LLM_PROVIDER=workers-ai`: this uses the paid plan's included quota instead
+   * of a separate bill for Anthropic tokens.
    */
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
   RADAR_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
-  /** Модель для першого абзацу листа. Порожнє означає ту саму, що й класифікація. */
+  /** The model for the letter's first paragraph. Empty means the same one as classification. */
   OUTREACH_MODEL?: string;
   LLM_PROVIDER?: string;
   WORKERS_AI_MODEL?: string;
@@ -46,11 +46,11 @@ export interface Env {
 }
 
 function prepare(env: Env): void {
-  // Секрети і біндінги приходять на кожен запит, тому конфіг і база ставляться тут.
+  // Secrets and bindings arrive on every request, so the config and the database get set here.
   setRuntimeEnv(env as unknown as Record<string, unknown>);
-  if (!env.DB) throw new Error('немає біндінгу D1 з іменем DB, перевір wrangler.jsonc');
+  if (!env.DB) throw new Error('no D1 binding named DB, check wrangler.jsonc');
   setDb(drizzle(env.DB, { schema }));
-  // На Workers і вектори, і класифікація йдуть біндінгом, без токена і без виходу назовні.
+  // On Workers both vectors and classification go through the binding, with no token and no outbound access.
   if (env.AI) setAiBinding(env.AI);
 }
 
@@ -60,11 +60,11 @@ async function safely(name: string, task: () => Promise<unknown>): Promise<void>
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     // Log only, no Telegram push: an hourly task failing would otherwise message every hour.
-    log.error({ task: name, err: message }, 'завдання за розкладом впало');
+    log.error({ task: name, err: message }, 'scheduled task crashed');
   }
 }
 
-/** Розклад узгоджений із wrangler.jsonc: щогодини вирішуємо, що саме робити. */
+/** Schedule kept in sync with wrangler.jsonc: every hour we decide exactly what to do. */
 async function runSchedule(cron: string): Promise<void> {
   if (cron === '0 */6 * * *') {
     for (const source of listSources('board')) {
@@ -80,15 +80,15 @@ async function runSchedule(cron: string): Promise<void> {
   if (cron === '0 7 * * MON,THU') return safely('notify:summary', () => notify.summary());
 
   /*
-   * Розсилка. Час у Cron Triggers завжди UTC, тому 06:30 UTC це 09:30 за Києвом:
-   * чернетки фолоу-апів мають бути готові до дайджесту, а не після нього.
+   * Outreach. Time in Cron Triggers is always UTC, so 06:30 UTC is 09:30 in Kyiv:
+   * follow-up drafts must be ready before the digest, not after it.
    */
   if (cron === '5 * * * *') {
     return safely('outreach:replies', () => checkReplies({ ownEmail: config.gmail.fromEmail }));
   }
   if (cron === '30 6 * * *') return safely('outreach:followups', () => prepareFollowups());
 
-  log.warn({ cron }, 'невідомий розклад');
+  log.warn({ cron }, 'unknown schedule');
 }
 
 export default {
@@ -100,9 +100,9 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    // Правила, змінені з інтерфейсу, лежать у базі. Ізолят між запитами може бути
-    // новим, тому перечитуємо перед обробкою: інакше скоринг рахував би за вшитим
-    // конфігом і правка порогу нічого б не змінила.
+    // Rules changed from the interface live in the database. The isolate between
+    // requests can be new, so they get re-read before processing: otherwise scoring
+    // would run on the baked-in config and editing the threshold would change nothing.
     await refreshRulesFromDb();
 
     return app.fetch(request, env, ctx);

@@ -8,30 +8,30 @@ import { startScheduler } from './scheduler.js';
 import { isConfigured, startBot, stopBot } from './notify/telegram.js';
 import { refreshRulesFromDb, watchRules } from './pipeline/rules.js';
 
-/** Один процес: міграції, API, планувальник і телеграм-бот для довідки. */
+/** One process: migrations, the API, the scheduler, and the Telegram bot for reference. */
 const port = Number(process.env.API_PORT ?? 3000);
 
 runMigrations().sqlite.close();
 watchRules();
-// Правки правил з інтерфейсу лежать у базі і старші за файл, тому читаються на старті.
+// Rule edits made from the interface live in the database and are newer than the file, so they get read on startup.
 void refreshRulesFromDb();
 
 const server = serve({ fetch: app.fetch, port });
 
-// Найчастіша помилка запуску це забутий попередній процес. Стектрейс тут нічого
-// не пояснює, тому ловимо явно і кажемо, що робити.
+// The most common startup error is a forgotten previous process. The stack trace
+// explains nothing here, so it is caught explicitly and tells what to do.
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {
     log.error(
       { port },
-      `порт ${port} уже зайнятий. Або десь працює інший Job Radar, або лишився старий процес.\n` +
-        `  подивитись хто це:  lsof -nP -iTCP:${port} -sTCP:LISTEN\n` +
-        `  зупинити:           kill $(lsof -t -iTCP:${port} -sTCP:LISTEN)\n` +
-        `  або запустити на іншому порту:  API_PORT=3001 pnpm start`,
+      `port ${port} is already in use. Either another Job Radar is running somewhere, or an old process is stuck.\n` +
+        `  see who it is:  lsof -nP -iTCP:${port} -sTCP:LISTEN\n` +
+        `  stop it:        kill $(lsof -t -iTCP:${port} -sTCP:LISTEN)\n` +
+        `  or start on a different port:  API_PORT=3001 pnpm start`,
     );
     process.exit(1);
   }
-  log.error({ err: error.message }, 'сервер не піднявся');
+  log.error({ err: error.message }, 'server failed to start');
   process.exit(1);
 });
 
@@ -39,19 +39,19 @@ if (process.env.SCHEDULER !== 'off') startScheduler();
 if (isConfigured() && process.env.TELEGRAM_BOT !== 'off') void startBot();
 
 /*
- * Остання лінія оборони. Усі завдання за розкладом уже загорнуті в `safely`, але
- * процес має жити тижнями без нагляду, і одна не спіймана обіцянка десь у новому
- * коді за замовчуванням валить Node цілком. Тихо зупинений радар гірший за
- * помилку в лозі: він виглядає працюючим рівно до того дня, коли власник
- * помічає, що нових вакансій немає вже тиждень.
+ * The last line of defense. Every scheduled task is already wrapped in `safely`, but
+ * the process has to live for weeks unattended, and one uncaught promise somewhere
+ * in new code crashes all of Node by default. A radar stopped silently is worse than
+ * an error in the log: it looks like it is working right up until the day the owner
+ * notices there have been no new vacancies for a week.
  */
 process.on('unhandledRejection', (reason) => {
-  log.error({ err: reason instanceof Error ? reason.message : String(reason) }, 'не спіймана обіцянка');
+  log.error({ err: reason instanceof Error ? reason.message : String(reason) }, 'unhandled promise rejection');
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    log.info('зупиняюсь');
+    log.info('shutting down');
     void stopBot();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
@@ -59,6 +59,6 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 log.info(
-  { port, telegram: isConfigured() ? 'налаштований' : 'вимкнений', scheduler: process.env.SCHEDULER !== 'off' },
-  'Job Radar запущено',
+  { port, telegram: isConfigured() ? 'configured' : 'disabled', scheduler: process.env.SCHEDULER !== 'off' },
+  'Job Radar started',
 );

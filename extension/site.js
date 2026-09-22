@@ -1,21 +1,23 @@
 /**
- * Читає намальовану сторінку компанії: пошта, стек, ознаки живості, посилання далі.
+ * Reads a company's rendered page: email, stack, liveness markers, links to follow.
  *
- * Виконується через chrome.scripting у фоновій вкладці, тобто вже після того, як
- * сайт домалював себе скриптом. Саме тому тут немає нічого про React або SPA:
- * до цього коду доходить звичайний DOM, у якому все на місці.
+ * Runs through chrome.scripting in a background tab, i.e. after the site has already
+ * rendered itself with a script. That is exactly why there is nothing here about
+ * React or SPAs: by the time this code runs, it sees an ordinary DOM with everything
+ * in place.
  *
- * Читається не одна сторінка, а обхід: головна майже ніколи не має ні пошти, ні
- * імен, вони лежать на "контактах", "про нас" і "вакансіях". Сам обхід веде фон,
- * а цей файл каже йому, куди йти далі, списком `links`.
+ * What gets read is not one page but a walk: the home page almost never has email or
+ * names, they live on "contact", "about", and "careers". The background page drives
+ * the walk itself, and this file tells it where to go next, through the `links` list.
  *
- * Розбір імен і посад тут НЕ робиться навмисно. Він уже написаний на сервері,
- * перевірений тестами і працює по рядках тексту, тому сюди він не переписується:
- * замість цього назовні йде `lines`, той самий плаский текст сторінки, і сервер
- * розбирає його тим самим кодом, що й сторінки, які відкрив сам.
+ * Parsing names and titles is NOT done here on purpose. It is already written on the
+ * server, covered by tests, and works line by line over text, so it is not rewritten
+ * here: instead, `lines` goes out, the same flat page text, and the server parses it
+ * with the same code it uses for pages it opened itself.
  *
- * Файл самодостатній навмисно: у вкладку він інжектиться окремо, і нічого з
- * решти розширення там немає. Останній вираз це результат, який забирає фон.
+ * The file is deliberately self-contained: it gets injected into the tab on its own,
+ * and nothing else from the rest of the extension is there. The last expression is
+ * the result the background page picks up.
  */
 (() => {
   const GENERIC =
@@ -23,7 +25,7 @@
 
   const EMAIL = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
 
-  /** Ті самі маркери, що на сервері. Тут вони по видимому тексту і по розмітці. */
+  /** The same markers as on the server. Here they run over visible text and over markup. */
   const TECH = [
     [/\bheadless\b/i, 'headless cms'],
     [/\bjamstack\b/i, 'jamstack'],
@@ -64,7 +66,7 @@
     [/\bllm\b|\bai integration/i, 'ai integration'],
   ];
 
-  /** Сліди рушія в самій сторінці, а не в тексті про послуги. */
+  /** Traces of the engine in the page itself, not in text about services. */
   const MARKUP = [
     [/_next\/|__NEXT_DATA__/i, 'next.js'],
     [/__NUXT__|_nuxt\//i, 'nuxt'],
@@ -79,7 +81,7 @@
     [/wixstatic/i, 'wix'],
   ];
 
-  /** Cloudflare ховає адресу за XOR: перший байт це ключ. */
+  /** Cloudflare hides the address behind XOR: the first byte is the key. */
   function decodeCf(hex) {
     if (!/^[0-9a-f]{4,}$/i.test(hex) || hex.length % 2) return null;
     const key = parseInt(hex.slice(0, 2), 16);
@@ -121,9 +123,10 @@
 
   const html = document.documentElement.innerHTML;
   /*
-   * innerText це саме видимий текст, з урахуванням прихованих блоків, і в браузері
-   * він точніший. Але є не скрізь (у jsdom, наприклад, немає), тому запасний варіант
-   * це textContent: краще трохи зайвого тексту, ніж порожнеча і мовчазний нуль.
+   * innerText is exactly the visible text, accounting for hidden blocks, and in a
+   * browser it is more precise. But it is not available everywhere (jsdom, for
+   * instance, does not have it), so the fallback is textContent: a bit of extra text
+   * is better than emptiness and a silent zero.
    */
   const body = document.body;
   const raw = (body && (body.innerText || body.textContent)) || '';
@@ -142,11 +145,11 @@
     .filter(Number.isFinite);
 
   /*
-   * Плаский текст сторінки по рядках. Рядок це один текстовий вузол, тобто межа
-   * будь-якого тега розриває рядок, і саме так само ріже HTML серверний `toLines`.
-   * Збіг тут не косметичний: сервер розбирає цей масив тим самим кодом, яким
-   * розбирає сторінки, які завантажив сам, і "Anna Koval" поруч з "CTO" у сусідніх
-   * рядках це те, за що він чіпляє імена.
+   * The page's flat text, line by line. A line is one text node, meaning any tag
+   * boundary breaks the line, and that is exactly how the server's `toLines` cuts
+   * HTML too. The match here is not cosmetic: the server parses this array with the
+   * same code it uses to parse pages it loaded itself, and "Anna Koval" next to "CTO"
+   * on adjacent lines is exactly what it latches onto to catch names.
    */
   const LINE_LIMIT = 1500;
 
@@ -166,13 +169,14 @@
   }
 
   /*
-   * Куди йти далі. Пошта і люди майже ніколи не лежать на головній: на ній стоїть
-   * презентація, а адреси на "контактах", імена на "про нас" і на "команді", а
-   * career-сторінка каже, чи вони взагалі наймають.
+   * Where to go next. Email and people almost never live on the home page: it holds
+   * a pitch, while addresses live on "contact", names on "about" and "team", and the
+   * careers page says whether they are hiring at all.
    *
-   * Вага задає порядок обходу, бо сторінок за прохід береться лише кілька: спершу
-   * контакти, потім команда, потім вакансії. Чужий домен відкидається: посилання
-   * "contact" часто веде на форму в чужому сервісі, і ходити туди нема за чим.
+   * The weight sets the walk order, because only a few pages get taken per pass:
+   * contact first, then team, then careers. A different domain gets dropped: a
+   * "contact" link often leads to a form on someone else's service, and there is
+   * nothing to go there for.
    */
   const LINK_WEIGHT = [
     [/contacts?(-us)?\b|звяж|контакт/i, 0],
@@ -217,7 +221,7 @@
   return {
     domain: location.hostname.replace(/^www\./, ''),
     url: location.href,
-    // Іменні адреси цінніші за hello@, тому вони першими: сервер бере їх у тому ж порядку.
+    // Named addresses are more valuable than hello@, so they come first: the server takes them in the same order.
     emails: [...emails.values()].sort((a, b) => Number(a.generic) - Number(b.generic)).slice(0, 12),
     techHints: [...stack],
     copyrightYear: years.length ? Math.max(...years) : null,

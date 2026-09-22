@@ -10,16 +10,17 @@ export interface RunResult {
 }
 
 /**
- * Обгортка навколо запуску адаптера. Правило проєкту: нуль записів там, де раніше
- * було більше нуля, це WARN, а не успіх. Мовчазна поломка скрейпера найдорожча.
+ * A wrapper around running an adapter. Project rule: zero records where there used
+ * to be more than zero is a WARN, not a success. A silent scraper breakage is the
+ * most expensive kind.
  */
-/** Скільки прогін може висіти в `running`, поки не вважається обірваним. */
+/** How long a run can sit in `running` before it counts as interrupted. */
 const STALE_RUN_MS = 60 * 60 * 1000;
 
 /**
- * Прогін, який убили посеред роботи, лишався в статусі `running` назавжди. На сторінці
- * Джерела це виглядало як вічно живий запуск, а `hadResultsBefore` бачив запис без
- * результатів. Тому перед новим запуском старі підвислі закриваються як обірвані.
+ * A run killed mid-work used to stay in the `running` status forever. On the Sources
+ * page that looked like an eternally alive run, and `hadResultsBefore` saw a record
+ * with no results. So before a new run starts, old stuck ones get closed as interrupted.
  */
 async function closeStaleRuns(source: string): Promise<void> {
   const db = getDb();
@@ -35,11 +36,11 @@ async function closeStaleRuns(source: string): Promise<void> {
   for (const row of stale) {
     await db
       .update(runs)
-      .set({ status: 'error', finishedAt: Date.now(), errors: ['прогін обірвано, процес не завершився'] })
+      .set({ status: 'error', finishedAt: Date.now(), errors: ['run interrupted, the process did not finish'] })
       .where(eq(runs.id, row.id));
   }
 
-  log.warn({ source, closed: stale.length }, 'закрито підвислі прогони');
+  log.warn({ source, closed: stale.length }, 'closed stuck runs');
 }
 
 export async function withRun<T extends RunResult>(
@@ -68,11 +69,11 @@ export async function withRun<T extends RunResult>(
       .where(eq(runs.id, runId));
 
     if (degraded) {
-      log.warn({ source, runId }, 'адаптер повернув нуль записів, хоча раніше повертав більше нуля');
+      log.warn({ source, runId }, 'adapter returned zero records, though it used to return more than zero');
     } else {
       log.info(
         { source, runId, found: result.itemsFound, new: result.itemsNew, errors: result.errors.length },
-        'запуск завершено',
+        'run finished',
       );
     }
     return result;
@@ -82,7 +83,7 @@ export async function withRun<T extends RunResult>(
       .update(runs)
       .set({ finishedAt: Date.now(), status: 'error', errors: [message] })
       .where(eq(runs.id, runId));
-    log.error({ source, runId, err: message }, 'запуск впав');
+    log.error({ source, runId, err: message }, 'run crashed');
     throw error;
   }
 }
@@ -99,11 +100,12 @@ async function hadResultsBefore(source: string, currentRunId: number): Promise<b
 }
 
 /**
- * Коли завдання востаннє відпрацювало без помилки. Потрібно наздоганянню:
- * без цього немає як відрізнити "щойно робили" від "не робили тиждень".
+ * When a task last ran without an error. Needed for catch-up: without it there is no
+ * way to tell "just ran" apart from "hasn't run in a week".
  *
- * Береться саме `finishedAt`, а не `startedAt`: обірваний прогін не рахується
- * за відпрацьований, інакше після падіння наздоганяння вирішило б, що все гаразд.
+ * It is specifically `finishedAt`, not `startedAt`, that is taken: an interrupted run
+ * does not count as completed, otherwise catch-up would decide everything is fine
+ * after a crash.
  */
 export async function lastSuccessAt(source: string): Promise<number | null> {
   const db = getDb();
@@ -118,8 +120,8 @@ export async function lastSuccessAt(source: string): Promise<number | null> {
 }
 
 /**
- * Чи час запускати завдання. `null` у `lastSuccessAt` означає, що воно не
- * відпрацьовувало ніколи, і тоді запускати треба.
+ * Whether it is time to run the task. `null` in `lastSuccessAt` means it has never
+ * run successfully, and then it must run.
  */
 export function isOverdue(lastAt: number | null, periodMs: number, now = Date.now()): boolean {
   if (lastAt === null) return true;

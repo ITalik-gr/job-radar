@@ -19,7 +19,7 @@ beforeAll(() => {
 describe('clutch', () => {
   const items = parseClutch(fixture('clutch/web-developers.html'));
 
-  it('парсить збережену сторінку каталогу', () => {
+  it('parses a saved directory page', () => {
     expect(items.length).toBeGreaterThanOrEqual(3);
     for (const item of items) {
       expect(item.source).toBe('clutch');
@@ -27,7 +27,7 @@ describe('clutch', () => {
     }
   });
 
-  it('дістає домен з редиректу r.clutch.co, а не сам редирект', () => {
+  it('extracts the domain from the r.clutch.co redirect, not the redirect itself', () => {
     expect(
       extractDomain(
         'https://r.clutch.co/redirect?event_category=visit_website&u=https%3A%2F%2Fimaginovation.net%2Fweb-app-development%2F%3Futm_source%3Dclutch.co',
@@ -36,22 +36,22 @@ describe('clutch', () => {
     expect(items[0]!.domain).toBe('imaginovation.net');
   });
 
-  it('не приймає посилання на профіль Clutch за домен компанії', () => {
+  it('does not take a Clutch profile link as the company domain', () => {
     expect(extractDomain('https://clutch.co/profile/imaginovation')).toBeNull();
     expect(extractDomain(undefined)).toBeNull();
   });
 
-  it('бере розмір, локацію і теги послуг', () => {
+  it('takes the size, location and service tags', () => {
     const first = items[0]!;
     expect(first.sizeHint).toBe('10 - 49');
     expect(first.country).toBe('US');
     expect(first.city).toBe('Raleigh');
     expect(first.tags.some((tag) => /Web Development/i.test(tag))).toBe(true);
-    // Ставка і мінімальний проєкт мають власні поля, у тегах їм більше не місце.
+    // The rate and minimum project have their own fields, they no longer belong in tags.
     expect(first.tags).not.toContain('$50 - $99 / hr');
   });
 
-  it('бере оцінку, відгуки, ставку і мінімальний проєкт окремими полями', () => {
+  it('takes the rating, reviews, rate and minimum project as separate fields', () => {
     const first = items[0]!;
     expect(first.rating).toBe(4.9);
     expect(first.reviewsCount).toBe(16);
@@ -59,9 +59,9 @@ describe('clutch', () => {
     expect(first.minProject).toBe('$10,000+');
   });
 
-  it('усе інше з картки складає в блок "Інше", без підписів, у яких є свої колонки', () => {
+  it('puts everything else from the card into the "Other" block, without labels that already have columns', () => {
     const extra = items[0]!.extra ?? {};
-    // Відомі підписи мають колонки і сюди не потрапляють.
+    // Known labels have columns and do not end up here.
     expect(Object.keys(extra).join(' ')).not.toMatch(/min\.? project|employees|location/i);
     for (const [label, value] of Object.entries(extra)) {
       expect(label.length).toBeGreaterThan(0);
@@ -69,7 +69,7 @@ describe('clutch', () => {
     }
   });
 
-  it('порожня сторінка це порожній масив, а не виняток', () => {
+  it('an empty page is an empty array, not an exception', () => {
     expect(parseClutch('<html><body>Just a moment...</body></html>')).toEqual([]);
   });
 });
@@ -77,7 +77,7 @@ describe('clutch', () => {
 describe('dou', () => {
   const items = parseList(fixture('dou/companies-list.html'), ['Tech Product']);
 
-  it('парсить перелік компаній', () => {
+  it('parses the company list', () => {
     expect(items).toHaveLength(4);
     expect(items[0]!.name).toBe('EVOPLAY');
     expect(items[0]!.city).toBe('Київ');
@@ -85,23 +85,23 @@ describe('dou', () => {
     expect(items[0]!.country).toBe('UA');
   });
 
-  it('переносить теги фільтра і кількість вакансій', () => {
+  it('carries over the filter tags and the open vacancy count', () => {
     expect(items[0]!.tags).toEqual(['Tech Product']);
     expect(items[0]!.openVacancies).toBe(45);
   });
 
-  it('домен у переліку відсутній, він тільки на сторінці компанії', () => {
+  it('the domain is absent from the list, it only appears on the company page', () => {
     expect(items.every((item) => item.domain === null)).toBe(true);
   });
 
-  it('парсить сторінку компанії: домен, розмір, місто', () => {
+  it('parses the company page: domain, size, city', () => {
     const profile = parseProfile(fixture('dou/company-profile.html'));
     expect(profile.domain).toBe('evoplay.com.ua');
     expect(profile.sizeHint).toMatch(/1500/);
     expect(profile.city).toBe('Київ');
   });
 
-  it('розуміє всі три формати розміру, якими пише DOU', () => {
+  it('understands all three size formats that DOU writes', () => {
     const size = (text: string) =>
       parseProfile(`<div class="b-company-head"><h1>X</h1> <span>${text}</span> <div class="site"><a href="https://x.com">x.com</a></div></div>`)
         .sizeHint;
@@ -112,7 +112,7 @@ describe('dou', () => {
     expect(size('без згадки про розмір')).toBeNull();
   });
 
-  it('посилання на сторінку вакансій одразу стає careers_url', () => {
+  it('a link to the vacancies page immediately becomes careers_url', () => {
     const withCareers = parseProfile(
       '<div class="b-company-head"><div class="site"><a href="https://macpaw.com/careers">macpaw.com/careers</a></div></div>',
     );
@@ -125,14 +125,14 @@ describe('dou', () => {
     expect(plain.careersUrl).toBeNull();
   });
 
-  it('місто це перше з переліку офісів, без хвоста "офіс"', () => {
+  it('the city is the first of the listed offices, without an "office" tail', () => {
     const profile = parseProfile(
       '<div class="b-company-head"><div class="offices">Київ, Варшава (Польща)</div></div>',
     );
     expect(profile.city).toBe('Київ');
   });
 
-  it('фільтри складаються в URL каталогу', () => {
+  it('filters are assembled into the directory URL', () => {
     expect(listUrl({ business: 'Tech Product' })).toBe(
       'https://jobs.dou.ua/companies/?business=Tech+Product',
     );
@@ -141,7 +141,7 @@ describe('dou', () => {
 });
 
 describe('saveCompanies', () => {
-  it('записує компанії з доменом і зливає повторні за доменом', async () => {
+  it('saves companies with a domain and merges repeats by domain', async () => {
     const items = parseClutch(fixture('clutch/web-developers.html'));
     const first = await saveCompanies(items, 'clutch');
     expect(first.itemsNew).toBeGreaterThan(0);
@@ -155,12 +155,12 @@ describe('saveCompanies', () => {
     expect(rows[0]!.tags.length).toBeGreaterThan(0);
   });
 
-  it('компанія без домену не пишеться, а потрапляє у skipped', async () => {
+  it('a company without a domain is not saved, it goes into skipped instead', async () => {
     const stats = await saveCompanies(
       [
         {
           source: 'dou',
-          name: 'Без сайту',
+          name: 'No Website',
           domain: null,
           country: 'UA',
           city: 'Київ',
@@ -176,10 +176,10 @@ describe('saveCompanies', () => {
     );
 
     expect(stats.itemsNew).toBe(0);
-    expect(stats.skipped[0]!.reason).toBe('немає домену');
+    expect(stats.skipped[0]!.reason).toBe('no domain');
   });
 
-  it('теги з різних каталогів накопичуються, не затираються', async () => {
+  it('tags from different catalogs accumulate, they are not overwritten', async () => {
     const rows = await getDb().select().from(companies);
     const target = rows[0]!;
 

@@ -5,33 +5,33 @@ import { log } from '../lib/log.js';
 import { normalizeEmail } from './outreach.js';
 
 /**
- * Правка контакту руками.
+ * Editing a contact by hand.
  *
- * Збір дає половинки. Сторінка команди віддає "Anna Koval, CTO" без адреси,
- * сторінка контактів віддає `anna@studio.com` без імені, а бувають адреси, які
- * видно тільки очима: в картинці, у формі, під скриптом. Зводити ці половинки
- * докупи мусить людина, і без цього файла єдиним способом було завести ще один
- * рядок, тобто зробити з двох половинок три.
+ * Collection gives back halves. The team page hands over "Anna Koval, CTO" with no
+ * address, the contacts page hands over `anna@studio.com` with no name, and some
+ * addresses can only be seen with your own eyes: in an image, in a form, behind a
+ * script. A person has to put these halves together, and without this file the only
+ * way was to add yet another row, turning two halves into three.
  *
- * Тому тут не просто UPDATE. Якщо після правки адреса збігається з іншим рядком
- * тієї ж компанії, рядки зливаються в один, а не стають дублікатом.
+ * So this isn't just an UPDATE. If after the edit the address matches another row of
+ * the same company, the rows merge into one instead of becoming a duplicate.
  */
 
 export interface ContactPatch {
   name?: string | null;
   role?: string | null;
   email?: string | null;
-  /** Ручна позначка, що адреса жива. Скидається сама, коли адресу міняють. */
+  /** Manual mark that the address is alive. Resets itself when the address changes. */
   emailValid?: boolean;
 }
 
 export interface ContactSaveResult {
   contact: Contact;
-  /** Скільки рядків зникло при злитті. Інтерфейс має сказати про це вголос. */
+  /** How many rows disappeared in the merge. The UI has to say this out loud. */
   merged: number;
 }
 
-/** Порожній рядок з поля вводу означає "стерти", а не "не чіпати". */
+/** An empty string from the input field means "erase", not "leave alone". */
 function trimmed(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -42,7 +42,7 @@ function trimmed(value: string | null | undefined): string | null | undefined {
 export async function updateContact(id: number, patch: ContactPatch): Promise<ContactSaveResult> {
   const db = getDb();
   const [existing] = await db.select().from(contacts).where(eq(contacts.id, id));
-  if (!existing) throw new Error(`контакту ${id} немає`);
+  if (!existing) throw new Error(`contact ${id} does not exist`);
 
   const next: Record<string, unknown> = {};
 
@@ -60,14 +60,14 @@ export async function updateContact(id: number, patch: ContactPatch): Promise<Co
       email = null;
     } else {
       email = normalizeEmail(raw);
-      if (!email) throw new Error(`адреса не схожа на адресу: ${raw}`);
+      if (!email) throw new Error(`does not look like an address: ${raw}`);
     }
 
     next.email = email;
 
     /*
-     * Нова адреса вважається живою. Мертвою її робить лише hard bounce, а якщо
-     * людина вписала адресу руками, вона її щойно бачила і перевірила.
+     * A new address is considered alive. Only a hard bounce makes it dead, and if a
+     * person typed the address by hand, they just saw it and checked it.
      */
     if (email !== existing.email) next.emailValid = true;
   }
@@ -77,21 +77,21 @@ export async function updateContact(id: number, patch: ContactPatch): Promise<Co
   const resultName = name === undefined ? existing.name : name;
 
   /*
-   * Рядок без імені і без адреси нікуди не веде: ні листа написати, ні впізнати
-   * людину. Стерти обидва поля означає видалити контакт, і це окрема кнопка.
+   * A row with no name and no address leads nowhere: no letter to write, no person to
+   * recognize. Erasing both fields means deleting the contact, and that's a separate button.
    */
   if (!resultName && !email) {
-    throw new Error('контакт без імені і без адреси ні на що не годиться, видали його');
+    throw new Error('a contact with no name and no address is useless, delete it');
   }
 
   let merged = 0;
 
   if (email) {
     /*
-     * Той самий домен, та сама компанія, та сама адреса. Найчастіший випадок:
-     * `hello@studio.com` уже лежить окремим рядком з минулого обходу, а власник
-     * щойно приписав цю ж адресу знайденій людині. Виграє рядок з іменем, решта
-     * віддає йому те, чого в нього немає, і зникає.
+     * The same domain, the same company, the same address. The most common case:
+     * `hello@studio.com` already sits in a separate row from a past crawl, and the owner
+     * just attached that same address to a person they found. The row with a name
+     * wins, the rest hands it whatever it's missing and disappears.
      */
     const twins = await db
       .select()
@@ -116,7 +116,7 @@ export async function updateContact(id: number, patch: ContactPatch): Promise<Co
 
   log.info(
     { id, companyId: existing.companyId, email: row!.email, name: row!.name, merged },
-    'контакт відредаговано',
+    'contact edited',
   );
 
   return { contact: row!, merged };
@@ -128,9 +128,9 @@ export interface ContactDeleteResult {
 }
 
 /**
- * Видалення руками. Потрібне рівно там, де збір помилився: у контакти регулярно
- * потрапляє інвестор з відгуку або клієнт з кейсу, і тримати його поруч зі своїм
- * техлідом означає рано чи пізно написати не туди.
+ * Manual deletion. Needed exactly where collection got it wrong: contacts regularly
+ * pick up an investor from a testimonial or a client from a case study, and keeping
+ * them next to your actual tech lead means sooner or later writing to the wrong person.
  */
 export async function deleteContact(id: number): Promise<ContactDeleteResult> {
   const db = getDb();
@@ -138,7 +138,7 @@ export async function deleteContact(id: number): Promise<ContactDeleteResult> {
   if (!existing) return { deleted: false, companyId: null };
 
   await db.delete(contacts).where(eq(contacts.id, id));
-  log.info({ id, companyId: existing.companyId, email: existing.email }, 'контакт видалено');
+  log.info({ id, companyId: existing.companyId, email: existing.email }, 'contact deleted');
 
   return { deleted: true, companyId: existing.companyId };
 }

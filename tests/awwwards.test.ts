@@ -5,27 +5,27 @@ import { parseDirectory, parseProfile } from '../src/sources/catalogs/awwwards.j
 const directory = readFileSync('fixtures/awwwards/directory.html', 'utf8');
 const profile = readFileSync('fixtures/awwwards/profile-obys.html', 'utf8');
 
-describe('awwwards, каталог', () => {
-  it('знаходить профілі студій і не повертає нуль', () => {
-    // Правило 3 в CLAUDE.md: порожній результат це помилка, не успіх.
+describe('awwwards, directory', () => {
+  it('finds studio profiles and does not return zero', () => {
+    // Rule 3 in CLAUDE.md: an empty result is an error, not a success.
     expect(parseDirectory(directory).length).toBeGreaterThan(8);
   });
 
-  it('службові сторінки не потрапляють у список студій', () => {
+  it('service pages do not end up in the studio list', () => {
     const slugs = parseDirectory(directory);
     for (const junk of ['blog', 'academy', 'jobs', 'privacy-policy', 'directory', 'websites']) {
       expect(slugs).not.toContain(junk);
     }
   });
 
-  it('знаходить справжні студії', () => {
+  it('finds real studios', () => {
     const slugs = parseDirectory(directory);
     expect(slugs.some((slug) => ['obys', 'locomotive', 'resn', 'dogstudio'].includes(slug))).toBe(true);
   });
 });
 
-describe('awwwards, профіль', () => {
-  it('бере назву і власний домен студії', () => {
+describe('awwwards, profile', () => {
+  it('takes the studio name and its own domain', () => {
     const company = parseProfile(profile, 'obys');
 
     expect(company).not.toBeNull();
@@ -34,43 +34,43 @@ describe('awwwards, профіль', () => {
     expect(company!.sourceUrl).toBe('https://www.awwwards.com/obys/');
   });
 
-  it('соцмережі не приймаються за сайт студії', () => {
+  it('social networks are not accepted as the studio site', () => {
     const company = parseProfile(profile, 'obys');
     expect(company!.domain).not.toMatch(/facebook|twitter|linkedin|instagram/);
   });
 
-  it('піддомени зводяться до кореня', () => {
-    // У профілі поруч лежать obys.agency, experiment.obys.agency і library.obys.agency.
+  it('subdomains collapse to the root', () => {
+    // The profile has obys.agency, experiment.obys.agency and library.obys.agency side by side.
     expect(parseProfile(profile, 'obys')!.domain).toBe('obys.agency');
   });
 
-  it('ставить теги дизайну: сам факт присутності в каталозі це вже профіль студії', () => {
+  it('sets design tags: presence in the catalog is itself a studio profile', () => {
     expect(parseProfile(profile, 'obys')!.tags).toContain('Web Design');
   });
 
-  it('домен клієнта не приймається за сайт студії', () => {
+  it('a client domain is not accepted as the studio site', () => {
     /*
-     * На живих даних Immersive Garden отримав cartier.com, а AQuest gucci.com:
-     * у профілі роботи для одного великого клієнта згадуються частіше за власний сайт.
-     * Тому спершу шукається домен, схожий на назву, і лише потім найчастіший.
+     * On live data Immersive Garden got cartier.com, and AQuest got gucci.com:
+     * a profile mentions work for one big client more often than the studio's own site.
+     * So the domain closest to the name is tried first, and only then the most frequent one.
      */
     const html = `<body><h1>Immersive Garden</h1>
       <a href="https://cartier.com/a">1</a>
       <a href="https://cartier.com/b">2</a>
       <a href="https://cartier.com/c">3</a>
-      <a href="https://immersive-g.com">свій</a>
+      <a href="https://immersive-g.com">own site</a>
     </body>`;
     expect(parseProfile(html, 'immersive-g')!.domain).toBe('immersive-g.com');
   });
 
-  it('складений домен не обрізається до суфікса', () => {
-    // resn.co.nz зводився до co.nz, тобто в базу лягав суфікс замість сайта.
-    const html = '<body><h1>Resn</h1><a href="https://resn.co.nz/work">роботи</a></body>';
+  it('a compound domain is not trimmed down to its suffix', () => {
+    // resn.co.nz used to collapse to co.nz, so the database ended up with the suffix instead of the site.
+    const html = '<body><h1>Resn</h1><a href="https://resn.co.nz/work">work</a></body>';
     expect(parseProfile(html, 'resn')!.domain).toBe('resn.co.nz');
   });
 
-  it('якщо схожого за назвою немає, береться найчастіший', () => {
-    const html = `<body><h1>Загадкова студія</h1>
+  it('if nothing is close to the name, the most frequent one is taken', () => {
+    const html = `<body><h1>Mystery Studio</h1>
       <a href="https://alpha.com/1">1</a>
       <a href="https://alpha.com/2">2</a>
       <a href="https://beta.com">3</a>
@@ -78,11 +78,11 @@ describe('awwwards, профіль', () => {
     expect(parseProfile(html, 'zagadka')!.domain).toBe('alpha.com');
   });
 
-  it('сторінка без h1 не дає компанію, а не вигадану', () => {
-    expect(parseProfile('<body><p>нічого</p></body>', 'x')).toBeNull();
+  it('a page without an h1 does not produce a company, not a made-up one', () => {
+    expect(parseProfile('<body><p>nothing</p></body>', 'x')).toBeNull();
   });
 
-  it('профіль без зовнішніх посилань не дає компанію без домену', () => {
+  it('a profile without outbound links does not produce a company without a domain', () => {
     expect(parseProfile('<body><h1>Studio</h1></body>', 'x')).toBeNull();
   });
 });

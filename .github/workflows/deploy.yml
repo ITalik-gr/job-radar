@@ -1,16 +1,16 @@
 name: Deploy
 
-# Збірка і викатка живуть тут, а не у Workers Builds на стороні Cloudflare.
-# Причина: там білд зависав на етапі Initializing, тобто ще до клонування репо,
-# і жодна зміна в коді на це не впливала. Тут увесь ланцюжок видно в логах
-# GitHub, крок, що впав, зрозумілий, і будь-який запуск можна повторити кнопкою.
+# The build and deploy live here, not in Workers Builds on Cloudflare's side.
+# Reason: the build there used to hang at the Initializing stage, before the repo was
+# even cloned, and no code change affected it. Here the whole chain is visible in GitHub
+# logs, the step that failed is clear, and any run can be repeated with a button.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Два пуші підряд не мають викочуватись одночасно: переможе той, що завершиться
-# останнім, а це не обовʼязково новіший коміт.
+# Two pushes in a row must not deploy at the same time: whichever finishes last wins,
+# and that is not necessarily the newer commit.
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Версію pnpm бере з поля packageManager у package.json, версію Node з .node-version.
+      # Takes the pnpm version from the packageManager field in package.json, the Node version from .node-version.
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -31,46 +31,62 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
-      # --ignore-scripts тут обовʼязковий. У залежностях є better-sqlite3, нативний
-      # драйвер для локальної роботи. У CI він збирається через node-gyp кілька хвилин
-      # або зависає назовсім, а воркеру він не потрібен: у хмарі база це D1.
-      - name: Встановити залежності
+      # --ignore-scripts is mandatory here. Among the dependencies is better-sqlite3, a native
+      # driver for local work. In CI it builds through node-gyp for several minutes, or hangs
+      # outright, and the worker does not need it: in the cloud the database is D1.
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # Воркер один і він же прод, тому зламану збірку краще зупинити тут.
-      - name: Перевірити типи
+      # There is one worker and it is production, so a broken build is better stopped here.
+      - name: Check types
         run: |
           pnpm typecheck
           pnpm exec tsc --noEmit -p web/tsconfig.json
 
-      - name: Зібрати фронт
+      - name: Build the frontend
         run: pnpm build:web
 
-      # Міграції D1 навмисно не тут: деплой воркера їх не запускає, і застосовувати
-      # схему автоматично на кожен пуш небезпечно. Після pnpm db:generate робити
-      # один раз з ноута: pnpm cf:migrate
-      - name: Викотити воркер
-        run: pnpm exec wrangler deploy
+      # Personal values (database id, From name, gateway) are not in the repo. They come from
+      # the WRANGLER_LOCAL_JSONC secret, the same content as your local wrangler.local.jsonc.
+      # Without the secret the generic config deploys and wrangler looks the database up by
+      # name, which needs D1 permissions on the token.
+      - name: Build the deploy config
+        run: |
+          if [ -n "$WRANGLER_LOCAL_JSONC" ]; then
+            printf '%s' "$WRANGLER_LOCAL_JSONC" > wrangler.local.jsonc
+          else
+            echo "::warning::WRANGLER_LOCAL_JSONC is not set, deploying the generic config"
+          fi
+          node scripts/wrangler-config.mjs
+        env:
+          WRANGLER_LOCAL_JSONC: ${{ secrets.WRANGLER_LOCAL_JSONC }}
+
+      # D1 migrations are intentionally not here: deploying the worker does not run them,
+      # and applying the schema automatically on every push is dangerous. After pnpm
+      # db:generate, run this once from your laptop: pnpm cf:migrate
+      - name: Deploy the worker
+        run: pnpm exec wrangler deploy --config wrangler.deploy.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # Деплой воркера міграції не запускає, і схема на проді може відстати від коду.
-      # Тоді таблиці на місці, а колонки немає, і сторінка Компанії віддає 500.
-      # Крок нічого не міняє в базі, лише голосно каже, що треба зробити pnpm cf:migrate.
-      - name: Перевірити схему на проді
+      # Deploying the worker does not run migrations, and the production schema can lag
+      # behind the code. Then the tables are there but a column is missing, and the
+      # Companies page returns 500. This step changes nothing in the database, it just
+      # loudly says that pnpm cf:migrate needs to be run.
+      - name: Check the production schema
         run: |
           if [ -z "$WEB_URL" ]; then
-            echo "WEB_URL не заданий, перевірку схеми пропускаю"
+            echo "WEB_URL is not set, skipping the schema check"
             exit 0
           fi
           body=$(curl -s --max-time 20 "$WEB_URL/api/health?deep=1")
           echo "$body"
           echo "$body" | grep -q '"db":"ok"' || {
-            echo "::error::схема на проді відстає від коду, зроби pnpm cf:migrate"
+            echo "::error::the production schema is behind the code, run pnpm cf:migrate"
             exit 1
           }
         env:
-          # Адреса свого воркера. Задається змінною репозиторію (Settings, Variables),
-          # щоб у публічному репо не стояла чужа. Порожня означає, що крок пропускається.
+          # Address of your own worker. Set as a repository variable (Settings, Variables),
+          # so a public repo does not carry someone else's. Empty means the step is skipped.
           WEB_URL: ${{ vars.WEB_URL }}

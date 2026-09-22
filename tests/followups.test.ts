@@ -34,7 +34,7 @@ async function sentLetter(over: Record<string, unknown> = {}): Promise<number> {
       language: 'uk',
       templateUsed: 'send_vacancy_uk',
       subjectFinal: 'Senior Frontend, Acme',
-      bodyFinal: 'текст листа',
+      bodyFinal: 'letter text',
       ...over,
     })
     .returning({ id: outreach.id });
@@ -52,8 +52,8 @@ beforeEach(async () => {
   await getDb().delete(outreach);
 });
 
-describe('затримка фолоу-апу', () => {
-  it('завжди в діапазоні 7-9 днів', () => {
+describe('follow-up delay', () => {
+  it('is always in the 7-9 day range', () => {
     for (let id = 1; id <= 30; id += 1) {
       const days = followupDelayDays(id);
       expect(days).toBeGreaterThanOrEqual(FOLLOWUP_MIN_DAYS);
@@ -61,33 +61,33 @@ describe('затримка фолоу-апу', () => {
     }
   });
 
-  it('для одного листа вона стала, інакше строк то настає, то ні', () => {
+  it('is stable for a given letter, otherwise the due date would flicker', () => {
     expect(followupDelayDays(7)).toBe(followupDelayDays(7));
   });
 });
 
-describe('кому час писати вдруге', () => {
-  it('лист без відповіді старший за строк потрапляє в список', async () => {
+describe('who is due for a second message', () => {
+  it('a letter without a reply older than the delay lands in the list', async () => {
     await sentLetter();
     expect(await dueFollowups(NOW)).toHaveLength(1);
   });
 
-  it('свіжий лист ще не настав', async () => {
+  it('a fresh letter is not due yet', async () => {
     await sentLetter({ sentAt: NOW.getTime() - 2 * DAY });
     expect(await dueFollowups(NOW)).toHaveLength(0);
   });
 
-  it('є відповідь означає, що фолоу-ап не потрібен', async () => {
+  it('a reply means no follow-up is needed', async () => {
     await sentLetter({ replyAt: NOW.getTime() - DAY, replyType: 'rejection', status: 'replied' });
     expect(await dueFollowups(NOW)).toHaveLength(0);
   });
 
-  it('після баунсу фолоу-ап не шлеться', async () => {
+  it('a follow-up is not sent after a bounce', async () => {
     await sentLetter({ status: 'bounced', bounceType: 'hard' });
     expect(await dueFollowups(NOW)).toHaveLength(0);
   });
 
-  it('фолоу-ап рівно один: другого не буде', async () => {
+  it('exactly one follow-up: there will not be a second one', async () => {
     const original = await sentLetter();
     await prepareFollowups(NOW);
     expect(await dueFollowups(NOW)).toHaveLength(0);
@@ -100,8 +100,8 @@ describe('кому час писати вдруге', () => {
   });
 });
 
-describe('чернетка фолоу-апу', () => {
-  it('успадковує тему оригіналу, інакше це окремий тред', async () => {
+describe('follow-up draft', () => {
+  it('inherits the original subject, otherwise it becomes a separate thread', async () => {
     const original = await sentLetter();
     const report = await prepareFollowups(NOW);
     expect(report).toMatchObject({ due: 1, created: 1 });
@@ -116,31 +116,31 @@ describe('чернетка фолоу-апу', () => {
     expect(followup?.language).toBe('uk');
   });
 
-  it('каркасний шаблон лишає чернетку в "потребують уваги"', async () => {
+  it('a skeleton template leaves the draft in "needs attention"', async () => {
     await sentLetter();
     await prepareFollowups(NOW);
     const [followup] = await getDb().select().from(outreach).where(eq(outreach.status, 'draft'));
-    expect(followup?.error).toContain('мітки');
+    expect(followup?.error).toContain('markers');
   });
 });
 
-describe('статистика розсилки', () => {
-  it('рахує конверсію по шаблонах і відкати валідації', async () => {
+describe('outreach statistics', () => {
+  it('counts conversion by template and validation fallbacks', async () => {
     await sentLetter({ replyAt: NOW.getTime(), replyType: 'positive', status: 'replied', aiUsed: true });
-    await sentLetter({ templateUsed: 'send_studio_generic_en', aiFallbackReason: 'слів 84' });
-    await sentLetter({ templateUsed: 'send_studio_generic_en', aiFallbackReason: 'слів 12' });
+    await sentLetter({ templateUsed: 'send_studio_generic_en', aiFallbackReason: 'words 84' });
+    await sentLetter({ templateUsed: 'send_studio_generic_en', aiFallbackReason: 'words 12' });
 
     const stats = await outreachStats();
     const generic = stats.byTemplate.find((row) => row.template === 'send_studio_generic_en');
     expect(generic?.sent).toBe(2);
     expect(stats.ai).toMatchObject({ sent: 1, positive: 1 });
 
-    // Дві однакові за суттю причини складаються в один рядок, а не в два по одному.
-    expect(stats.fallbacks).toEqual([{ reason: 'слів', count: 2 }]);
+    // Two reasons that are the same in substance collapse into one row, not two of one each.
+    expect(stats.fallbacks).toEqual([{ reason: 'words', count: 2 }]);
     expect(stats.fallbackShare).toBeCloseTo(2 / 3);
   });
 
-  it('медіанний час до відповіді рахується тільки по тих, хто відповів', async () => {
+  it('the median reply time is counted only over those who replied', async () => {
     await sentLetter({ sentAt: NOW.getTime() - 2 * 3_600_000, replyAt: NOW.getTime(), replyType: 'positive' });
     await sentLetter();
     expect((await outreachStats()).medianReplyHours).toBeCloseTo(2);

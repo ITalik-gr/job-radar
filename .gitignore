@@ -17,3 +17,14 @@ imports/statrups
 # The owner's personal notes. They hold a name, a phone number and an email, so they stay
 # on disk and out of git. A pattern rather than file names, so the names leak nothing either.
 *_CONTEXT*.md
+
+# Personal deploy settings (database id, From name, gateway) and the config generated from them.
+# See wrangler.local.example.jsonc.
+wrangler.local.jsonc
+wrangler.deploy.json
+
+# Local wrangler and miniflare state
+.wrangler/
+
+# Temporary tracker for the translation pass, delete when it is done
+TRANSLATION_PROGRESS.md

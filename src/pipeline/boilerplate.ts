@@ -3,23 +3,23 @@ import { getDb } from '../db/client.js';
 import { vacancies } from '../db/schema.js';
 
 /**
- * Вирізання блока "про компанію" перед відправкою в модель.
+ * Stripping the "about the company" block before sending text to the model.
  *
- * У всіх вакансій однієї компанії однаковий вступ і однаковий хвіст про пільги
- * і рівні можливості. На живих даних це 57 відсотків тексту у Cloudflare і 49
- * у Anthropic. Кожен такий блок оплачувався стільки разів, скільки в компанії
- * вакансій: опис Cloudflare 313 разів.
+ * All of a company's vacancies share the same intro and the same tail about benefits
+ * and equal opportunity. On live data that's 57 percent of the text at Cloudflare and 49
+ * at Anthropic. Each such block was paid for as many times as the company had vacancies:
+ * the Cloudflare description 313 times.
  *
- * Це пункт 1 зі списку "що ще можна зробити" в COSTS.md, найбільший з тих, що лишились.
+ * This is item 1 on the "what else can be done" list in COSTS.md, the biggest one left.
  */
 
-/** Менше цього спільна частина не варта вирізання: різниця в межах похибки. */
+/** Below this, a shared part isn't worth stripping: the difference is within the margin of error. */
 const MIN_AFFIX = 200;
 
-/** Скільки тексту мусить лишитись. Захист від компаній з двома схожими вакансіями. */
+/** How much text has to be left over. A safeguard against companies with two similar vacancies. */
 const MIN_KEPT = 600;
 
-/** Менше цієї кількості вакансій спільний префікс нічого не означає. */
+/** Below this number of vacancies, a shared prefix doesn't mean anything. */
 const MIN_SAMPLES = 3;
 
 export interface Affixes {
@@ -30,8 +30,8 @@ export interface Affixes {
 export const NO_AFFIXES: Affixes = { prefix: 0, suffix: 0 };
 
 /**
- * Найдовший спільний префікс і суфікс набору текстів. Рахується символ у символ:
- * тексти вакансій однієї компанії збігаються буквально, а не приблизно.
+ * The longest shared prefix and suffix of a set of texts. Compared character by character:
+ * a company's vacancy texts match literally, not approximately.
  */
 export function commonAffixes(texts: string[]): Affixes {
   const usable = texts.filter((text) => text.length > 0);
@@ -58,9 +58,9 @@ export function commonAffixes(texts: string[]): Affixes {
 }
 
 /**
- * Обрізати спільні частини. Якщо після обрізання лишається надто мало, текст
- * повертається цілим: краще заплатити за зайві токени, ніж відправити в модель
- * недогризок і отримати вигадану вилку.
+ * Trim off the shared parts. If too little is left after trimming, the full text
+ * is returned instead: better to pay for extra tokens than send the model a scrap
+ * of text and get a made-up salary range back.
  */
 export function stripBoilerplate(text: string, affixes: Affixes): string {
   if (!affixes.prefix && !affixes.suffix) return text;
@@ -72,8 +72,8 @@ export function stripBoilerplate(text: string, affixes: Affixes): string {
 }
 
 /**
- * Спільні частини для компанії, порахувані по вже збережених вакансіях.
- * Кеш у межах процесу: під час одного прогону компанія трапляється десятки разів.
+ * Shared parts for a company, computed from already saved vacancies.
+ * Cached within the process: a company comes up dozens of times during one run.
  */
 const cache = new Map<number, Affixes>();
 
