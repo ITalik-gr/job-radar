@@ -1,3 +1,4 @@
+import { chunk, rowsPerQuery } from '../lib/chunk.js';
 import { and, desc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import {
@@ -395,18 +396,21 @@ export async function seedOutreachTemplates(): Promise<number> {
   const missing = OUTREACH_SEEDS.filter((seed) => !known.has(seed.slug));
   if (missing.length === 0) return 0;
 
-  await db.insert(templates).values(
-    missing.map((seed) => ({
-      slug: seed.slug,
-      name: seed.name,
-      kind: seed.targetType === 'vacancy' ? 'vacancy' : 'studio',
-      targetType: seed.targetType,
-      language: seed.language,
-      subject: seed.subject,
-      ...seedBody(seed),
-      note: 'Starter skeleton. Replace the text in square brackets with your own.',
-    })),
-  );
+  // Sliced for D1's hundred parameter limit: eight seeds of a dozen columns sat right at it.
+  for (const slice of chunk(missing, rowsPerQuery(12))) {
+    await db.insert(templates).values(
+      slice.map((seed) => ({
+        slug: seed.slug,
+        name: seed.name,
+        kind: seed.targetType === 'vacancy' ? 'vacancy' : 'studio',
+        targetType: seed.targetType,
+        language: seed.language,
+        subject: seed.subject,
+        ...seedBody(seed),
+        note: 'Starter skeleton. Replace the text in square brackets with your own.',
+      })),
+    );
+  }
 
   log.info({ added: missing.length }, 'sending templates added');
   return missing.length;
@@ -715,10 +719,11 @@ export async function listDrafts(): Promise<DraftRow[]> {
    * database calls.
    */
   const companyIds = [...new Set(rows.map(({ row }) => row.companyId))];
-  const people =
-    companyIds.length > 0
-      ? await db.select().from(contacts).where(inArray(contacts.companyId, companyIds))
-      : [];
+  // In slices: D1 takes at most a hundred bound parameters, and a long Outbox exceeded it.
+  const people: (typeof contacts.$inferSelect)[] = [];
+  for (const slice of chunk(companyIds, 90)) {
+    people.push(...(await db.select().from(contacts).where(inArray(contacts.companyId, slice))));
+  }
 
   const byCompany = new Map<number, DraftRow['companyContacts']>();
   for (const person of people) {

@@ -55,13 +55,27 @@ function matchesAny(haystack: string, patterns: string[]): string | null {
   return null;
 }
 
-export function findStopWords(text: string): string[] {
-  const haystack = text.toLowerCase();
-  return rules().stopWords.filter((word) => occurs(haystack, word));
+/**
+ * A stop word that names a role rather than a technology: "java developer", "ml engineer",
+ * "sre". In a description it is usually a colleague ("you will work with our ML engineers"),
+ * and on the full text these words rejected most frontend roles in the owner's database. So
+ * when the title is known they are looked for in the title only. Technologies and domains
+ * (angular, web3, casino) still count anywhere in the text.
+ */
+function namesRole(word: string): boolean {
+  return /developer|engineer|scientist|\bqa\b|^sre$/.test(word);
 }
 
-export function hasStopWord(text: string): boolean {
-  return findStopWords(text).length > 0;
+export function findStopWords(text: string, title?: string | null): string[] {
+  const haystack = text.toLowerCase();
+  const titleText = title?.toLowerCase();
+  return rules().stopWords.filter((word) =>
+    titleText !== undefined && namesRole(word) ? occurs(titleText, word) : occurs(haystack, word),
+  );
+}
+
+export function hasStopWord(text: string, title?: string | null): boolean {
+  return findStopWords(text, title).length > 0;
 }
 
 /**
@@ -291,7 +305,7 @@ export function scoreVacancy(signals: ScoreSignals): ScoreBreakdown {
     return { ...empty, excluded: true, rejectedBy: 'company is blacklisted' };
   }
 
-  const stopWords = findStopWords(haystack);
+  const stopWords = findStopWords(haystack, title);
   if (stopWords.length > 0) {
     return { ...empty, stopWords, rejectedBy: `stop word: ${stopWords.join(', ')}` };
   }

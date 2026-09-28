@@ -33,3 +33,6 @@ TRANSLATION_PROGRESS.md
 # Pages saved from the browser for import. The HTML is already ignored above; the
 # "_files" folders next to them carry third-party trackers and session-bound assets.
 imports/**/*_files/
+
+# Local worker secrets for wrangler dev
+.dev.vars*

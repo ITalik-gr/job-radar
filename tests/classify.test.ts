@@ -6,7 +6,7 @@ import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { llmCache, llmUsage } from '../src/db/schema.js';
 import { cacheKey, classifyText, extractJson, remainingBudget, today } from '../src/pipeline/classify.js';
-import { setRuntimeEnv } from '../src/config.js';
+import { envValue, setRuntimeEnv } from '../src/config.js';
 
 const VALID = {
   is_vacancy: true,
@@ -160,5 +160,27 @@ describe('classifyText', () => {
     expect(cacheKey('the same text')).not.toBe(anthropicKey);
 
     setRuntimeEnv({ LLM_PROVIDER: 'anthropic' });
+  });
+});
+
+/*
+ * No key used to mean two failed calls per vacancy, each counted against the daily budget:
+ * a fresh install spent the day's limit on errors in one pass.
+ */
+describe('no model credentials', () => {
+  it('classification is skipped without touching the budget or the review flag', async () => {
+    const before = { key: envValue('ANTHROPIC_API_KEY'), provider: envValue('LLM_PROVIDER') };
+    setRuntimeEnv({ ANTHROPIC_API_KEY: '', LLM_PROVIDER: 'anthropic' });
+    try {
+      const [usageBefore] = await getDb().select().from(llmUsage).where(eq(llmUsage.day, today()));
+      const result = await classifyText('text without a key');
+      const [usageAfter] = await getDb().select().from(llmUsage).where(eq(llmUsage.day, today()));
+
+      expect(result.reason).toBe('unavailable');
+      expect(result.needsReview).toBe(false);
+      expect(usageAfter?.calls ?? 0).toBe(usageBefore?.calls ?? 0);
+    } finally {
+      setRuntimeEnv({ ANTHROPIC_API_KEY: before.key ?? '', LLM_PROVIDER: before.provider ?? '' });
+    }
   });
 });

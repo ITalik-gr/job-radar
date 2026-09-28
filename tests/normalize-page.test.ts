@@ -148,3 +148,32 @@ describe('diffByExternalId', () => {
     expect(diff.added).toHaveLength(2);
   });
 });
+
+/*
+ * Pairs that differ only in noise must scrub to the same text. Found by the audit: each of
+ * these used to change the page hash between two fetches.
+ */
+describe('noise that used to leak into the hash', () => {
+  const same = (a: string, b: string) => expect(scrubText(a)).toBe(scrubText(b));
+
+  it('applicant phrases and counters with a k suffix', () => {
+    same('Be among the first 25 applicants', 'Over 100 applicants');
+    same('1.2k views', '1.4k views');
+    same('Переглядів: 120', 'Переглядів: 131');
+  });
+
+  it('Ukrainian dates with a month name and countdown deadlines', () => {
+    same('24 вересня 2026', '25 вересня 2026');
+    same('Closes in 5 days', 'Closes in 4 days');
+  });
+
+  it('text of sibling blocks is not glued, so relative time still gets stripped', () => {
+    const page = (days: number) =>
+      `<body><ul><li><a href="/jobs/1">Frontend Engineer</a> posted ${days} days ago</li></ul><div>Apply</div></body>`;
+    expect(normalizePage(page(3)).contentHash).toBe(normalizePage(page(5)).contentHash);
+  });
+
+  it('Lever tracking parameters are dropped from links', () => {
+    expect(cleanHref('https://x.com/jobs/1?lever-source=li&trk=a')).toBe('https://x.com/jobs/1');
+  });
+});

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import type { AnyNode, Element } from 'domhandler';
 import { htmlToText } from '../lib/html.js';
-import { normalizeUrl } from '../lib/normalize.js';
+import { normalizeUrl, TRACKING_PARAMS } from '../lib/normalize.js';
 
 /**
  * Normalizing a page before hashing. The most important place in the project: if this is
@@ -60,8 +60,19 @@ const NOISE_PATTERNS: [RegExp, string][] = [
   ],
   // Time of day.
   [/\b\d{1,2}:\d{2}(:\d{2})?\s*(am|pm)?\b/gi, ' '],
-  // View, applicant and review counters.
-  [/\b\d[\d\s,.']*\s*(views?|viewed|applicants?|applications?|candidates?|clicks?)\b/gi, ' '],
+  // Ukrainian dates with a month name: \b does not see Cyrillic, hence the lookarounds.
+  [
+    /(?<![\p{L}\d])\d{1,2}\s+(січн|лют|березн|квітн|травн|червн|липн|серпн|вересн|жовтн|листопад|грудн)\p{L}*\.?,?(\s+\d{4})?(?![\p{L}\d])/giu,
+    ' ',
+  ],
+  // Deadlines that count down.
+  [/\b(closes|expires|ends)\s+in\s+\d+\s*(minute|hour|day|week|month)s?\b/gi, ' '],
+  // View, applicant and review counters, with the phrases around them and a k suffix.
+  [
+    /\b(be among the first|over|more than|fewer than|less than|up to)?\s*\d[\d\s,.']*[km]?\+?\s*(views?|viewed|applicants?|applications?|candidates?|clicks?)\b/gi,
+    ' ',
+  ],
+  [/(?<![\p{L}])(views?|applicants?|перегляд\p{L}*|відгук\p{L}*)\s*:\s*\d[\d\s,.]*[km]?/giu, ' '],
   [/\b(viewed|seen)\s+\d[\d\s,.']*\s*times?\b/gi, ' '],
   [/\b\d[\d\s,.']*\s*(people|others)\s+(applied|viewed|clicked)\b/gi, ' '],
   [/(?<![\p{L}\d])\d[\d\s,.']*\s*(перегляд|відгук|кандидат|заявк|відкли)[\p{L}]*(?![\p{L}])/giu, ' '],
@@ -75,6 +86,9 @@ const NOISE_PATTERNS: [RegExp, string][] = [
 
 const KEEP_ATTRS = new Set(['href']);
 
+const BLOCK_TAGS =
+  'p, div, li, ul, ol, br, h1, h2, h3, h4, h5, h6, tr, td, th, dt, dd, section, article, header, main, nav, aside, table, blockquote, pre';
+
 /** Strips tracking parameters from href, keeps the stable part of the link. */
 export function cleanHref(href: string | undefined): string | null {
   if (!href) return null;
@@ -87,7 +101,7 @@ export function cleanHref(href: string | undefined): string | null {
   const [path, query = ''] = value.split('?');
   const params = new URLSearchParams(query);
   for (const key of [...params.keys()]) {
-    if (/^(utm_|ref$|referrer$|gh_src$|source$|fbclid$|gclid$)/i.test(key)) params.delete(key);
+    if (TRACKING_PARAMS.test(key)) params.delete(key);
   }
   const rest = params.toString();
   const cleanPath = path!.length > 1 ? path!.replace(/\/$/, '') : path!;
@@ -214,6 +228,12 @@ export function normalizePage(html: string): NormalizedPage {
   stripNoise($);
 
   const blocks = extractBlocks($);
+  /*
+   * A line break after every block element before taking the text. Without it siblings were
+   * glued ("posted 3 days ago" + "apply" gave "agoapply"), the relative time pattern stopped
+   * matching, and the page hash changed between two fetches that differed only in the date.
+   */
+  $(BLOCK_TAGS).append('\n');
   const text = scrubText($('body').length > 0 ? $('body').text() : $.root().text());
 
   return { text, contentHash: hash(text), blocks };

@@ -20,7 +20,7 @@ export interface SyncOptions {
 }
 
 /** Fetches the description for short blocks: without it, the salary range and English requirement stay null. */
-async function fetchDetail(vacancy: RawVacancy): Promise<string | null> {
+export async function fetchDetail(vacancy: RawVacancy): Promise<string | null> {
   try {
     const res = await fetchText(vacancy.url);
     /*

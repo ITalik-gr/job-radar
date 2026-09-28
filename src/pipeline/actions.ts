@@ -42,8 +42,8 @@ export async function applyAction(input: ActionInput): Promise<ActionResult> {
   if (!vacancy) throw new Error(`vacancy ${input.vacancyId} does not exist`);
 
   // Validation here, not only in the API: the CLI and a future cron also call this function.
-  const status = STATUS_BY_ACTION[input.action];
-  if (!status) throw new Error(`unknown action: ${input.action}`);
+  const requested = STATUS_BY_ACTION[input.action];
+  if (!requested) throw new Error(`unknown action: ${input.action}`);
   const snoozedUntil =
     input.action === 'snooze' ? Date.now() + (input.days ?? 30) * 86_400_000 : null;
 
@@ -51,6 +51,14 @@ export async function applyAction(input: ActionInput): Promise<ActionResult> {
     .select()
     .from(companyState)
     .where(eq(companyState.companyId, vacancy.companyId));
+
+  /*
+   * "Interesting" on a card of a company already written to must not erase that fact: the
+   * 90 day exception shows such cards, and one click used to turn `contacted` back into
+   * `interesting`, after which the queue treated the company as never contacted.
+   */
+  const keepContact = requested === 'interesting' && ['contacted', 'replied'].includes(existing?.status ?? '');
+  const status = keepContact ? existing!.status : requested;
 
   if (existing) {
     await db

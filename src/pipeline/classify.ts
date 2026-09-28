@@ -6,7 +6,8 @@ import { getDb } from '../db/client.js';
 import { llmCache, llmUsage } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { hash } from './normalize.js';
-import { runWorkersAi, textFromAi } from '../lib/workers-ai.js';
+import { localDay } from '../lib/time.js';
+import { aiAvailable, runWorkersAi, textFromAi } from '../lib/workers-ai.js';
 
 /**
  * Part of the cache key. v2 switched the prompt to English, so `why` comes back in English
@@ -60,8 +61,8 @@ export interface ClassifyOptions {
 
 export interface ClassifyResult {
   classification: Classification | null;
-  /** cache | llm | budget | invalid */
-  reason: 'cache' | 'llm' | 'budget' | 'invalid';
+  /** cache | llm | budget | invalid | unavailable (no key for the active provider) */
+  reason: 'cache' | 'llm' | 'budget' | 'invalid' | 'unavailable';
   needsReview: boolean;
 }
 
@@ -185,7 +186,7 @@ export async function noteLlmCall(input: number, output: number, failed = false)
 }
 
 export function today(now = new Date()): string {
-  return now.toISOString().slice(0, 10);
+  return localDay(now);
 }
 
 async function usageRow(day: string) {
@@ -234,6 +235,13 @@ export function cacheKey(text: string): string {
   return hash(`${config.llm.activeModel}|${PROMPT_VERSION}|${text}`);
 }
 
+/** Whether the active provider has anything to call with. */
+export function modelAvailable(): boolean {
+  return config.llm.provider === 'workers-ai' ? aiAvailable() : Boolean(config.llm.apiKey);
+}
+
+let warnedUnavailable = false;
+
 export async function classifyText(text: string, options: ClassifyOptions = {}): Promise<ClassifyResult> {
   const db = getDb();
   const key = cacheKey(text);
@@ -245,6 +253,21 @@ export async function classifyText(text: string, options: ClassifyOptions = {}):
       if (parsed.success) return { classification: parsed.data, reason: 'cache', needsReview: false };
       await db.delete(llmCache).where(eq(llmCache.key, key));
     }
+  }
+
+  /*
+   * No key is a setting, not a failure. Calling anyway made two attempts per vacancy, each
+   * counted against the daily budget: a fresh install spent the whole day's limit on errors
+   * in one pass, and a key added in the afternoon found nothing left. The vacancy stays
+   * unclassified, without the review flag, and `classify:pending` picks it up once a key
+   * exists.
+   */
+  if (!options.caller && !modelAvailable()) {
+    if (!warnedUnavailable) {
+      log.warn({ provider: config.llm.provider }, 'no model credentials, classification is skipped');
+      warnedUnavailable = true;
+    }
+    return { classification: null, reason: 'unavailable', needsReview: false };
   }
 
   const day = today();

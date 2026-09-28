@@ -1,5 +1,5 @@
 import { rmSync } from 'node:fs';
-import { eq } from 'drizzle-orm';
+import { eq, like } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
@@ -7,7 +7,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { companyState, outreach, queueItems, vacancies, type Company } from '../src/db/schema.js';
 import { upsertCompany } from '../src/pipeline/companies.js';
 import { applyAction, followUps, funnel, listOutreach, markReply } from '../src/pipeline/actions.js';
-import { getQueue, pendingCount, todayKey, topUpQueue } from '../src/pipeline/queue.js';
+import { CARDS_PER_COMPANY, getQueue, pendingCount, todayKey, topUpQueue } from '../src/pipeline/queue.js';
 
 let acme: Company;
 let other: Company;
@@ -102,9 +102,22 @@ describe('getQueue', () => {
   });
 
   it('the daily card limit is respected together with carried-over cards', async () => {
-    for (let i = 0; i < 15; i += 1) await addVacancy(acme.id, `Bulk ${i}`, 7);
+    for (let i = 0; i < 15; i += 1) {
+      const { company } = await upsertCompany({ name: `Bulk ${i}`, domain: `bulk-${i}.com`, source: 'test' });
+      await addVacancy(company.id, `Bulk ${i}`, 7);
+    }
     const cards = await getQueue('2026-09-07');
     expect(cards).toHaveLength(config.pipeline.queueDailyLimit);
+    // Closed afterwards so they do not fill the slices of the tests below.
+    await getDb().update(vacancies).set({ closedAt: Date.now() }).where(like(vacancies.title, 'Bulk %'));
+  });
+
+  it('one company takes at most two fresh cards a day', async () => {
+    const { company } = await upsertCompany({ name: 'Many Roles', domain: 'many-roles.com', source: 'test' });
+    for (let i = 0; i < 5; i += 1) await addVacancy(company.id, `Many Roles ${i}`, 40);
+    const cards = await getQueue('2026-08-01');
+    expect(cards.filter((card) => card.companyId === company.id)).toHaveLength(CARDS_PER_COMPANY);
+    await getDb().update(vacancies).set({ closedAt: Date.now() }).where(eq(vacancies.companyId, company.id));
   });
 });
 
@@ -234,8 +247,10 @@ describe('pendingCount', () => {
     expect(await pendingCount(DAY)).toBe(items.length - decided);
   });
 
-  it('today\'s key is an ISO date', () => {
-    expect(todayKey(new Date('2026-09-03T22:10:00Z'))).toBe('2026-09-03');
+  it('today\'s key is an ISO date in the owner\'s time zone, not UTC', () => {
+    // 22:10 UTC is already 01:10 the next day in Kyiv: the queue day used to roll over at 03:00.
+    expect(todayKey(new Date('2026-09-03T22:10:00Z'))).toBe('2026-09-04');
+    expect(todayKey(new Date('2026-09-03T12:00:00Z'))).toBe('2026-09-03');
   });
 });
 
@@ -301,5 +316,26 @@ describe('who was contacted', () => {
     const [row] = await listOutreach();
     expect(row!.contactName).toBe('Maria Tech');
     expect(row!.contactEmail).toBe('maria@example.com');
+  });
+});
+
+describe('contact statuses', () => {
+  it('"interesting" on a card does not erase that the company was written to', async () => {
+    const { company } = await upsertCompany({ name: 'Written', domain: 'written-to.com', source: 'test' });
+    const vacancy = await addVacancy(company.id, 'Written Frontend', 3);
+    await getDb().update(companyState).set({ status: 'contacted' }).where(eq(companyState.companyId, company.id));
+
+    await applyAction({ vacancyId: vacancy.id, action: 'interesting' });
+    const [state] = await getDb().select().from(companyState).where(eq(companyState.companyId, company.id));
+    expect(state?.status).toBe('contacted');
+  });
+
+  it('a company that replied gets no fresh cold cards', async () => {
+    const { company } = await upsertCompany({ name: 'Talking', domain: 'talking.com', source: 'test' });
+    await addVacancy(company.id, 'Talking Frontend', 50);
+    await getDb().update(companyState).set({ status: 'replied' }).where(eq(companyState.companyId, company.id));
+
+    const cards = await getQueue('2026-07-01');
+    expect(cards.some((card) => card.companyId === company.id)).toBe(false);
   });
 });

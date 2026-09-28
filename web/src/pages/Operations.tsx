@@ -167,6 +167,25 @@ const GROUPS: OperationGroup[] = [
         ],
       },
       {
+        id: 'careers-sync',
+        label: 'Check career pages',
+        hint: 'own pages of companies without an ATS that are due: new vacancies, closed ones',
+        path: '/careers/run',
+        slow: true,
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 10 }],
+      },
+      {
+        id: 'merge-duplicates',
+        label: 'Merge weekly duplicates',
+        hint: 'folds the vacancies the old weekly key split into one row each. "check" only counts',
+        path: '/maintenance/merge-duplicates',
+        slow: true,
+        fields: [
+          { name: 'mode', label: 'mode', kind: 'select', def: 'check', options: ['check', 'apply'] },
+          { name: 'limit', label: 'chains per run', kind: 'number', def: 100 },
+        ],
+      },
+      {
         id: 'embed',
         label: 'Compute vectors',
         hint: 'for finding similar companies, through Workers AI',

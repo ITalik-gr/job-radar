@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { config } from '../src/config.js';
+import { config, setRuntimeEnv } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { companyState, contacts, outreach, sendLog, type Company } from '../src/db/schema.js';
@@ -15,7 +15,7 @@ import {
   daysBetween,
   hasUnfilledPlaceholder,
   isSendWindow,
-  kyivDay,
+  localDay,
   letterBlockers,
   noteSent,
   sendCounters,
@@ -74,6 +74,8 @@ async function reset(): Promise<void> {
 }
 
 beforeAll(async () => {
+  // Sending refuses without a From name, see checkSend.
+  setRuntimeEnv({ GMAIL_FROM_NAME: 'Test Sender' });
   for (const suffix of ['', '-wal', '-shm']) rmSync(`${config.dbPath}${suffix}`, { force: true });
   runMigrations().sqlite.close();
 
@@ -109,7 +111,7 @@ describe('send time', () => {
 
   it('the Kyiv day follows Kyiv time, not UTC', () => {
     // 22:30 UTC is already the next day in Kyiv, and the daily limit has to see that.
-    expect(kyivDay(new Date('2026-09-08T22:30:00Z'))).toBe('2026-09-09');
+    expect(localDay(new Date('2026-09-08T22:30:00Z'))).toBe('2026-09-09');
   });
 });
 
@@ -229,7 +231,7 @@ describe('checkSend', () => {
   });
 
   it('the daily limit is reached', async () => {
-    await getDb().insert(sendLog).values({ day: kyivDay(WORKDAY), count: 5, lastSentAt: WORKDAY.getTime() - 600_000 });
+    await getDb().insert(sendLog).values({ day: localDay(WORKDAY), count: 5, lastSentAt: WORKDAY.getTime() - 600_000 });
     const id = await makeDraft();
     expect((await checkSend(id, WORKDAY)).map((b) => b.code)).toContain('daily_limit');
   });
@@ -237,7 +239,7 @@ describe('checkSend', () => {
   it('a three minute pause between letters', async () => {
     await getDb()
       .insert(sendLog)
-      .values({ day: kyivDay(WORKDAY), count: 1, lastSentAt: WORKDAY.getTime() - 60_000 });
+      .values({ day: localDay(WORKDAY), count: 1, lastSentAt: WORKDAY.getTime() - 60_000 });
     const id = await makeDraft();
     const gap = (await checkSend(id, WORKDAY)).find((b) => b.code === 'gap');
     expect(gap?.retryAt).toBe(WORKDAY.getTime() - 60_000 + 180_000);
@@ -390,5 +392,25 @@ describe('sendDraft', () => {
     const [row] = await getDb().select().from(outreach).where(eq(outreach.id, id));
     expect(row?.status).toBe('failed');
     expect(row?.error).toContain('403 quota');
+  });
+  it('no From name blocks sending instead of mailing from a bare address', async () => {
+    setRuntimeEnv({ GMAIL_FROM_NAME: '' });
+    try {
+      const id = await makeDraft();
+      expect((await checkSend(id, WORKDAY)).map((b) => b.code)).toContain('from_name');
+    } finally {
+      setRuntimeEnv({ GMAIL_FROM_NAME: 'Test Sender' });
+    }
+  });
+
+  it('two sends of the same draft at once deliver it only once', async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValue({ messageId: 'm3', threadId: 't3', rfcMessageId: '<x@mail.gmail.com>' });
+
+    const id = await makeDraft();
+    const outcomes = await Promise.all([sendDraft(id, WORKDAY), sendDraft(id, WORKDAY)]);
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(outcomes.filter((outcome) => outcome.sent)).toHaveLength(1);
   });
 });

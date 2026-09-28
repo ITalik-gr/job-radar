@@ -219,3 +219,17 @@ describe('summary', () => {
     expect(result.score).toBe(-100);
   });
 });
+
+describe('role stop words look at the title only', () => {
+  it('a colleague in the description does not reject a frontend role', () => {
+    expect(findStopWords('Frontend Engineer\nYou will pair with our ML engineers and a Java developer.', 'Frontend Engineer')).toEqual([]);
+  });
+
+  it('the role in the title still rejects', () => {
+    expect(findStopWords('ML Engineer\nPyTorch', 'ML Engineer')).toEqual(['ml engineer']);
+  });
+
+  it('technologies still count anywhere in the text', () => {
+    expect(findStopWords('Frontend Engineer\nOur stack is Angular.', 'Frontend Engineer')).toEqual(['angular']);
+  });
+});

@@ -5,18 +5,26 @@ import { app } from './api/index.js';
 import { runMigrations } from './db/migrate.js';
 import { log } from './lib/log.js';
 import { startScheduler } from './scheduler.js';
+import { config } from './config.js';
+import { localChecks } from './lib/doctor.js';
 import { isConfigured, startBot, stopBot } from './notify/telegram.js';
 import { refreshRulesFromDb, watchRules } from './pipeline/rules.js';
 
 /** One process: migrations, the API, the scheduler, and the Telegram bot for reference. */
 const port = Number(process.env.API_PORT ?? 3000);
+/*
+ * Loopback only by default. Local mode has no token, so binding every interface put the
+ * contacts, the letters and the send button on the cafe Wi-Fi. API_HOST=0.0.0.0 opens it on
+ * purpose, and then RADAR_TOKEN should be set too.
+ */
+const hostname = process.env.API_HOST ?? '127.0.0.1';
 
 runMigrations().sqlite.close();
 watchRules();
 // Rule edits made from the interface live in the database and are newer than the file, so they get read on startup.
 void refreshRulesFromDb();
 
-const server = serve({ fetch: app.fetch, port });
+const server = serve({ fetch: app.fetch, port, hostname });
 
 // The most common startup error is a forgotten previous process. The stack trace
 // explains nothing here, so it is caught explicitly and tells what to do.
@@ -35,7 +43,16 @@ server.on('error', (error: NodeJS.ErrnoException) => {
   process.exit(1);
 });
 
-if (process.env.SCHEDULER !== 'off') startScheduler();
+/*
+ * The schedule crawls other people's sites, and CLAUDE.md rule 5 wants a contact in the
+ * User-Agent. A fresh install used to start crawling DOU a minute after `pnpm start`, signed
+ * "unknown". Without a contact the schedule waits; commands run by hand still work.
+ */
+const hasContact = !config.http.userAgent.includes('mailto:unknown');
+if (process.env.SCHEDULER !== 'off' && hasContact) startScheduler();
+if (process.env.SCHEDULER !== 'off' && !hasContact) {
+  log.warn('the schedule is off until USER_AGENT_CONTACT is set in .env');
+}
 if (isConfigured() && process.env.TELEGRAM_BOT !== 'off') void startBot();
 
 /*
@@ -58,7 +75,12 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   });
 }
 
+// Said once, out loud: an empty .env used to start in silence and look like a working radar.
+for (const check of localChecks().filter((item) => item.level === 'warn')) {
+  log.warn({ check: check.what }, check.message);
+}
+
 log.info(
-  { port, telegram: isConfigured() ? 'configured' : 'disabled', scheduler: process.env.SCHEDULER !== 'off' },
+  { port, hostname, telegram: isConfigured() ? 'configured' : 'disabled', scheduler: process.env.SCHEDULER !== 'off' },
   'Job Radar started',
 );

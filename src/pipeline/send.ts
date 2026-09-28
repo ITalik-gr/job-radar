@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { companyState, outreach } from '../db/schema.js';
 import { deliver } from '../lib/mailer.js';
@@ -31,6 +31,21 @@ export async function sendDraft(id: number, now = new Date()): Promise<SendOutco
   const blockers = await checkSend(id, now);
   if (blockers.length > 0) return { sent: false, blockers };
 
+  /*
+   * Claim the draft before delivering. The check above and the status change after delivery
+   * used to be the only gates, so a double click, two tabs, or the CLI and the button at once
+   * all passed the check and all delivered: the same person got the letter twice. Only the
+   * call that moves the row out of draft goes on.
+   */
+  const claimed = await db
+    .update(outreach)
+    .set({ status: 'sending' })
+    .where(and(eq(outreach.id, id), inArray(outreach.status, ['draft', 'approved'])))
+    .returning({ id: outreach.id });
+  if (claimed.length === 0) {
+    return { sent: false, blockers: [{ code: 'status', message: 'the letter is already being sent' }] };
+  }
+
   const [draft] = await db.select().from(outreach).where(eq(outreach.id, id));
   if (!draft) return { sent: false, blockers: [{ code: 'missing', message: 'no such draft' }] };
 
@@ -46,8 +61,9 @@ export async function sendDraft(id: number, now = new Date()): Promise<SendOutco
     references = original?.rfcMessageId ? [original.rfcMessageId] : [];
   }
 
+  let result: Awaited<ReturnType<typeof deliver>>;
   try {
-    const result = await deliver({
+    result = await deliver({
       to: draft.contactEmail!,
       subject: draft.subjectFinal ?? '',
       body: draft.bodyFinal ?? '',
@@ -55,7 +71,25 @@ export async function sendDraft(id: number, now = new Date()): Promise<SendOutco
       inReplyTo,
       references,
     });
+  } catch (error) {
+    /*
+     * A send failure leaves the letter in a `failed` state with the reason text,
+     * rather than silently returning the draft to the queue. Otherwise the same
+     * letter would go out on a second attempt, and the person would never learn the
+     * first one failed.
+     */
+    const message = error instanceof Error ? error.message : String(error);
+    await db.update(outreach).set({ status: 'failed', error: message }).where(eq(outreach.id, id));
+    log.error({ id, err: message }, 'letter not sent');
+    return { sent: false, blockers: [{ code: 'gmail', message }] };
+  }
 
+  /*
+   * From here on the letter is out. A bookkeeping error must not turn it into `failed`: a
+   * retry would then send it a second time. It is logged loudly and the row keeps `sending`,
+   * which no button retries.
+   */
+  try {
     await db
       .update(outreach)
       .set({
@@ -72,19 +106,11 @@ export async function sendDraft(id: number, now = new Date()): Promise<SendOutco
     await markContacted(draft.companyId, now);
 
     log.info({ id, to: draft.contactEmail }, 'letter sent');
-    return { sent: true, blockers: [], messageId: result.messageId, threadId: result.threadId };
   } catch (error) {
-    /*
-     * A send failure leaves the letter in a `failed` state with the reason text,
-     * rather than silently returning the draft to the queue. Otherwise the same
-     * letter would go out on a second attempt, and the person would never learn the
-     * first one failed.
-     */
     const message = error instanceof Error ? error.message : String(error);
-    await db.update(outreach).set({ status: 'failed', error: message }).where(eq(outreach.id, id));
-    log.error({ id, err: message }, 'letter not sent');
-    return { sent: false, blockers: [{ code: 'gmail', message }] };
+    log.error({ id, err: message, messageId: result.messageId }, 'letter sent, but recording it failed');
   }
+  return { sent: true, blockers: [], messageId: result.messageId, threadId: result.threadId };
 }
 
 /** After a letter the company becomes contacted, otherwise it resurfaces in the queue. */

@@ -20,6 +20,21 @@ export function dedupeKey(input: {
   return `${host}|${title}|${week}`;
 }
 
+/**
+ * The key without the week: host and title. Lookups and closing go by this part only.
+ *
+ * With the week in the lookup, every Monday the same open vacancy stopped matching its own
+ * row: it was inserted again as new and the old row was closed as missing, so no vacancy
+ * could live longer than seven days and the lifetime stats measured nothing. The week stays
+ * in the stored key, so a title re-posted long after the old one closed is a new record.
+ */
+export function dedupeStem(key: string): string {
+  return key.slice(0, key.lastIndexOf('|'));
+}
+
+/** A vacancy seen within this window is the same one; later it counts as a re-post. */
+export const REPOST_AFTER_MS = 30 * 86_400_000;
+
 export function mergeSources(existing: string, incoming: string): string {
   const set = new Set(existing.split(',').filter(Boolean));
   set.add(incoming);

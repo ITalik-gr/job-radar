@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { getDb } from '../db/client.js';
 import { companies, companyState, vacancies, type Company } from '../db/schema.js';
@@ -7,11 +7,12 @@ import { isUsefulDetail } from '../lib/detail.js';
 import { normalizeDomain } from '../lib/normalize.js';
 import type { RawVacancy } from '../sources/registry.js';
 import { classifyText, type ClassifyOptions } from './classify.js';
-import { dedupeKey, mergeSources } from './dedupe.js';
+import { dedupeKey, dedupeStem, mergeSources, REPOST_AFTER_MS } from './dedupe.js';
 import { affixesForCompany, stripBoilerplate } from './boilerplate.js';
 import { upsertCompany } from './companies.js';
 import { hasStopWord, scoreVacancy, STOP_WORD_SCORE } from './score.js';
 import { rules } from './rules.js';
+import { HIDDEN_STATUSES } from './queue.js';
 
 /** The most the model can add: llm_relevance 100 divided by 20. */
 export const LLM_MAX_BOOST = 5;
@@ -113,7 +114,7 @@ export async function ingestVacancies(
     }
 
     const key = dedupeKey({ domain: owner.domain, title: item.title, url: item.url });
-    const [existing] = await db.select().from(vacancies).where(eq(vacancies.dedupeKey, key));
+    const existing = await findExisting(owner.id, dedupeStem(key));
 
     if (existing) {
       await db
@@ -130,7 +131,7 @@ export async function ingestVacancies(
 
     // Layer 1 on the short block text: free and before any network cost.
     let text = `${item.title ?? ''}\n${item.rawText}`;
-    if (hasStopWord(text)) {
+    if (hasStopWord(text, item.title ?? '')) {
       await db.insert(vacancies).values({
         companyId: owner.id,
         source: item.source,
@@ -168,7 +169,7 @@ export async function ingestVacancies(
     }
 
     // Layer 1 again, on the full text: the word angular appears in descriptions more often than in titles.
-    if (hasStopWord(text)) {
+    if (hasStopWord(text, item.title ?? '')) {
       await db.insert(vacancies).values({
         companyId: owner.id,
         source: item.source,
@@ -285,6 +286,31 @@ export async function ingestVacancies(
 const CLOSE_BATCH = 90;
 
 /**
+ * The same vacancy seen before: same company, host and title, open or seen recently. The
+ * week is left out on purpose, see `dedupeStem`.
+ */
+async function findExisting(companyId: number, stem: string) {
+  const db = getDb();
+  const prefix = `${stem}|`;
+  const [row] = await db
+    .select()
+    .from(vacancies)
+    .where(
+      and(
+        eq(vacancies.companyId, companyId),
+        // substr rather than LIKE: an underscore in a domain or title would be a wildcard there.
+        sql`substr(${vacancies.dedupeKey}, 1, ${prefix.length}) = ${prefix}`,
+      ),
+    )
+    .orderBy(desc(vacancies.lastSeen))
+    .limit(1);
+
+  if (!row) return undefined;
+  if (row.closedAt === null || row.lastSeen > Date.now() - REPOST_AFTER_MS) return row;
+  return undefined;
+}
+
+/**
  * Vacancies no longer present in the source response are closed.
  * Data is never deleted: the difference between first_seen and closed_at is a future dataset.
  */
@@ -295,12 +321,19 @@ export async function closeMissing(
 ): Promise<number> {
   const db = getDb();
   const open = await db
-    .select({ id: vacancies.id, dedupeKey: vacancies.dedupeKey })
+    .select({ id: vacancies.id, dedupeKey: vacancies.dedupeKey, source: vacancies.source })
     .from(vacancies)
     .where(and(eq(vacancies.companyId, companyId), isNull(vacancies.closedAt)));
 
-  const seen = new Set(seenKeys);
-  const stale = open.filter((row) => !seen.has(row.dedupeKey)).map((row) => row.id);
+  /*
+   * Compared without the week, and only among this source's vacancies: a Greenhouse pass knows
+   * nothing about what the company posted on Djinni or DOU, and used to close those too.
+   */
+  const seen = new Set(seenKeys.map(dedupeStem));
+  const stale = open
+    .filter((row) => row.source.split(',').includes(source))
+    .filter((row) => !seen.has(dedupeStem(row.dedupeKey)))
+    .map((row) => row.id);
   if (stale.length === 0) return 0;
 
   /*
@@ -343,7 +376,7 @@ export async function queue(limit = config.pipeline.queueDailyLimit) {
     .leftJoin(companyState, eq(companyState.companyId, vacancies.companyId))
     .where(isNull(vacancies.closedAt));
 
-  const hidden = new Set(['contacted', 'rejected_by_me', 'rejected_by_them', 'blacklist']);
+  const hidden = new Set(HIDDEN_STATUSES);
   const now = Date.now();
 
   return rows

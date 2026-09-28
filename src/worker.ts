@@ -1,11 +1,13 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { app } from './api/index.js';
 import { config, setRuntimeEnv } from './config.js';
+import { rotate } from './lib/rotate.js';
 import { setDb, schema } from './db/client.js';
 import { log } from './lib/log.js';
 import { listSources } from './sources/registry.js';
 import './sources/index.js';
 import { syncSource } from './pipeline/sync.js';
+import { syncCareers } from './pipeline/careers.js';
 import { syncDou } from './pipeline/catalogs.js';
 import { discover } from './pipeline/discover.js';
 import { classifyPending } from './pipeline/reclassify.js';
@@ -67,9 +69,16 @@ async function safely(name: string, task: () => Promise<unknown>): Promise<void>
 /** Schedule kept in sync with wrangler.jsonc: every hour we decide exactly what to do. */
 async function runSchedule(cron: string): Promise<void> {
   if (cron === '0 */6 * * *') {
-    for (const source of listSources('board')) {
+    /*
+     * The order rotates with every run. One invocation has a subrequest ceiling, and with a
+     * fixed order the sources at the end of the list were the ones that never got their turn
+     * once the ceiling hit. Rotating spreads that loss instead of always starving the same tail.
+     */
+    for (const source of rotate(listSources('board'), Math.floor(Date.now() / (6 * 3_600_000)))) {
       await safely(`sync:${source.id}`, () => syncSource(source.id));
     }
+    // Few career pages per run: each one is a page plus detail pages, all subrequests.
+    await safely('careers', () => syncCareers({ limit: 10 }));
     await safely('classify:pending', () => classifyPending(50));
     return;
   }
@@ -98,6 +107,18 @@ export default {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/') && env.ASSETS) {
       return env.ASSETS.fetch(request);
+    }
+
+    /*
+     * Locally an empty token means "no password", and that is fine on loopback. On a worker it
+     * meant the contacts, the letters and the send button were open to the internet, for
+     * example after a plain `pnpm deploy` without `cf:setup`. So the worker fails closed.
+     */
+    if (!config.token && url.pathname !== '/api/health') {
+      return Response.json(
+        { error: 'RADAR_TOKEN is not set on this worker: pnpm wrangler secret put RADAR_TOKEN' },
+        { status: 503 },
+      );
     }
 
     // Rules changed from the interface live in the database. The isolate between

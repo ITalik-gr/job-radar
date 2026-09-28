@@ -87,12 +87,25 @@ pnpm start               # migrations, API on :3000, scheduler
 pnpm dev:web             # interface on http://localhost:5173, in another terminal
 ```
 
-Without `ANTHROPIC_API_KEY` everything works except classification. `USER_AGENT_CONTACT`
+Without `ANTHROPIC_API_KEY` everything works except classification: vacancies are scored
+by keywords and wait for `pnpm cli classify:pending` once a key is there. `USER_AGENT_CONTACT`
 is your email: it goes into the User-Agent of every request, so site owners can see who is
 visiting. `pnpm cli doctor` tells you what is still missing.
 
+The API listens on `127.0.0.1` only. Local mode has no password, so opening it to the
+network (`API_HOST=0.0.0.0`) needs `RADAR_TOKEN` as well.
+
+If `pnpm start` fails with "Could not locate the bindings file", the native SQLite driver
+was not built (for example, `ignoreScripts` is on in your global pnpm config). Run
+`pnpm rebuild better-sqlite3`.
+
 To fill an empty database, open **Operations** in the interface and run the sources, or
 from the terminal:
+
+**Expect an empty queue at first.** The default rules describe the author: TypeScript and
+React, Kyiv as the home city, remote or Kyiv only. The seed companies are US companies, so
+almost all of their vacancies land below the threshold. Open **Rules** and describe
+yourself before judging the queue (see "Make it yours" below), then `pnpm cli score:recalc`.
 
 ```bash
 pnpm cli import:csv imports/seed-companies.csv   # 10 companies with a known ATS
@@ -226,6 +239,9 @@ Most of these are also buttons on the Operations page.
 | `pnpm cli bookmarklet` | bookmarklet code that collects a catalog straight from the open page |
 | `pnpm cli catalog:dou` | collect companies from DOU (`--business`, `--domains`, `-n`) |
 | `pnpm cli discover` | find career pages and stack (`--domain`, `--all`) |
+| `pnpm cli careers:sync` | check own career pages that are due: new vacancies, closed ones (`-n`, `--skip-llm`) |
+| `pnpm cli doctor [url]` | what is missing: local config without an address, a deployed worker with one |
+| `pnpm cli vacancies:merge-weeks` | fold vacancies split by the old weekly dedupe key (`--apply`, dry run without it) |
 | `pnpm cli classify:pending` | catch up classification on vacancies missing it |
 | `pnpm cli queue` | today's vacancy queue |
 | `pnpm cli studios` | queue of studios and agencies (`--min`, `--country`, `-q`, `--all`) |
@@ -301,7 +317,7 @@ What is configurable there:
 | `roleGate` | the vacancy title has to be an engineering one. Without this, "Sr. Manager, Accounting" scores points from the company description text where React and Next.js are mentioned |
 | `geo` | Kyiv, relocation is not possible. "Remote (US)", "San Francisco, hybrid" and any location naming a place with no sign of being remote gets filtered out, no matter what the remote flag says |
 | `experience` | 5+ years is -4, 7+ is -8, a lead title is separate |
-| `stopWords` | technologies and fields that are not needed |
+| `stopWords` | technologies and fields that are not needed. Words naming a role (`java developer`, `ml engineer`, `sre`) count in the title only, since a description often mentions colleagues; technologies and domains count anywhere |
 | `weights` | weights for technologies. The title weighs three times as much, points from the text are capped at `bodyCap` |
 | `companies` | scoring for studios: size, services, site stack, country, rate |
 
@@ -326,6 +342,7 @@ purpose.
 | when | what |
 | --- | --- |
 | every 6 hours | ATS and RSS, catch-up classification |
+| every 6 hours | own career pages that are due: interesting and new daily, the rest every 3 days |
 | Monday 04:00 | DOU catalog |
 | Tuesday 05:00 | career page discovery |
 | Mon and Thu 10:00 | one Telegram digest: queue, finds with score 12+, drafts, follow-ups, broken sources |

@@ -1,20 +1,35 @@
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { rules } from './rules.js';
 import { getDb } from '../db/client.js';
 import {
   companies,
   companyState,
+  outreach,
   queueItems,
   vacancies,
   type QueueItem,
 } from '../db/schema.js';
 import { log } from '../lib/log.js';
+import { localDay } from '../lib/time.js';
 
-export const HIDDEN_STATUSES = ['contacted', 'rejected_by_me', 'rejected_by_them', 'blacklist'];
+/**
+ * Companies whose cards are not shown. `replied` is here too: a company in the middle of a
+ * conversation getting fresh cold cards next to it was noise. Both contact statuses come back
+ * after `recontactAfterDays`, see `candidates`.
+ */
+export const HIDDEN_STATUSES = ['contacted', 'replied', 'rejected_by_me', 'rejected_by_them', 'blacklist'];
+
+const CONTACT_STATUSES = ['contacted', 'replied'];
+
+/**
+ * At most this many cards of one company per day. A company posting a dozen similar roles
+ * used to take the whole queue, while the decision is really one: write to them or not.
+ */
+export const CARDS_PER_COMPANY = 2;
 
 export function todayKey(now = new Date()): string {
-  return now.toISOString().slice(0, 10);
+  return localDay(now);
 }
 
 export interface QueueCard {
@@ -85,12 +100,21 @@ async function candidates(limit: number, day: string) {
     if (!HIDDEN_STATUSES.includes(status)) return true;
 
     // The only exception: contacted long ago, and the vacancy is new. After a quarter that is fine.
-    if (status !== 'contacted') return false;
+    if (!CONTACT_STATUSES.includes(status)) return false;
     const contactedAgo = now - (row.stateUpdatedAt ?? 0);
     return contactedAgo > recontactAfter && row.vacancy.firstSeen > (row.stateUpdatedAt ?? 0);
   });
 
-  return eligible.slice(0, limit);
+  const perCompany = new Map<number, number>();
+  const picks: typeof eligible = [];
+  for (const row of eligible) {
+    const taken = perCompany.get(row.company.id) ?? 0;
+    if (taken >= CARDS_PER_COMPANY) continue;
+    perCompany.set(row.company.id, taken + 1);
+    picks.push(row);
+    if (picks.length >= limit) break;
+  }
+  return picks;
 }
 
 /**
@@ -106,6 +130,42 @@ async function candidates(limit: number, day: string) {
  * FIFO order, longest waiting first: otherwise a fresh vacancy with a higher score would push
  * the old one back every day, and it would never get a decision.
  */
+interface LastLetter {
+  sentAt: number | null;
+  templateUsed: string | null;
+  replyAt: number | null;
+}
+
+/** The latest sent letter per company, for the "wrote on ..., template ..." badge. */
+async function lastLetterByCompany(companyIds: number[]): Promise<Map<number, LastLetter>> {
+  const result = new Map<number, LastLetter>();
+  if (companyIds.length === 0) return result;
+  const rows = await getDb()
+    .select({
+      companyId: outreach.companyId,
+      sentAt: outreach.sentAt,
+      templateUsed: outreach.templateUsed,
+      replyAt: outreach.replyAt,
+    })
+    .from(outreach)
+    .where(and(inArray(outreach.companyId, [...new Set(companyIds)]), isNotNull(outreach.sentAt)))
+    .orderBy(desc(outreach.sentAt));
+  for (const row of rows) if (!result.has(row.companyId)) result.set(row.companyId, row);
+  return result;
+}
+
+/**
+ * CLAUDE.md 5.6: "wrote on 12.03, template fullstack_ai, no reply". The date comes from the
+ * letter itself; the state's `updated_at` moves with any later edit and was only a fallback.
+ */
+function noteFor(status: string, letter: LastLetter | undefined, stateUpdatedAt: number | null): string {
+  const at = letter?.sentAt ?? stateUpdatedAt;
+  const date = at ? new Date(at).toLocaleDateString('en-GB') : 'earlier';
+  const template = letter?.templateUsed ? `, template ${letter.templateUsed}` : '';
+  const reply = status === 'replied' || letter?.replyAt ? 'replied' : 'no reply';
+  return `wrote on ${date}${template}, ${reply}`;
+}
+
 async function carryOver(day: string, limit: number): Promise<number> {
   if (limit <= 0) return 0;
   const db = getDb();
@@ -205,6 +265,9 @@ export async function getQueue(
     );
 
   const byId = new Map(rows.map((row) => [row.vacancy.id, row]));
+  const lastLetters = await lastLetterByCompany(
+    rows.filter((row) => CONTACT_STATUSES.includes(row.status ?? 'new')).map((row) => row.company.id),
+  );
 
   const threshold = rules().threshold;
 
@@ -213,10 +276,9 @@ export async function getQueue(
       const row = byId.get(item.vacancyId);
       if (!row) return null;
       const status = row.status ?? 'new';
-      const contactedNote =
-        status === 'contacted' && row.stateUpdatedAt
-          ? `contacted ${new Date(row.stateUpdatedAt).toLocaleDateString('en-GB')}, no reply`
-          : null;
+      const contactedNote = CONTACT_STATUSES.includes(status)
+        ? noteFor(status, lastLetters.get(row.company.id), row.stateUpdatedAt)
+        : null;
 
       return {
         queueItemId: item.id,

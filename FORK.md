@@ -128,11 +128,10 @@ leave the UI Ukrainian, switch it to English, or add i18n. Not decided.
 Deploying is no longer part of it: `pnpm cf:setup` goes from a fresh clone to a
 running worker in one command. The local first run still is:
 
-`pnpm start` comes up with an empty `.env` and says nothing. It would be more
-useful to say out loud, once: no model key, classification is off; no
-`USER_AGENT_CONTACT`, other people's sites will see "unknown"; empty
-`RADAR_TOKEN` on a deployed worker. Some of this already exists in
-`pnpm cli doctor` and only needs moving into startup.
+Done: `pnpm start` now logs a WARN for a missing model key and an empty
+`USER_AGENT_CONTACT`, and `pnpm cli doctor` without an address lists the whole local
+configuration. A deployed worker without `RADAR_TOKEN` refuses API calls instead of
+running open.
 
 After `db:migrate` the interface shows empty lists with no hint about what to do
 next. `imports/seed-companies.csv` is the intended first import and the README

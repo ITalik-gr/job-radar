@@ -36,6 +36,9 @@ import { seedTemplates } from '../pipeline/templates.js';
 import { GETRO_NETWORKS, nextGetroNetwork } from '../sources/boards/getro.js';
 import { createFact, deleteFact, listFacts, updateFact } from '../pipeline/facts.js';
 import { prepareFollowups } from '../pipeline/followups.js';
+import { mergeWeeklyDuplicates } from '../pipeline/merge-duplicates.js';
+import { syncCareers } from '../pipeline/careers.js';
+import { oauthState, sameSecret } from '../lib/secret.js';
 import { outreachStats } from '../pipeline/outreach-stats.js';
 import { sendDraft } from '../pipeline/send.js';
 import { listSources } from '../sources/registry.js';
@@ -92,14 +95,16 @@ export function requireToken(token: string | undefined) {
      * Instead of the token it checks `state`, which we put into the link ourselves.
      */
     const open = ['/api/health', '/api/gmail/callback'];
-    if (!token || c.req.method === 'OPTIONS' || open.includes(c.req.path)) return next();
+    // The deep health check lists every table and missing migration, so it wants the token.
+    const deep = c.req.path === '/api/health' && c.req.query('deep') !== undefined;
+    if (!token || c.req.method === 'OPTIONS' || (open.includes(c.req.path) && !deep)) return next();
 
     const provided =
       c.req.header('authorization')?.replace(/^Bearer\s+/i, '') ??
       c.req.header('x-radar-token') ??
       c.req.query('token');
 
-    if (provided !== token) {
+    if (!provided || !sameSecret(provided, token)) {
       throw Object.assign(new Error('missing or invalid token'), { status: 401 });
     }
     return next();
@@ -109,7 +114,7 @@ export function requireToken(token: string | undefined) {
 /**
  * One CORS handler for everything: the interface calls from 5173, and the catalog collector
  * runs in a third-party site's tab, so /api/import allows any origin.
- * The server listens on localhost only, these routes are not reachable from outside.
+ * The server listens on loopback only (API_HOST), these routes are not reachable from outside.
  */
 app.use(
   '/api/*',
@@ -128,6 +133,29 @@ app.use(
   }),
 );
 
+/**
+ * CORS only hides the answer from a foreign page, it does not stop the request. A "simple"
+ * POST (text/plain, no preflight) from any site the owner visits still reached the handlers,
+ * and in local mode there is no token to stop it: one hidden form could blacklist companies or
+ * send drafts. So a write from a browser has to come from the interface itself. Requests
+ * without an Origin header (CLI, curl) and the catalog import routes of the extension pass.
+ */
+export function rejectForeignWrites(allowed: string[]) {
+  return async (c: { req: { header: (name: string) => string | undefined; path: string; method: string; url: string } }, next: () => Promise<void>) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next();
+    if (c.req.path.startsWith('/api/import/')) return next();
+
+    const origin = c.req.header('origin');
+    if (!origin || allowed.includes(origin) || origin === new URL(c.req.url).origin) return next();
+    // Any loopback port: vite moves to 5174 when 5173 is taken. A foreign site cannot claim
+    // a loopback origin.
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return next();
+
+    throw Object.assign(new Error(`writes from ${origin} are not accepted`), { status: 403 });
+  };
+}
+
+app.use('/api/*', async (c, next) => rejectForeignWrites(WEB_ORIGINS)(c, next));
 app.use('/api/*', async (c, next) => requireToken(config.token)(c, next));
 
 /**
@@ -434,12 +462,12 @@ app.post('/api/rules/weights', async (c) => {
  * Why, when there is `pnpm cli auth:gmail`: the local path requires running the project on
  * a laptop, while the radar lives on Workers. One browser, two pages, and no local process.
  */
-app.get('/api/gmail/connect', (c) => {
+app.get('/api/gmail/connect', async (c) => {
   if (!gmailConfigured()) {
     return c.json({ error: 'set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_FROM_EMAIL first' }, 400);
   }
-  // state carries the radar token: the callback itself arrives from the browser without headers.
-  return c.redirect(authUrl(config.token));
+  // state carries an HMAC of the radar token: the callback arrives from the browser without headers.
+  return c.redirect(authUrl(config.token ? await oauthState(config.token) : ''));
 });
 
 /*
@@ -449,7 +477,7 @@ app.get('/api/gmail/connect', (c) => {
 app.get('/api/gmail/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state') ?? '';
-  if (config.token && state !== config.token) return c.text('invalid state', 401);
+  if (config.token && !sameSecret(state, await oauthState(config.token))) return c.text('invalid state', 401);
   if (!code) return c.text(`Google returned an error: ${c.req.query('error') ?? 'no code'}`, 400);
 
   const token = await exchangeCode(code);
@@ -615,6 +643,16 @@ app.post('/api/classify/pending', async (c) => {
 });
 
 app.post('/api/maintenance/kinds', async (c) => c.json(await backfillKinds()));
+
+app.post('/api/careers/run', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  return c.json(await syncCareers({ limit: body.limit ?? 10 }));
+});
+
+app.post('/api/maintenance/merge-duplicates', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { mode?: string; limit?: number };
+  return c.json(await mergeWeeklyDuplicates({ apply: body.mode === 'apply', limit: body.limit ?? 100 }));
+});
 
 app.post('/api/maintenance/backfill-catalog', async (c) => c.json(await backfillCatalogFields()));
 
@@ -909,6 +947,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Same with the Gmail token: file storage exists only in Node, not in the worker.
   await import('../lib/gmail-store.node.js');
   const port = Number(process.env.API_PORT ?? 3000);
-  serve({ fetch: app.fetch, port });
-  log.info({ port }, 'API started');
+  const hostname = process.env.API_HOST ?? '127.0.0.1';
+  serve({ fetch: app.fetch, port, hostname });
+  log.info({ port, hostname }, 'API started');
 }

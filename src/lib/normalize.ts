@@ -1,6 +1,7 @@
 /** Normalizing domains and strings. Page text normalization comes in Stage 3. */
 
-const TRACKING_PARAMS = /^(utm_|ref$|referrer$|gh_src$|source$|fbclid$|gclid$|mc_cid$|mc_eid$)/i;
+export const TRACKING_PARAMS =
+  /^(utm_|ref$|referrer$|gh_src$|source$|fbclid$|gclid$|mc_cid$|mc_eid$|lever-source$|lever-origin$|trk$)/i;
 
 export function normalizeDomain(input: string): string | null {
   if (!input) return null;

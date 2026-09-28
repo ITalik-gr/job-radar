@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { getDb } from '../db/client.js';
 import { getSqlite } from '../db/client.node.js';
 import { runs } from '../db/schema.js';
-import { desc } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import { runMigrations } from '../db/migrate.js';
 import { log } from '../lib/log.js';
 import { listSources } from '../sources/registry.js';
@@ -46,6 +46,9 @@ import {
   seedOutreachTemplates,
 } from '../pipeline/outreach.js';
 import { gmailStatus } from '../lib/gmail.js';
+import { localChecks } from '../lib/doctor.js';
+import { mergeWeeklyDuplicates } from '../pipeline/merge-duplicates.js';
+import { syncCareers } from '../pipeline/careers.js';
 import { deliver, mailer } from '../lib/mailer.js';
 import { sendDraft } from '../pipeline/send.js';
 import { sendCounters } from '../pipeline/send-guards.js';
@@ -631,6 +634,26 @@ program
   });
 
 program
+  .command('careers:sync')
+  .description('check own career pages that are due: snapshot, block diff, new vacancies, closed ones')
+  .option('-n, --limit <n>', 'companies per pass', '30')
+  .option('--skip-llm', 'score without the model')
+  .action(async (opts: { limit: string; skipLlm?: boolean }) => {
+    const result = await syncCareers({ limit: Number(opts.limit), skipLlm: opts.skipLlm });
+    console.table({ checked: result.checked, found: result.itemsFound, new: result.itemsNew, closed: result.closed, errors: result.errors.length });
+    for (const error of result.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('vacancies:merge-weeks')
+  .description('fold vacancies the old weekly dedupe key split into one row each (dry run unless --apply)')
+  .option('--apply', 'write the changes; without it only counts')
+  .option('--limit <n>', 'chains per run', '100000')
+  .action(async (opts: { apply?: boolean; limit: string }) => {
+    console.table(await mergeWeeklyDuplicates({ apply: Boolean(opts.apply), limit: Number(opts.limit) }));
+  });
+
+program
   .command('backfill:catalog')
   .description('split hourly rate, minimum project and founding year from tags into columns')
   .action(async () => {
@@ -766,10 +789,24 @@ program
 
 program
   .command('doctor')
-  .description('check a deployed radar: database, migrations, token')
-  .argument('<url>', 'worker address, for example https://job-radar.xxx.workers.dev')
+  .description('what is missing: local config without an address, a deployed radar with one')
+  .argument('[url]', 'worker address, for example https://job-radar.xxx.workers.dev')
   .option('--token <token>', 'RADAR_TOKEN, if set')
-  .action(async (url: string, opts: { token?: string }) => {
+  .action(async (url: string | undefined, opts: { token?: string }) => {
+    if (!url) {
+      const marks = { ok: 'ok  ', warn: 'WARN', info: '--  ' } as const;
+      for (const check of localChecks()) console.log(`${marks[check.level]} ${check.what}: ${check.message}`);
+
+      const [companyCount] = await getDb().select({ n: sql<number>`count(*)` }).from(companiesTable);
+      const [vacancyCount] = await getDb().select({ n: sql<number>`count(*)` }).from(vacancies);
+      console.log(`db: ${companyCount?.n ?? 0} companies, ${vacancyCount?.n ?? 0} vacancies`);
+      if (!companyCount?.n) {
+        console.log('next: pnpm cli import:csv imports/seed-companies.csv, then pnpm cli source:sync greenhouse');
+      }
+      console.log('\nfor a deployed worker: pnpm cli doctor https://<your-worker>.workers.dev --token <RADAR_TOKEN>');
+      return;
+    }
+
     const base = url.replace(/\/$/, '');
     const headers = opts.token ? { 'x-radar-token': opts.token } : undefined;
 

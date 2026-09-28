@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
@@ -371,5 +371,64 @@ describe('queue', () => {
 
   it('the daily card limit is respected', async () => {
     expect((await queue(1)).length).toBeLessThanOrEqual(1);
+  });
+});
+
+/*
+ * The week used to be part of the lookup. Every Monday each open vacancy stopped matching its
+ * own row, got inserted again as new, and the old row was closed as missing: no vacancy lived
+ * longer than seven days, and the lifetime and ghost job stats measured nothing.
+ */
+describe('a vacancy across a week boundary', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('the next week the same vacancy is updated, not created again or closed', async () => {
+    const { company } = await upsertCompany({ name: 'Weekly', domain: 'weekly.com', source: 'test' });
+    const item = raw({ externalId: 'w1', url: 'https://weekly.com/jobs/1', companyDomain: 'weekly.com' });
+
+    vi.useFakeTimers({ now: new Date('2026-09-23T10:00:00Z'), toFake: ['Date'] });
+    const first = await ingestVacancies([item], { skipLlm: true }, company);
+    expect(first.created).toBe(1);
+
+    vi.setSystemTime(new Date('2026-09-30T10:00:00Z'));
+    const second = await ingestVacancies([item], { skipLlm: true }, company);
+    expect(second.created).toBe(0);
+    expect(second.updated).toBe(1);
+
+    const key = dedupeKey({ domain: 'weekly.com', title: item.title, url: item.url });
+    expect(await closeMissing(company.id, 'greenhouse', [key])).toBe(0);
+
+    const rows = await getDb().select().from(vacancies).where(eq(vacancies.companyId, company.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.closedAt).toBeNull();
+  });
+
+  it('a title re-posted long after the old one closed is a new record', async () => {
+    const { company } = await upsertCompany({ name: 'Repost', domain: 'repost.com', source: 'test' });
+    const item = raw({ externalId: 'r1', url: 'https://repost.com/jobs/1', companyDomain: 'repost.com' });
+
+    vi.useFakeTimers({ now: new Date('2026-05-06T10:00:00Z'), toFake: ['Date'] });
+    await ingestVacancies([item], { skipLlm: true }, company);
+    await closeMissing(company.id, 'greenhouse', []);
+    // last_seen defaults to the SQL clock, which fake timers do not reach.
+    const may = new Date('2026-05-06T10:00:00Z').getTime();
+    await getDb().update(vacancies).set({ firstSeen: may, lastSeen: may }).where(eq(vacancies.companyId, company.id));
+
+    vi.setSystemTime(new Date('2026-09-30T10:00:00Z'));
+    const again = await ingestVacancies([item], { skipLlm: true }, company);
+    expect(again.created).toBe(1);
+  });
+
+  it('a pass over one source does not close what the company posted elsewhere', async () => {
+    const { company } = await upsertCompany({ name: 'Mixed', domain: 'mixed-src.com', source: 'test' });
+    await ingestVacancies(
+      [raw({ source: 'djinni', externalId: 'd1', url: 'https://djinni.co/jobs/1', title: 'Frontend Engineer', companyDomain: 'mixed-src.com' })],
+      { skipLlm: true },
+      company,
+    );
+
+    expect(await closeMissing(company.id, 'greenhouse', [])).toBe(0);
+    const [row] = await getDb().select().from(vacancies).where(eq(vacancies.companyId, company.id));
+    expect(row!.closedAt).toBeNull();
   });
 });

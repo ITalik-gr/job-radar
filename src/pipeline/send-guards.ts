@@ -1,4 +1,6 @@
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { config } from '../config.js';
+import { localClock, localDay } from '../lib/time.js';
 import { getDb } from '../db/client.js';
 import { companyState, outreach, sendLog } from '../db/schema.js';
 import { BLOCKED_STATUSES, RECONTACT_DAYS } from './outreach.js';
@@ -39,46 +41,16 @@ export interface Blocker {
   retryAt?: number;
 }
 
-/** The Kyiv calendar day as YYYY-MM-DD. The limit day follows Kyiv time. */
-export function kyivDay(date: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Kyiv',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
-}
-
-interface KyivClock {
-  hour: number;
-  /** 0 is Sunday, as in Date.getDay. */
-  weekday: number;
-}
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-export function kyivClock(date: Date): KyivClock {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Europe/Kyiv',
-    hour: '2-digit',
-    hour12: false,
-    weekday: 'short',
-  }).formatToParts(date);
-
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
-  const weekday = WEEKDAYS.indexOf(parts.find((part) => part.type === 'weekday')?.value ?? 'Mon');
-  // Intl returns 24 instead of 0 at midnight, and without this the night check silently breaks.
-  return { hour: hour === 24 ? 0 : hour, weekday };
-}
+export { localClock, localDay } from '../lib/time.js';
 
 /**
- * Working window: a weekday from 08:00 to 22:00 Kyiv time.
+ * Working window: a weekday from 08:00 to 22:00 in the owner's time zone.
  *
  * A letter sent on a Saturday night looks like a bot even when a person wrote it, and that is
  * exactly how the recipient will read it.
  */
 export function isSendWindow(date: Date): boolean {
-  const { hour, weekday } = kyivClock(date);
+  const { hour, weekday } = localClock(date);
   if (weekday === 0 || weekday === 6) return false;
   return hour >= QUIET_HOUR_END && hour < QUIET_HOUR_START;
 }
@@ -186,7 +158,7 @@ export interface SendCounters {
  */
 export async function sendCounters(now = new Date()): Promise<SendCounters> {
   const db = getDb();
-  const day = kyivDay(now);
+  const day = localDay(now);
 
   const [todayRow] = await db.select().from(sendLog).where(eq(sendLog.day, day));
   const [firstRow] = await db.select().from(sendLog).orderBy(sendLog.day).limit(1);
@@ -235,6 +207,13 @@ export async function checkSend(draftId: number, now = new Date()): Promise<Bloc
     blockers.push({ code: 'address', message: 'no recipient address' });
   }
   blockers.push(...letterBlockers(draft.subjectFinal ?? '', draft.bodyFinal ?? ''));
+  /*
+   * The personal defaults were emptied for forks, so a fresh install would send from a bare
+   * address with no name, which reads as a mailing. Better to stop and say what is missing.
+   */
+  if (!config.gmail.fromName.trim()) {
+    blockers.push({ code: 'from_name', message: 'GMAIL_FROM_NAME is empty, the letter would go out from a bare address' });
+  }
 
   const [state] = await db
     .select()
@@ -306,7 +285,7 @@ export async function checkSend(draftId: number, now = new Date()): Promise<Bloc
   if (!isSendWindow(now)) {
     blockers.push({
       code: 'quiet_hours',
-      message: 'it is night or a weekend in Kyiv, the letter would look like a bot',
+      message: 'it is night or a weekend in your time zone, the letter would look like a bot',
     });
   }
   if (counters.bounceRate > BOUNCE_RATE_LIMIT) {
@@ -322,7 +301,7 @@ export async function checkSend(draftId: number, now = new Date()): Promise<Bloc
 /** Record the fact of sending: the daily counter and the time of the last letter. */
 export async function noteSent(now = new Date()): Promise<void> {
   const db = getDb();
-  const day = kyivDay(now);
+  const day = localDay(now);
   await db
     .insert(sendLog)
     .values({ day, count: 1, lastSentAt: now.getTime() })

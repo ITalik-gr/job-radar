@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { config } from '../src/config.js';
+import { config, setRuntimeEnv } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
 import {
@@ -97,6 +97,8 @@ function template(over: Partial<Template> = {}): Template {
 }
 
 beforeAll(async () => {
+  // Sending refuses without a From name, see checkSend.
+  setRuntimeEnv({ GMAIL_FROM_NAME: 'Test Sender' });
   for (const suffix of ['', '-wal', '-shm']) rmSync(`${config.dbPath}${suffix}`, { force: true });
   runMigrations().sqlite.close();
 

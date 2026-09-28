@@ -40,6 +40,13 @@ export const config = {
   get token() {
     return str('RADAR_TOKEN', '');
   },
+  /**
+   * The owner's time zone: the schedule, the daily queue and model budget, the send window.
+   * It used to be Kyiv in some places and UTC in others, so the queue day rolled over at 03:00.
+   */
+  get timezone() {
+    return str('TZ', 'Europe/Kyiv');
+  },
   log: {
     get level() {
       return str('LOG_LEVEL', 'info');

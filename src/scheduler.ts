@@ -7,6 +7,7 @@ import './sources/index.js';
 import { syncSource } from './pipeline/sync.js';
 import { syncDou } from './pipeline/catalogs.js';
 import { discover } from './pipeline/discover.js';
+import { syncCareers } from './pipeline/careers.js';
 import { classifyPending } from './pipeline/reclassify.js';
 import { notify } from './notify/telegram.js';
 import { isOverdue, lastSuccessAt } from './lib/runs.js';
@@ -17,7 +18,11 @@ import './lib/gmail-store.node.js';
 /** The schedule from CLAUDE.md, section 8. All inside one process, no queues, no Docker. */
 export const SCHEDULE = {
   ats: '0 */6 * * *',
-  careersInteresting: '30 3 * * *',
+  /**
+   * Own career pages. Every 6 hours, but each company only when due: interesting and new
+   * daily, the rest every three days (see `syncCareers`).
+   */
+  careers: '30 */6 * * *',
   catalogs: '0 4 * * 1',
   discovery: '0 5 * * 2',
   /**
@@ -103,9 +108,10 @@ export async function catchUp(delayBetweenMs = 30_000): Promise<string[]> {
 }
 
 export function startScheduler(): void {
-  const timezone = process.env.TZ ?? 'Europe/Kyiv';
+  const timezone = config.timezone;
 
   cron.schedule(SCHEDULE.ats, () => void runBoards(), { timezone });
+  cron.schedule(SCHEDULE.careers, () => void safely('careers', () => syncCareers({ limit: 40 })), { timezone });
   cron.schedule(SCHEDULE.catalogs, () => void safely('catalog:dou', () => syncDou({ limit: 60 })), { timezone });
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });
   cron.schedule(SCHEDULE.summary, () => void safely('notify:summary', () => notify.summary()), { timezone });

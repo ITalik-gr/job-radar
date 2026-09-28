@@ -214,7 +214,7 @@ every browser navigation, the Google callback included.
 | `pnpm deploy` | build the frontend and deploy |
 | `pnpm cf:migrate` | apply migrations to D1 |
 | `pnpm cf:migrate:local` | the same for the local D1 of `wrangler dev` |
-| `pnpm cf:dev` | the worker locally, port 8787 |
+| `pnpm cf:dev` | the worker locally, port 8787 (needs `RADAR_TOKEN` in `.dev.vars`: the worker refuses API calls without a token) |
 | `pnpm cf:tail` | live production logs |
 | `pnpm cf:doctor <url> --token <token>` | check the database and routes in production |
 

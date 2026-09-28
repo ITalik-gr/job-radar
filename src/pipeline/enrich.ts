@@ -1,3 +1,4 @@
+import { chunk, rowsPerQuery } from '../lib/chunk.js';
 import * as cheerio from 'cheerio';
 import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
@@ -623,9 +624,10 @@ export async function saveEnrichment(result: EnrichResult): Promise<{ added: num
 
   const fresh = result.contacts.filter((item) => !known.has(`${item.name ?? ''}|${item.email ?? ''}`));
 
-  if (fresh.length > 0) {
+  // A big /team page found more people than one D1 query takes, and all of them were lost.
+  for (const slice of chunk(fresh, rowsPerQuery(7))) {
     await db.insert(contacts).values(
-      fresh.map((item) => ({
+      slice.map((item) => ({
         companyId: result.companyId,
         name: item.name,
         role: item.role,
