@@ -9,10 +9,8 @@ import { runMigrations } from '../db/migrate.js';
 import { log } from '../lib/log.js';
 import { listSources } from '../sources/registry.js';
 import { crawlSource } from '../pipeline/crawl.js';
-import { refreshDetails, syncSource } from '../pipeline/sync.js';
-import { queue } from '../pipeline/ingest.js';
-import { callModelWith, remainingBudget, today } from '../pipeline/classify.js';
-import { classifyPending } from '../pipeline/reclassify.js';
+import { syncSource } from '../pipeline/sync.js';
+import { callModelWith, remainingBudget, today } from '../lib/llm.js';
 import { upsertCompany } from '../pipeline/companies.js';
 import { importCsvFile } from './commands.js';
 import { importFiles, syncCatalog, syncDou } from '../pipeline/catalogs.js';
@@ -21,21 +19,14 @@ import { discover } from '../pipeline/discover.js';
 import { enrich } from '../pipeline/enrich.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
 import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
-import { topUpQueue, getQueue, todayKey } from '../pipeline/queue.js';
 import { toCsv } from '../lib/csv.js';
 import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
 import { studioPage } from '../pipeline/studios.js';
 import { fullStats } from '../pipeline/stats.js';
 import { studioQueue } from '../pipeline/studios.js';
-import { explain, scoreVacancy } from '../pipeline/score.js';
 import { scoreCompany } from '../pipeline/company-score.js';
-import { vacancies, companies as companiesTable } from '../db/schema.js';
-import { recalcScores } from '../pipeline/recalc.js';
+import { companies as companiesTable } from '../db/schema.js';
 import { notify, isConfigured, probe, HELP_TEXT, statusText } from '../notify/telegram.js';
-import { normalizePage } from '../pipeline/normalize.js';
-import { saveSnapshot } from '../pipeline/snapshots.js';
-import { fetchText } from '../lib/http.js';
-import { companies } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { readFileSync, writeFileSync } from 'node:fs';
 import '../sources/index.js';
@@ -47,8 +38,6 @@ import {
 } from '../pipeline/outreach.js';
 import { gmailStatus } from '../lib/gmail.js';
 import { localChecks } from '../lib/doctor.js';
-import { mergeWeeklyDuplicates } from '../pipeline/merge-duplicates.js';
-import { syncCareers } from '../pipeline/careers.js';
 import { deliver, mailer } from '../lib/mailer.js';
 import { sendDraft } from '../pipeline/send.js';
 import { sendCounters } from '../pipeline/send-guards.js';
@@ -62,7 +51,7 @@ watchRules();
 
 const program = new Command();
 
-program.name('radar').description('Job Radar CLI').version('0.1.0');
+program.name('radar').description('Lead Radar CLI').version('0.2.0');
 
 program
   .command('db:migrate')
@@ -77,7 +66,7 @@ program
   .description('how much of what is in the database')
   .action(() => {
     const sqlite = getSqlite();
-    const tables = ['companies', 'company_state', 'contacts', 'snapshots', 'vacancies', 'outreach', 'runs'];
+    const tables = ['companies', 'company_state', 'contacts', 'leads', 'site_audits', 'outreach', 'runs'];
     const stats: Record<string, number> = {};
     for (const table of tables) {
       const row = sqlite.prepare(`select count(*) as n from ${table}`).get() as { n: number };
@@ -168,7 +157,7 @@ program
   .argument('<id>', 'source id, see sources:list')
   .option('--slug <slug>', 'one-off ATS slug, not stored')
   .option('-n, --limit <number>', 'how many companies to visit')
-  .option('--full', 'show the full text of the first vacancy')
+  .option('--full', 'show the full text of the first posting')
   .action(async (id: string, opts: { slug?: string; limit?: string; full?: boolean }) => {
     const result = await crawlSource(id, {
       slug: opts.slug,
@@ -192,71 +181,9 @@ program
     console.log(`total ${result.vacancies.length}, errors ${result.errors.length}`);
 
     if (opts.full && result.vacancies[0]) {
-      console.log('\n--- first vacancy ---\n');
+      console.log('\n--- first posting ---\n');
       console.log(result.vacancies[0].url);
       console.log(result.vacancies[0].rawText.slice(0, 1500));
-    }
-  });
-
-program
-  .command('page:normalize')
-  .description('show what is left of a page after normalization')
-  .argument('<target>', 'file path or URL')
-  .action(async (target: string) => {
-    const html = /^https?:\/\//.test(target)
-      ? (await fetchText(target)).body
-      : readFileSync(target, 'utf8');
-    const page = normalizePage(html);
-
-    console.log(`hash ${page.contentHash}, blocks ${page.blocks.length}\n`);
-    console.table(
-      page.blocks.map((b) => ({
-        hash: b.hash,
-        title: (b.title ?? '').slice(0, 44),
-        url: (b.url ?? '').slice(0, 52),
-      })),
-    );
-    console.log('\n--- normalized text ---\n');
-    console.log(page.text);
-  });
-
-program
-  .command('page:check')
-  .description('snapshot a company careers page and show the diff against the previous one')
-  .argument('<domain>', 'company domain from the database')
-  .argument('[url]', 'page, defaults to the company careers_url')
-  .action(async (domain: string, url?: string) => {
-    const db = getDb();
-    const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
-    if (!company) {
-      console.error(`company ${domain} is not in the database, add it with companies:add`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const target = url ?? company.careersUrl;
-    if (!target) {
-      console.error(`${domain} has no careers_url, pass the URL as the second argument`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const { body } = await fetchText(target);
-    const result = await saveSnapshot(company.id, target, body);
-
-    if (result.first) {
-      console.log(`first snapshot, blocks ${result.diff.added.length}, hash ${result.snapshot.contentHash}`);
-    } else if (!result.diff.changed) {
-      console.log(`unchanged, blocks ${result.diff.unchanged}, hash ${result.snapshot.contentHash}`);
-    } else {
-      console.log(`new ${result.diff.added.length}, gone ${result.diff.removed.length}, unchanged ${result.diff.unchanged}`);
-    }
-
-    for (const block of result.diff.added) {
-      console.log(`  + ${block.title ?? ''} ${block.url ?? ''}`);
-    }
-    for (const hash of result.diff.removed) {
-      console.log(`  - block ${hash}`);
     }
   });
 
@@ -288,7 +215,7 @@ program
     console.log(
       '\nHow to use: open a catalog page (Clutch, GoodFirms, DesignRush, Sortlist),' +
         '\nwait for it to load and click the bookmark. Companies go into the database and a summary appears.' +
-        '\nJob Radar has to be running: pnpm start',
+        '\nLead Radar has to be running: pnpm start',
     );
   });
 
@@ -337,54 +264,50 @@ program
 
 program
   .command('source:sync')
-  .description('fetch a source, classify and store it')
+  .description('fetch a board: new companies and the hiring signal')
   .argument('<id>', 'source id')
   .option('--slug <slug>', 'one-off ATS slug')
-  .option('-n, --limit <number>', 'limit the number of companies or vacancies')
-  .option('--skip-llm', 'no model calls, only stop words and weights')
-  .option('--no-detail', 'do not fetch pages of short vacancies')
-  .action(async (id: string, opts: { slug?: string; limit?: string; skipLlm?: boolean; detail?: boolean }) => {
+  .option('-n, --limit <number>', 'limit the number of companies or postings')
+  .action(async (id: string, opts: { slug?: string; limit?: string }) => {
     const result = await syncSource(id, {
       slug: opts.slug,
       limit: opts.limit ? Number(opts.limit) : undefined,
-      skipLlm: opts.skipLlm,
-      noDetail: opts.detail === false,
     });
 
     console.table({
-      found: result.itemsFound,
-      new: result.created,
-      updated: result.updated,
-      'filtered by stop words': result.stopped,
-      classified: result.classified,
-      'for manual review': result.needsReview,
-      'details fetched': result.detailed,
-      closed: result.closed,
+      postings: result.itemsFound,
+      companies: result.companies,
+      'new companies': result.created,
+      'hiring developers': result.hiring,
+      'no company': result.skipped,
       errors: result.errors.length,
     });
     for (const error of result.errors) console.log(`  ! ${error}`);
-    console.log(`model calls left today: ${await remainingBudget()}`);
   });
 
 program
   .command('studios')
-  .description('queue of studios and agencies worth writing to')
+  .description('leads worth writing to, scored')
   .option('-n, --limit <number>', 'how many cards', '20')
   .option('--min <score>', 'minimum score')
   .option('--country <code>', 'filter by country')
+  .option('--market <market>', 'ua or intl')
+  .option('--kind <kind>', 'segment: studio, design, startup, smb, ecommerce...')
   .option('-q, --search <text>', 'search by name, domain or tag')
   .option('--all', 'include those already contacted')
-  .action(async (opts: { limit: string; min?: string; country?: string; search?: string; all?: boolean }) => {
+  .action(async (opts: { limit: string; min?: string; country?: string; market?: string; kind?: string; search?: string; all?: boolean }) => {
     const cards = await studioQueue({
       limit: Number(opts.limit),
       minScore: opts.min ? Number(opts.min) : undefined,
       country: opts.country,
+      market: opts.market,
+      kind: opts.kind,
       search: opts.search,
       includeContacted: opts.all,
     });
 
     if (cards.length === 0) {
-      console.log('the studio queue is empty, try lowering --min or collecting more catalogs');
+      console.log('no leads, try lowering --min or collecting more catalogs');
       return;
     }
 
@@ -396,7 +319,7 @@ program
         size: card.sizeHint ?? '',
         country: card.country ?? '',
         stack: card.techHints.slice(0, 3).join(', '),
-        vacancies: card.openVacancies,
+        hiring: card.hiring ? 'yes' : '',
         status: card.status,
       })),
     );
@@ -408,38 +331,10 @@ program
 
 program
   .command('score:explain')
-  .description('why a vacancy or a company has its score')
-  .argument('<what>', 'vacancy | company')
-  .argument('<id>', 'record id')
-  .action(async (what: string, id: string) => {
-    const db = getDb();
-    if (what === 'vacancy') {
-      const [row] = await db.select().from(vacancies).where(eq(vacancies.id, Number(id)));
-      if (!row) throw new Error('no such vacancy');
-      const [owner] = await db.select().from(companiesTable).where(eq(companiesTable.id, row.companyId));
-      console.log(`${row.title}\n${row.url}\nlocation: ${row.location ?? 'unknown'}\n`);
-      console.log(
-        explain(
-          scoreVacancy({
-            text: row.rawText ?? '',
-            companyDomain: owner?.domain,
-            companySizeHint: owner?.sizeHint,
-            title: row.title,
-            location: row.location,
-            remote: row.remote,
-            salaryMin: row.salaryMin,
-            salaryMax: row.salaryMax,
-            seniority: row.seniority,
-            englishLevelRequired: row.englishLevelRequired,
-            llmRelevance: row.llmRelevance,
-          }),
-        ),
-      );
-      console.log(`\nstored in the database: ${row.score}`);
-      return;
-    }
-
-    const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, Number(id)));
+  .description('why a company has its score')
+  .argument('<id>', 'company id')
+  .action(async (id: string) => {
+    const [company] = await getDb().select().from(companiesTable).where(eq(companiesTable.id, Number(id)));
     if (!company) throw new Error('no such company');
     const breakdown = scoreCompany({ company });
     console.log(`${company.name} ${company.domain}\nscore: ${breakdown.score}`);
@@ -449,50 +344,8 @@ program
   });
 
 program
-  .command('score:recalc')
-  .description('rescore after changing the rules')
-  .action(async () => {
-    const stats = await recalcScores();
-    console.table(stats);
-  });
-
-program
-  .command('queue')
-  .description("today's queue")
-  .option('-n, --limit <number>', 'how many cards')
-  .action(async (opts: { limit?: string }) => {
-    const rows = await queue(opts.limit ? Number(opts.limit) : undefined);
-    if (rows.length === 0) {
-      console.log('the queue is empty');
-      return;
-    }
-
-    console.table(
-      rows.map((row) => ({
-        score: row.score,
-        company: row.company,
-        title: (row.title ?? '').slice(0, 42),
-        stack: row.stack.slice(0, 4).join(', '),
-        location: (row.location ?? '').slice(0, 24),
-        salary: row.salaryMin ? `${row.salaryMin}-${row.salaryMax ?? ''}` : '',
-      })),
-    );
-    for (const row of rows) console.log(`${row.score}  ${row.url}  ${row.why ?? ''}`);
-  });
-
-program
-  .command('classify:pending')
-  .description('catch up on classification for vacancies stored without it')
-  .option('-n, --limit <number>', 'how many records', '20')
-  .action(async (opts: { limit: string }) => {
-    const stats = await classifyPending(Number(opts.limit));
-    console.table(stats);
-    console.log(`model calls left today: ${await remainingBudget()}`);
-  });
-
-program
   .command('discover')
-  .description('find careers pages and the stack of companies without an ATS')
+  .description('find the stack, careers page and ATS of companies')
   .option('-n, --limit <number>', 'how many companies to visit', '25')
   .option('--domain <domain>', 'a specific company')
   .option('--all', 'no limit by interest and stack')
@@ -503,7 +356,7 @@ program
       checked: stats.checked,
       'ATS found': stats.withAts,
       'html page found': stats.withHtml,
-      'no vacancies': stats.none,
+      'no careers page': stats.none,
       'new careers_url': stats.itemsNew,
       errors: stats.errors.length,
     });
@@ -531,36 +384,22 @@ program
 
 program
   .command('export:csv')
-  .description('export the queue or studios to CSV for manual work in a spreadsheet')
-  .argument('<what>', 'queue or studios')
+  .description('export leads to CSV for manual work in a spreadsheet')
+  .argument('<what>', 'studios')
   .option('-o, --out <file>', 'where to write, stdout by default')
   .option('--named', 'only studios with a named contact')
   .action(async (what: string, opts: { out?: string; named?: boolean }) => {
     let csv = '';
 
-    if (what === 'queue') {
-      const cards = await getQueue(todayKey());
-      csv = toCsv(
-        cards.map((card) => ({
-          company: card.company,
-          domain: card.domain,
-          vacancy: card.title,
-          score: card.score,
-          seniority: card.seniority,
-          location: card.location,
-          salary: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
-          stack: card.stack.join(' '),
-          url: card.url,
-          decision: card.decision ?? '',
-        })),
-      );
-    } else if (what === 'studios') {
+    if (what === 'studios') {
       const page = await studioPage({ limit: 1000, withNamedContact: opts.named });
       csv = toCsv(
         page.cards.map((card) => ({
           company: card.name,
           domain: card.domain,
           kind: card.kind,
+          market: card.market ?? '',
+          industry: card.industry ?? '',
           score: card.score,
           location: [card.city, card.country].filter(Boolean).join(', '),
           contact: card.contacts.find((contact) => contact.name)?.name ?? '',
@@ -569,11 +408,12 @@ program
             card.contacts.find((contact) => contact.name && contact.email)?.email ??
             card.contacts.find((contact) => contact.email)?.email ??
             '',
-          vacancies: card.openVacancies,
+          phone: card.phone ?? '',
+          hiring: card.hiring ? 'yes' : '',
         })),
       );
     } else {
-      throw new Error(`unknown export type: ${what}. Available: queue, studios`);
+      throw new Error(`unknown export type: ${what}. Available: studios`);
     }
 
     if (!csv) {
@@ -588,14 +428,6 @@ program
     } else {
       process.stdout.write(csv);
     }
-  });
-
-program
-  .command('queue:top-up')
-  .description("top up today's slice to the daily limit")
-  .action(async () => {
-    const result = await topUpQueue();
-    console.log(`added ${result.added}, the slice now has ${result.total}`);
   });
 
 program
@@ -627,30 +459,10 @@ program
 
 program
   .command('kinds')
-  .description('assign company kinds: studio, design, startup, product, outstaff')
+  .description('assign company segments: studio, design, startup, product, outstaff, smb...')
   .option('--force', 'recompute even where a kind is already set')
   .action(async (opts: { force?: boolean }) => {
     console.table(await backfillKinds(Boolean(opts.force)));
-  });
-
-program
-  .command('careers:sync')
-  .description('check own career pages that are due: snapshot, block diff, new vacancies, closed ones')
-  .option('-n, --limit <n>', 'companies per pass', '30')
-  .option('--skip-llm', 'score without the model')
-  .action(async (opts: { limit: string; skipLlm?: boolean }) => {
-    const result = await syncCareers({ limit: Number(opts.limit), skipLlm: opts.skipLlm });
-    console.table({ checked: result.checked, found: result.itemsFound, new: result.itemsNew, closed: result.closed, errors: result.errors.length });
-    for (const error of result.errors.slice(0, 10)) console.log(`  ! ${error}`);
-  });
-
-program
-  .command('vacancies:merge-weeks')
-  .description('fold vacancies the old weekly dedupe key split into one row each (dry run unless --apply)')
-  .option('--apply', 'write the changes; without it only counts')
-  .option('--limit <n>', 'chains per run', '100000')
-  .action(async (opts: { apply?: boolean; limit: string }) => {
-    console.table(await mergeWeeklyDuplicates({ apply: Boolean(opts.apply), limit: Number(opts.limit) }));
   });
 
 program
@@ -662,19 +474,17 @@ program
 
 program
   .command('stats')
-  .description('stats: top technologies, salaries, vacancy lifetime, funnel')
+  .description('what is in the lead base: segments, markets, sources, reach, funnel')
   .action(async () => {
     const stats = await fullStats();
-    console.log('\ntop technologies');
-    console.table(stats.topTech.slice(0, 15));
-    console.log('\nmedian salary by seniority');
-    console.table(stats.salariesBySeniority);
-    console.log('\nvacancy lifetime');
-    console.table({
-      'median days': stats.lifetimes.medianDays ?? 'no data yet',
-      closed: stats.lifetimes.closedCount,
-      'suspected ghost jobs': stats.lifetimes.ghosts.length,
-    });
+    console.log('\nby segment');
+    console.table(stats.byKind);
+    console.log('\nby market');
+    console.table(stats.byMarket);
+    console.log('\nby source');
+    console.table(stats.bySource);
+    console.log('\nreach');
+    console.table(stats.reach);
     console.log('\nfunnel');
     console.table(stats.funnel);
   });
@@ -720,7 +530,7 @@ program
         case 'broken':
           return notify.broken({ sender });
         case 'test':
-          return notify.raw('Job Radar is online', { sender });
+          return notify.raw('Lead Radar is online', { sender });
         case 'help':
           return notify.raw(HELP_TEXT, { sender });
         case 'status':
@@ -745,10 +555,11 @@ program
       'companies',
       'company_state',
       'contacts',
-      'vacancies',
-      'snapshots',
+      'leads',
+      'site_audits',
+      'templates',
+      'saved_filters',
       'outreach',
-      'queue_items',
       'llm_cache',
       'llm_usage',
       'runs',
@@ -798,10 +609,9 @@ program
       for (const check of localChecks()) console.log(`${marks[check.level]} ${check.what}: ${check.message}`);
 
       const [companyCount] = await getDb().select({ n: sql<number>`count(*)` }).from(companiesTable);
-      const [vacancyCount] = await getDb().select({ n: sql<number>`count(*)` }).from(vacancies);
-      console.log(`db: ${companyCount?.n ?? 0} companies, ${vacancyCount?.n ?? 0} vacancies`);
+      console.log(`db: ${companyCount?.n ?? 0} companies`);
       if (!companyCount?.n) {
-        console.log('next: pnpm cli import:csv imports/seed-companies.csv, then pnpm cli source:sync greenhouse');
+        console.log('next: pnpm cli import:csv imports/seed-companies.csv, then pnpm cli catalog:dou');
       }
       console.log('\nfor a deployed worker: pnpm cli doctor https://<your-worker>.workers.dev --token <RADAR_TOKEN>');
       return;
@@ -838,19 +648,6 @@ program
     console.log(
       `/api/companies: ${companies.status}, ${Array.isArray(data) ? `${data.length} records` : JSON.stringify(data).slice(0, 160)}`,
     );
-  });
-
-program
-  .command('fix:detail')
-  .description('re-read vacancies that stored the site menu instead of a description')
-  .option('--limit <n>', 'how many pages to open per pass', '50')
-  .option('--source <id>', 'source whose vacancies to re-read', 'getro')
-  .action(async (options: { limit: string; source: string }) => {
-    const report = await refreshDetails({ limit: Number(options.limit), source: options.source });
-    console.log(
-      `checked ${report.checked}, fixed ${report.fixed}, unchanged ${report.unchanged}, still no description ${report.stillEmpty}`,
-    );
-    if (report.fixed > 0) console.log('next: pnpm cli classify:pending to reclassify');
   });
 
 program
@@ -899,12 +696,10 @@ program
   .description('prepare letter drafts')
   .option('--limit <n>', 'how many companies to take', '20')
   .option('--dry-run', 'show them and write nothing to the database')
-  .option('--ai', 'the model writes the first paragraph, with validation and fallback')
-  .action(async (options: { limit: string; dryRun?: boolean; ai?: boolean }) => {
+  .action(async (options: { limit: string; dryRun?: boolean }) => {
     const report = await prepareDrafts({
       limit: Number(options.limit),
       dryRun: Boolean(options.dryRun),
-      ai: Boolean(options.ai),
     });
 
     for (const draft of report.drafts) {
@@ -914,8 +709,6 @@ program
       );
       console.log(`subject: ${draft.subject || '(empty)'}`);
       console.log(draft.body.trim() || '(empty body)');
-      if (draft.aiUsed) console.log('intro: model');
-      else if (draft.aiFallbackReason) console.log(`intro: fell back to the template, ${draft.aiFallbackReason}`);
       if (draft.error) console.log(`! ${draft.error}`);
     }
 
@@ -975,14 +768,11 @@ program
 
 program
   .command('outreach:stats')
-  .description('template conversion, validation fallbacks, bounces')
+  .description('conversion by template and by segment, bounces')
   .action(async () => {
     const stats = await outreachStats();
     console.table(stats.byTemplate);
-    console.log(`AI: ${stats.ai.sent} sent, ${stats.ai.positive} positive`);
-    console.log(`template: ${stats.static.sent} sent, ${stats.static.positive} positive`);
-    console.log(`validation fallbacks: ${Math.round(stats.fallbackShare * 100)} percent`);
-    for (const item of stats.fallbacks) console.log(`  ${item.reason}: ${item.count}`);
+    console.table(stats.byKind);
     console.log(`bounces: ${Math.round(stats.bounceRate * 100)} percent`);
     console.log(
       `median time to reply: ${stats.medianReplyHours === null ? 'none yet' : `${stats.medianReplyHours.toFixed(1)} h`}`,
@@ -1041,9 +831,9 @@ program
     // Non-ASCII in the subject on purpose, a Cyrillic word included: that is where encoding breaks.
     const result = await deliver({
       to,
-      subject: 'Job Radar: encoding check, тест, café',
+      subject: 'Lead Radar: encoding check, тест, café',
       body: [
-        'This is a technical letter from Job Radar.',
+        'This is a technical letter from Lead Radar.',
         '',
         'If the subject and this line read without garbled characters, the encoding is right.',
         '',

@@ -60,12 +60,12 @@ interface OperationGroup {
 const GROUPS: OperationGroup[] = [
   {
     title: 'Collection',
-    note: 'where companies and vacancies come from',
+    note: 'where companies come from',
     items: [
       {
         id: 'catalog-yc',
         label: 'YC catalog',
-        hint: 'startups hiring right now. Gives no vacancies, gives entry points for discovery',
+        hint: 'startups hiring right now: founders worth a letter',
         path: '/catalogs/yc/run',
         slow: true,
       },
@@ -102,7 +102,7 @@ const GROUPS: OperationGroup[] = [
       {
         id: 'discover',
         label: 'Find career pages',
-        hint: 'crawls companies without an ATS: /careers, /jobs, the footer. Once found, never searched again',
+        hint: 'the stack, careers page and ATS of a company site. Once found, never searched again',
         path: '/discover',
         slow: true,
         batch: { field: 'limit', size: 5 },
@@ -124,29 +124,9 @@ const GROUPS: OperationGroup[] = [
     note: 'what to do with what is already collected',
     items: [
       {
-        id: 'classify',
-        label: 'Catch up on classification',
-        hint: 'vacancies without a model opinion, highest score first. Spends the daily budget',
-        path: '/classify/pending',
-        slow: true,
-        fields: [{ name: 'limit', label: 'vacancies', kind: 'number', def: 50 }],
-      },
-      {
-        id: 'recalc',
-        label: 'Rescore',
-        hint: 'after changing the rules. No model calls, plain arithmetic',
-        path: '/score/recalc',
-      },
-      {
-        id: 'top-up',
-        label: 'Top up the queue',
-        hint: 'add cards to today\'s slice up to the daily limit',
-        path: '/queue/top-up',
-      },
-      {
         id: 'kinds',
         label: 'Assign company kinds',
-        hint: 'studio, design, startup, product, outstaff. From tags and description',
+        hint: 'studio, design, startup, product, outstaff from tags and description. Segments a source set stay',
         path: '/maintenance/kinds',
       },
       {
@@ -154,36 +134,6 @@ const GROUPS: OperationGroup[] = [
         label: 'Split catalog fields',
         hint: 'hourly rate, minimum project and founding year from tags into columns',
         path: '/maintenance/backfill-catalog',
-      },
-      {
-        id: 'fix-detail',
-        label: 'Re-read vacancy descriptions',
-        hint: 'for Next.js boards where the site menu was stored instead of the description',
-        path: '/maintenance/fix-detail',
-        slow: true,
-        fields: [
-          { name: 'limit', label: 'pages', kind: 'number', def: 25 },
-          { name: 'source', label: 'source', kind: 'select', def: 'getro', options: ['getro', 'djinni', 'dou:vacancies'] },
-        ],
-      },
-      {
-        id: 'careers-sync',
-        label: 'Check career pages',
-        hint: 'own pages of companies without an ATS that are due: new vacancies, closed ones',
-        path: '/careers/run',
-        slow: true,
-        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 10 }],
-      },
-      {
-        id: 'merge-duplicates',
-        label: 'Merge weekly duplicates',
-        hint: 'folds the vacancies the old weekly key split into one row each. "check" only counts',
-        path: '/maintenance/merge-duplicates',
-        slow: true,
-        fields: [
-          { name: 'mode', label: 'mode', kind: 'select', def: 'check', options: ['check', 'apply'] },
-          { name: 'limit', label: 'chains per run', kind: 'number', def: 100 },
-        ],
       },
       {
         id: 'embed',

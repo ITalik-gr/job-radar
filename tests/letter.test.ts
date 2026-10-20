@@ -7,7 +7,6 @@ const context = {
   contactName: 'Anton Malyy',
   kind: 'design',
   stack: ['react', 'next.js'],
-  vacancyTitle: 'Frontend Developer',
 };
 
 describe('filling a letter template', () => {
@@ -90,53 +89,53 @@ describe('mailto', () => {
 });
 
 /*
- * The first paragraph is the owner's text just like the letter body, and placeholders must work
- * in it. It used to be inserted as a ready string, and `{{company}}` typed into the paragraph
- * field reached the mail as curly braces.
+ * A fallback after a bar covers the cases a template author knows will happen: a shared mailbox
+ * has no name, a site without an audit has no finding. Without it such a letter is blocked.
  */
-describe('placeholders inside the first paragraph', () => {
-  it('the paragraph goes through substitution rather than being inserted as is', () => {
-    const { text } = renderLetter('{{intro}} More text.', {
-      ...context,
-      intro: 'Saw {{company}} and their {{their_stack}}.',
-    });
-
-    expect(text).toBe('Saw Acme Studio and their react, next.js. More text.');
-  });
-
-  it('an empty placeholder in the paragraph is reported when the template uses the paragraph', () => {
-    const { text, missing } = renderLetter('{{intro}}', {
+describe('fallbacks', () => {
+  it('the fallback is used when the value is empty, and nothing is reported missing', () => {
+    const { text, missing } = renderLetter('Вітаю, {{first_name|колеги}}.', {
       company: 'Acme',
       domain: 'acme.com',
-      intro: 'Hi {{contact_name}}.',
     });
 
-    expect(text).not.toContain('{{');
-    expect(missing).toContain('contact_name');
-  });
-
-  it('a template without the paragraph marker does not complain about its contents', () => {
-    const { missing, unknown } = renderLetter('Just text about {{company}}.', {
-      company: 'Acme',
-      domain: 'acme.com',
-      intro: 'A draft with {{compnay}} and {{contact_name}}.',
-    });
-
+    expect(text).toBe('Вітаю, колеги.');
     expect(missing).toEqual([]);
-    expect(unknown).toEqual([]);
   });
 
-  it('the paragraph marker inside the paragraph itself is an error, not recursion', () => {
-    const { text, unknown } = renderLetter('{{intro}}', {
+  it('the value wins over the fallback when there is one', () => {
+    const { text } = renderLetter('Hi {{first_name|there}},', context);
+    expect(text).toBe('Hi Anton,');
+  });
+
+  it('an empty fallback makes a placeholder optional', () => {
+    const { text, missing } = renderLetter('About {{company}}. {{finding|}}', {
       company: 'Acme',
       domain: 'acme.com',
-      intro: 'Text {{intro}} text',
     });
 
-    expect(text).toBe('Text text');
-    expect(unknown).toContain('intro');
+    expect(text).toBe('About Acme.');
+    expect(missing).toEqual([]);
   });
 
+  it('a typo stays an unknown token even with a fallback', () => {
+    const { unknown } = renderLetter('{{compnay|x}}', context);
+    expect(unknown).toContain('compnay');
+  });
+
+  it('site, industry, finding and lead title are filled in', () => {
+    const { text } = renderLetter('{{site}} {{industry}}: {{finding}} ({{lead_title}})', {
+      ...context,
+      industry: 'dental',
+      finding: 'loads 9 s on a phone',
+      leadTitle: 'New website',
+    });
+
+    expect(text).toBe('https://acme.com dental: loads 9 s on a phone (New website)');
+  });
+});
+
+describe('subject', () => {
   it('placeholders work in the subject too', () => {
     const { text } = renderLetter('Frontend for {{company}}, {{country}}', {
       ...context,

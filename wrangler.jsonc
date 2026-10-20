@@ -55,7 +55,7 @@
 	"vars": {
 		"ANTHROPIC_MODEL": "claude-haiku-4-5-20251001",
 		// First paragraph of the letter. A stronger model: there are dozens of calls and a human reads the text.
-		"OUTREACH_MODEL": "claude-sonnet-5",
+		"VERDICT_MODEL": "claude-sonnet-5",
 		// anthropic | workers-ai. The latter is the included quota of the paid plan instead of a token bill.
 		"LLM_PROVIDER": "anthropic",
 		"WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"

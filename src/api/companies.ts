@@ -1,15 +1,9 @@
 import { Hono } from 'hono';
-import { and, desc, eq, like, or, sql } from 'drizzle-orm';
+import { and, desc, eq, like, or } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
-import {
-  companies,
-  companyState,
-  contacts,
-  outreach,
-  snapshots,
-  vacancies,
-} from '../db/schema.js';
+import { companies, companyState, contacts, leads, outreach, siteAudits } from '../db/schema.js';
 import { scoreCompany } from '../pipeline/company-score.js';
+import { hiringNow } from '../pipeline/hiring.js';
 import { normalizeEmail, rememberContact } from '../pipeline/outreach.js';
 import { refreshCompany } from '../pipeline/refresh.js';
 import { companyVerdict } from '../pipeline/verdict.js';
@@ -17,87 +11,52 @@ import { deleteContact, updateContact } from '../pipeline/contacts.js';
 
 export const companiesRoutes = new Hono();
 
-/** Count open vacancies with a subquery, so they are not all loaded into memory. */
-const openVacancies = sql<number>`(
-  select count(*) from ${vacancies}
-  where ${vacancies.companyId} = ${companies.id} and ${vacancies.closedAt} is null
-)`;
-
 companiesRoutes.get('/', async (c) => {
   const db = getDb();
   const status = c.req.query('status');
   const country = c.req.query('country');
+  const market = c.req.query('market');
+  const kind = c.req.query('kind');
   const ats = c.req.query('ats');
   const search = c.req.query('q');
 
   const filters = [
     status ? eq(companyState.status, status) : undefined,
     country ? eq(companies.country, country) : undefined,
+    market ? eq(companies.market, market) : undefined,
+    kind ? eq(companies.kind, kind) : undefined,
     ats ? eq(companies.careersKind, ats) : undefined,
     search
       ? or(like(companies.name, `%${search}%`), like(companies.domain, `%${search}%`))
       : undefined,
   ].filter(Boolean);
 
+  /*
+   * The whole row, not a column list: a hand-written list is what drifted away from the schema
+   * before, and the score here stopped matching the same score on Studios.
+   */
   const rows = await db
-    .select({
-      id: companies.id,
-      name: companies.name,
-      domain: companies.domain,
-      country: companies.country,
-      city: companies.city,
-      sizeHint: companies.sizeHint,
-      tags: companies.tags,
-      description: companies.description,
-      sourceUrl: companies.sourceUrl,
-      careersKind: companies.careersKind,
-      careersUrl: companies.careersUrl,
-      techHints: companies.techHints,
-      sources: companies.sources,
-      lastChecked: companies.lastChecked,
-      /*
-       * The fields company scoring reads. Without them the score on this page was computed from an
-       * incomplete company and did not match the same score on Studios: kind, abandoned site signs
-       * and catalog reputation simply never got here.
-       */
-      kind: companies.kind,
-      copyrightYear: companies.copyrightYear,
-      lastPostAt: companies.lastPostAt,
-      rating: companies.rating,
-      reviewsCount: companies.reviewsCount,
-      hourlyRate: companies.hourlyRate,
-      minProject: companies.minProject,
-      foundedYear: companies.foundedYear,
-      status: companyState.status,
-      snoozedUntil: companyState.snoozedUntil,
-      openVacancies: openVacancies.as('open_vacancies'),
-    })
+    .select({ company: companies, status: companyState.status, snoozedUntil: companyState.snoozedUntil })
     .from(companies)
     .leftJoin(companyState, eq(companyState.companyId, companies.id))
     .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(companies.name);
 
-  // Sort by studio score rather than vacancy count: otherwise giants with hundreds of positions
-  // settle at the top forever, and applying there makes no sense.
-  const scored = rows.map((row) => ({
-    ...row,
-    score: scoreCompany({
-      // The row already has every column scoring reads, so there is no need to list them again:
-      // that very list is what drifted away from the schema.
-      company: row as never,
-      openVacancies: row.openVacancies,
-      status: row.status,
-    }).score,
-  }));
+  const now = Date.now();
+  const scored = rows.map(({ company, status: state, snoozedUntil }) => {
+    // The embedding is a long vector nobody reads in a table.
+    const { embedding: _embedding, ...rest } = company;
+    return {
+      ...rest,
+      status: state,
+      snoozedUntil,
+      hiring: hiringNow(company, now),
+      score: scoreCompany({ company, status: state }).score,
+    };
+  });
 
   const sort = c.req.query('sort') ?? 'score';
-  scored.sort((a, b) =>
-    sort === 'vacancies'
-      ? b.openVacancies - a.openVacancies
-      : sort === 'name'
-        ? a.name.localeCompare(b.name)
-        : b.score - a.score,
-  );
+  scored.sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : b.score - a.score));
 
   return c.json(scored);
 });
@@ -114,28 +73,19 @@ companiesRoutes.get('/:id', async (c) => {
   return c.json({
     company,
     state: state ?? null,
-    vacancies: await db
-      .select()
-      .from(vacancies)
-      .where(eq(vacancies.companyId, id))
-      .orderBy(desc(vacancies.firstSeen)),
     contacts: await db.select().from(contacts).where(eq(contacts.companyId, id)),
     outreach: await db
       .select()
       .from(outreach)
       .where(eq(outreach.companyId, id))
       .orderBy(desc(outreach.sentAt)),
-    snapshots: await db
-      .select({
-        id: snapshots.id,
-        url: snapshots.url,
-        fetchedAt: snapshots.fetchedAt,
-        contentHash: snapshots.contentHash,
-        blocks: sql<number>`json_array_length(${snapshots.blockHashes})`,
-      })
-      .from(snapshots)
-      .where(eq(snapshots.companyId, id))
-      .orderBy(desc(snapshots.fetchedAt)),
+    audits: await db
+      .select()
+      .from(siteAudits)
+      .where(eq(siteAudits.companyId, id))
+      .orderBy(desc(siteAudits.checkedAt))
+      .limit(5),
+    leads: await db.select().from(leads).where(eq(leads.companyId, id)).orderBy(desc(leads.firstSeen)),
   });
 });
 

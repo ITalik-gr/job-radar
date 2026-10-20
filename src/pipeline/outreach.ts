@@ -1,28 +1,29 @@
 import { chunk, rowsPerQuery } from '../lib/chunk.js';
-import { and, desc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import {
   companies,
   companyState,
   contacts,
   outreach,
+  leads,
+  siteAudits,
   templates,
-  vacancies,
+  type Company,
   type Contact,
   type Template,
 } from '../db/schema.js';
 import { renderLetter, type LetterContext } from '../lib/letter.js';
 import { log } from '../lib/log.js';
 import { readSetting, writeSetting } from '../lib/settings-store.js';
-import { rules } from './rules.js';
-import { generateParagraph } from './ai-paragraph.js';
+import { marketOf } from './companies.js';
 import { enrich } from './enrich.js';
 
 /**
  * Preparing sending drafts. The rules are in section 7 of CLAUDE.md.
  *
  * There is neither sending nor model calls here: a draft is built from a template the owner
- * wrote and from facts already in the database. Sending is a separate step, and between it
+ * wrote and from data already in the database. The model never writes letter text. Sending is a separate step, and between it
  * and this file there is always a person with a button.
  *
  * Template choice is deterministic on purpose. A model that picks the tone of a letter gives
@@ -30,7 +31,11 @@ import { enrich } from './enrich.js';
  * particular text becomes impossible.
  */
 
-export const OUTREACH_TARGETS = ['vacancy', 'studio_named', 'studio_generic', 'followup'] as const;
+/**
+ * Sending roles. The names are historical: `studio_named` means "a named person", whatever the
+ * segment, `studio_generic` means "a shared mailbox". The segment is matched by `for_kind`.
+ */
+export const OUTREACH_TARGETS = ['studio_named', 'studio_generic', 'followup'] as const;
 export type OutreachTarget = (typeof OUTREACH_TARGETS)[number];
 
 export type Language = 'uk' | 'en';
@@ -92,25 +97,22 @@ export function isGenericEmail(email: string | null | undefined): boolean {
  * know Polish ends the conversation on the first line.
  */
 export function pickLanguage(country: string | null | undefined): Language {
-  const value = (country ?? '').trim().toLowerCase();
-  return value === 'ua' || value === 'ukraine' || value === 'україна' ? 'uk' : 'en';
+  return marketOf(country) === 'ua' ? 'uk' : 'en';
 }
 
 export interface TargetInput {
-  hasVacancy: boolean;
   contactName?: string | null;
   contactEmail?: string | null;
 }
 
-/** Three cases, three templates. No in-between states and no model in the decision. */
+/** Two cases, two templates. No in-between states and no model in the decision. */
 export function pickTargetType(input: TargetInput): OutreachTarget {
-  if (input.hasVacancy) return 'vacancy';
   const named = Boolean(input.contactName?.trim()) && !isGenericEmail(input.contactEmail);
   return named ? 'studio_named' : 'studio_generic';
 }
 
 /**
- * A named contact is worth more than a generic mailbox, section 9 of CLAUDE.md, so the order
+ * A named contact is worth more than a generic mailbox, section 5 of CLAUDE.md, so the order
  * is: named with an email, then anyone with an email, then anyone.
  */
 export function pickContact(list: Contact[]): Contact | null {
@@ -127,19 +129,22 @@ export interface DraftCandidate {
   country: string | null;
   city: string | null;
   kind: string | null;
+  industry: string | null;
   sizeHint: string | null;
   techHints: string[];
   tags: string[];
   description: string | null;
-  vacancyId: number | null;
-  vacancyTitle: string | null;
-  vacancyStack: string[];
+  /** The first issue of the latest site audit. */
+  finding: string | null;
+  /** The open lead this letter would answer, if any. */
+  leadId: number | null;
+  leadTitle: string | null;
   contact: Contact | null;
 }
 
 export interface PreparedDraft {
   companyId: number;
-  vacancyId: number | null;
+  leadId: number | null;
   contactId: number | null;
   templateId: number;
   templateSlug: string;
@@ -149,10 +154,6 @@ export interface PreparedDraft {
   body: string;
   contactName: string | null;
   contactEmail: string | null;
-  /** Whether the model wrote the first paragraph. Stored separately as material for comparison. */
-  aiUsed: boolean;
-  aiParagraph: string | null;
-  aiFallbackReason: string | null;
   /** Why the draft is not ready to send. null means ready. */
   error: string | null;
 }
@@ -166,25 +167,21 @@ export function buildDraft(
   candidate: DraftCandidate,
   template: Template,
   language: Language,
-  /** A ready first paragraph. Empty means the static text from the template. */
-  intro?: string | null,
   /** The shared signature. Empty means letters go out without one. */
   signature?: string | null,
-): Omit<
-  PreparedDraft,
-  'companyId' | 'vacancyId' | 'contactId' | 'aiUsed' | 'aiParagraph' | 'aiFallbackReason'
-> {
+): Omit<PreparedDraft, 'companyId' | 'leadId' | 'contactId'> {
   const context: LetterContext = {
     company: candidate.company,
     domain: candidate.domain,
     contactName: candidate.contact?.name ?? null,
     kind: candidate.kind,
-    stack: candidate.vacancyStack.length > 0 ? candidate.vacancyStack : candidate.techHints,
-    vacancyTitle: candidate.vacancyTitle,
+    industry: candidate.industry,
+    stack: candidate.techHints,
+    finding: candidate.finding,
+    leadTitle: candidate.leadTitle,
     city: candidate.city,
     country: candidate.country,
     language: template.language,
-    intro: intro ?? template.intro ?? '',
     signature: signature ?? '',
   };
 
@@ -234,17 +231,7 @@ export function buildDraft(
   };
 }
 
-/**
- * Starter sending templates: four cases in two languages.
- *
- * There is no letter text here on purpose. The tool gives a skeleton: greeting, signature,
- * placeholders and spots in square brackets, and the owner writes the words. The reason is
- * section 11 of CLAUDE.md, and the fact that the second paragraph of a cold letter is facts
- * about a person: generated, it would mean made-up experience in a letter to a stranger.
- *
- * The Ukrainian seeds keep Ukrainian greetings, subjects and bracket notes: that is the
- * letter language, not interface copy.
- */
+/** The settings key of the signature shared by all letters. */
 export const SIGNATURE_KEY = 'outreach.signature';
 
 /**
@@ -256,8 +243,6 @@ export const SIGNATURE_KEY = 'outreach.signature';
  * safe default: the letter is signed by whoever fills it in on the Templates page.
  */
 export const DEFAULT_SIGNATURE = '';
-
-const SIGNATURE = DEFAULT_SIGNATURE;
 
 export async function readSignature(): Promise<string> {
   return (await readSetting<string>(SIGNATURE_KEY, DEFAULT_SIGNATURE)) || '';
@@ -275,63 +260,44 @@ interface OutreachSeed {
   language: Language;
   subject: string;
   greeting: string;
-  hint: string;
 }
 
+/**
+ * Starter skeletons. Greeting, placeholders with fallbacks and spots in square brackets: the
+ * owner writes the words. A Ukrainian seed keeps a Ukrainian greeting, that is letter content.
+ */
 const OUTREACH_SEEDS: OutreachSeed[] = [
   {
-    slug: 'send_vacancy_uk',
-    name: 'Vacancy, Ukrainian',
-    targetType: 'vacancy',
-    language: 'uk',
-    subject: '{{vacancy_title}}, {{company}}',
-    greeting: 'Вітаю.',
-    hint: 'вакансія {{vacancy_title}}, стек {{their_stack}}',
-  },
-  {
-    slug: 'send_vacancy_en',
-    name: 'Vacancy, English',
-    targetType: 'vacancy',
-    language: 'en',
-    subject: '{{vacancy_title}} at {{company}}',
-    greeting: 'Hello,',
-    hint: 'role {{vacancy_title}}, stack {{their_stack}}',
-  },
-  {
-    slug: 'send_studio_named_uk',
-    name: 'Studio, named contact, Ukrainian',
+    slug: 'send_named_uk',
+    name: 'Named contact, Ukrainian',
     targetType: 'studio_named',
     language: 'uk',
-    subject: 'Фронтенд для {{company}}',
+    subject: '{{company}}: [тема]',
     greeting: 'Вітаю, {{first_name}}.',
-    hint: 'студія {{company}}, {{domain}}',
   },
   {
-    slug: 'send_studio_named_en',
-    name: 'Studio, named contact, English',
+    slug: 'send_named_en',
+    name: 'Named contact, English',
     targetType: 'studio_named',
     language: 'en',
-    subject: 'Front-end help for {{company}}',
+    subject: '{{company}}: [subject]',
     greeting: 'Hi {{first_name}},',
-    hint: 'studio {{company}}, {{domain}}',
   },
   {
-    slug: 'send_studio_generic_uk',
-    name: 'Studio, shared inbox, Ukrainian',
+    slug: 'send_generic_uk',
+    name: 'Shared inbox, Ukrainian',
     targetType: 'studio_generic',
     language: 'uk',
-    subject: 'Фронтенд для {{company}}',
+    subject: '{{company}}: [тема]',
     greeting: 'Вітаю.',
-    hint: 'студія {{company}}, {{domain}}',
   },
   {
-    slug: 'send_studio_generic_en',
-    name: 'Studio, shared inbox, English',
+    slug: 'send_generic_en',
+    name: 'Shared inbox, English',
     targetType: 'studio_generic',
     language: 'en',
-    subject: 'Front-end help for {{company}}',
+    subject: '{{company}}: [subject]',
     greeting: 'Hello,',
-    hint: 'studio {{company}}, {{domain}}',
   },
   {
     slug: 'send_followup_uk',
@@ -341,7 +307,6 @@ const OUTREACH_SEEDS: OutreachSeed[] = [
     // The subject is empty on purpose: a follow-up goes in the same thread under the original subject.
     subject: '',
     greeting: 'Вітаю ще раз.',
-    hint: 'два речення, не більше',
   },
   {
     slug: 'send_followup_en',
@@ -350,35 +315,23 @@ const OUTREACH_SEEDS: OutreachSeed[] = [
     language: 'en',
     subject: '',
     greeting: 'Hello again,',
-    hint: 'two sentences, no more',
   },
 ];
 
-function seedBody(seed: OutreachSeed): { intro: string; body: string } {
-  const first =
-    seed.language === 'uk'
-      ? `[перший абзац про компанію, 2 речення: ${seed.hint}]`
-      : `[first paragraph about the company, 2 sentences: ${seed.hint}]`;
-  const second =
-    seed.language === 'uk'
-      ? '[другий абзац: ваш досвід і стек. Пишеться один раз і далі не міняється]'
-      : '[second paragraph: your experience and stack. Written once, then left alone]';
-  const third =
-    seed.language === 'uk'
-      ? '[третій абзац: одне посилання і одне питання]'
-      : '[third paragraph: one link and one question]';
-
-  /*
-   * The first paragraph sits in the body as a placeholder, not as text. That paragraph and
-   * only that one is what the model rewrites, so a single value gets substituted rather than
-   * a piece of a string found by matching.
-   */
+function seedBody(seed: OutreachSeed): string {
+  const uk = seed.language === 'uk';
   const parts =
     seed.targetType === 'followup'
-      ? [seed.greeting, '{{intro}}']
-      : [seed.greeting, '{{intro}}', second, third];
-
-  return { intro: first, body: `${parts.join('\n\n')}\n\n${SIGNATURE}\n` };
+      ? [seed.greeting, uk ? '[два речення, не більше]' : '[two sentences, no more]']
+      : [
+          seed.greeting,
+          uk
+            ? '[перший абзац про {{company}}. {{finding|}} можна вставити як привід]'
+            : '[first paragraph about {{company}}. {{finding|}} works as the reason to write]',
+          uk ? '[другий абзац: що ви робите і для кого]' : '[second paragraph: what you do and for whom]',
+          uk ? '[третій абзац: одне посилання і одне питання]' : '[third paragraph: one link and one question]',
+        ];
+  return `${parts.join('\n\n')}\n\n{{signature}}\n`;
 }
 
 /**
@@ -402,11 +355,11 @@ export async function seedOutreachTemplates(): Promise<number> {
       slice.map((seed) => ({
         slug: seed.slug,
         name: seed.name,
-        kind: seed.targetType === 'vacancy' ? 'vacancy' : 'studio',
+        kind: 'studio',
         targetType: seed.targetType,
         language: seed.language,
         subject: seed.subject,
-        ...seedBody(seed),
+        body: seedBody(seed),
         note: 'Starter skeleton. Replace the text in square brackets with your own.',
       })),
     );
@@ -425,29 +378,70 @@ export async function outreachTemplates(): Promise<Template[]> {
     .where(and(eq(templates.archived, false), sql`${templates.targetType} is not null`));
 }
 
+/**
+ * The template for a role, a language and a segment. A template written for this exact segment
+ * (`for_kind`) wins over a universal one: a clinic and a design studio get different letters.
+ */
 export function matchTemplate(
   list: Template[],
   target: OutreachTarget,
   language: Language,
+  kind?: string | null,
 ): Template | null {
-  const byTarget = list.filter((row) => row.targetType === target);
-  return byTarget.find((row) => row.language === language) ?? null;
+  const fitting = list.filter((row) => row.targetType === target && row.language === language);
+  return (
+    (kind ? fitting.find((row) => row.forKind === kind) : undefined) ??
+    fitting.find((row) => !row.forKind) ??
+    null
+  );
+}
+
+/** Everything a letter needs about one company: the audit finding, the open lead, the contact. */
+async function candidateFor(company: Company): Promise<DraftCandidate> {
+  const db = getDb();
+  const [audit] = await db
+    .select({ issues: siteAudits.issues })
+    .from(siteAudits)
+    .where(eq(siteAudits.companyId, company.id))
+    .orderBy(desc(siteAudits.checkedAt))
+    .limit(1);
+  const [lead] = await db
+    .select({ id: leads.id, title: leads.title })
+    .from(leads)
+    .where(and(eq(leads.companyId, company.id), isNull(leads.closedAt), ne(leads.status, 'skipped')))
+    .orderBy(sql`coalesce(${leads.deadlineAt}, 9e15)`)
+    .limit(1);
+  const list = await db.select().from(contacts).where(eq(contacts.companyId, company.id));
+
+  return {
+    companyId: company.id,
+    company: company.name,
+    domain: company.domain,
+    country: company.country,
+    city: company.city,
+    kind: company.kind,
+    industry: company.industry,
+    sizeHint: company.sizeHint,
+    techHints: company.techHints,
+    tags: company.tags,
+    description: company.description,
+    finding: audit?.issues[0] ?? null,
+    leadId: lead?.id ?? null,
+    leadTitle: lead?.title ?? null,
+    contact: pickContact(list),
+  };
 }
 
 /**
- * Letter candidates: a company not yet written to and not rejected.
- *
- * The best open vacancy above the threshold is taken. If there is none, that is no reason to
- * skip the company: studios get letters without a vacancy too, which is what the separate
- * templates are for.
+ * Letter candidates: a company not yet written to, not rejected, with an address. A company
+ * with an open lead goes first: it asked for something.
  */
 export async function draftCandidates(limit = 20): Promise<DraftCandidate[]> {
   const db = getDb();
-  const threshold = rules().threshold;
   const since = Date.now() - RECONTACT_DAYS * 86_400_000;
 
   const rows = await db
-    .select({ company: companies, state: companyState })
+    .select({ company: companies })
     .from(companies)
     .leftJoin(companyState, eq(companyState.companyId, companies.id))
     .where(
@@ -479,54 +473,16 @@ export async function draftCandidates(limit = 20): Promise<DraftCandidate[]> {
         )`,
       ),
     )
-    // A company with an open vacancy above the threshold beats a cold studio.
     .orderBy(
       sql`exists (
-        select 1 from ${vacancies}
-        where ${vacancies.companyId} = ${companies.id}
-          and ${vacancies.closedAt} is null
-          and coalesce(${vacancies.score}, -100) >= ${threshold}
+        select 1 from ${leads}
+        where ${leads.companyId} = ${companies.id} and ${leads.closedAt} is null
       ) desc`,
     )
     .limit(limit);
 
   const result: DraftCandidate[] = [];
-  for (const { company } of rows) {
-    const [vacancy] = await db
-      .select()
-      .from(vacancies)
-      .where(
-        and(
-          eq(vacancies.companyId, company.id),
-          isNull(vacancies.closedAt),
-          // null means classification has not happened yet: such a vacancy is still a candidate.
-          sql`coalesce(${vacancies.isVacancy}, 1) = 1`,
-          sql`coalesce(${vacancies.score}, -100) >= ${threshold}`,
-        ),
-      )
-      .orderBy(desc(vacancies.score))
-      .limit(1);
-
-    const list = await db.select().from(contacts).where(eq(contacts.companyId, company.id));
-
-    result.push({
-      companyId: company.id,
-      company: company.name,
-      domain: company.domain,
-      country: company.country,
-      city: company.city,
-      kind: company.kind,
-      sizeHint: company.sizeHint,
-      techHints: company.techHints,
-      tags: company.tags,
-      description: company.description,
-      vacancyId: vacancy?.id ?? null,
-      vacancyTitle: vacancy?.title ?? null,
-      vacancyStack: vacancy?.stack ?? [],
-      contact: pickContact(list),
-    });
-  }
-
+  for (const { company } of rows) result.push(await candidateFor(company));
   return result;
 }
 
@@ -546,7 +502,7 @@ export interface PrepareReport {
  * template turned out wrong.
  */
 export async function prepareDrafts(
-  options: { limit?: number; dryRun?: boolean; ai?: boolean; enrichLimit?: number } = {},
+  options: { limit?: number; dryRun?: boolean; enrichLimit?: number } = {},
 ): Promise<PrepareReport> {
   const db = getDb();
   const limit = options.limit ?? 20;
@@ -586,7 +542,7 @@ export async function prepareDrafts(
       try {
         await enrich({ domain: candidate.domain, limit: 1 });
         const [refreshed] = await draftCandidatesFor([candidate.companyId]);
-        if (refreshed) candidate = { ...refreshed, vacancyId: candidate.vacancyId, vacancyTitle: candidate.vacancyTitle, vacancyStack: candidate.vacancyStack };
+        if (refreshed) candidate = refreshed;
       } catch (error) {
         log.warn({ domain: candidate.domain, err: String(error) }, 'crawling the site before the letter failed');
       }
@@ -608,12 +564,11 @@ export async function prepareDrafts(
 
     const language = pickLanguage(candidate.country);
     const target = pickTargetType({
-      hasVacancy: candidate.vacancyId !== null,
       contactName: candidate.contact?.name,
       contactEmail: candidate.contact?.email,
     });
 
-    const template = matchTemplate(list, target, language);
+    const template = matchTemplate(list, target, language, candidate.kind);
     if (!template) {
       report.skipped.push({
         company: candidate.company,
@@ -622,23 +577,11 @@ export async function prepareDrafts(
       continue;
     }
 
-    /*
-     * The model paragraph is fetched before the letter is built, and exactly once per company.
-     * A fallback blocks nothing: the template holds a static first paragraph, and the letter
-     * goes out with it.
-     */
-    const ai = options.ai
-      ? await generateParagraph(candidate, language, { letter: template.body, subject: template.subject })
-      : { paragraph: null, used: false, reason: null, confidence: null };
-
-    const built = buildDraft(candidate, template, language, ai.paragraph, signature);
+    const built = buildDraft(candidate, template, language, signature);
     const draft: PreparedDraft = {
       companyId: candidate.companyId,
-      vacancyId: candidate.vacancyId,
+      leadId: candidate.leadId,
       contactId: candidate.contact?.id ?? null,
-      aiUsed: ai.used,
-      aiParagraph: ai.paragraph,
-      aiFallbackReason: ai.reason,
       ...built,
     };
     report.drafts.push(draft);
@@ -648,7 +591,7 @@ export async function prepareDrafts(
 
     await db.insert(outreach).values({
       companyId: draft.companyId,
-      vacancyId: draft.vacancyId,
+      leadId: draft.leadId,
       contactId: draft.contactId,
       channel: 'email',
       status: 'draft',
@@ -661,9 +604,6 @@ export async function prepareDrafts(
       bodyFinal: draft.body,
       contactName: draft.contactName,
       contactEmail: draft.contactEmail,
-      aiUsed: draft.aiUsed,
-      aiParagraph: draft.aiParagraph,
-      aiFallbackReason: draft.aiFallbackReason,
       error: draft.error,
     });
     report.created += 1;
@@ -681,15 +621,13 @@ export interface DraftRow {
   companyId: number;
   company: string;
   domain: string;
-  vacancyTitle: string | null;
+  leadTitle: string | null;
   contactName: string | null;
   contactEmail: string | null;
   templateUsed: string | null;
   language: string | null;
   subject: string | null;
   body: string | null;
-  aiUsed: boolean;
-  aiFallbackReason: string | null;
   error: string | null;
   queuedAt: number | null;
   /**
@@ -706,10 +644,10 @@ export interface DraftRow {
 export async function listDrafts(): Promise<DraftRow[]> {
   const db = getDb();
   const rows = await db
-    .select({ row: outreach, company: companies.name, domain: companies.domain, title: vacancies.title })
+    .select({ row: outreach, company: companies.name, domain: companies.domain, title: leads.title })
     .from(outreach)
     .innerJoin(companies, eq(companies.id, outreach.companyId))
-    .leftJoin(vacancies, eq(vacancies.id, outreach.vacancyId))
+    .leftJoin(leads, eq(leads.id, outreach.leadId))
     .where(inArray(outreach.status, ['draft', 'approved']))
     .orderBy(desc(outreach.queuedAt));
 
@@ -738,7 +676,7 @@ export async function listDrafts(): Promise<DraftRow[]> {
     byCompany.set(person.companyId, list);
   }
 
-  // Named addresses first: a letter to hello@ is read by a manager, section 9 of CLAUDE.md.
+  // Named addresses first: a letter to hello@ is read by a manager, section 5 of CLAUDE.md.
   for (const list of byCompany.values()) {
     list.sort((a, b) => Number(Boolean(b.name)) - Number(Boolean(a.name)));
   }
@@ -749,15 +687,13 @@ export async function listDrafts(): Promise<DraftRow[]> {
     companyContacts: byCompany.get(row.companyId) ?? [],
     company,
     domain,
-    vacancyTitle: title,
+    leadTitle: title,
     contactName: row.contactName,
     contactEmail: row.contactEmail,
     templateUsed: row.templateUsed,
     language: row.language,
     subject: row.subjectFinal,
     body: row.bodyFinal,
-    aiUsed: row.aiUsed,
-    aiFallbackReason: row.aiFallbackReason,
     error: row.error,
     queuedAt: row.queuedAt,
   }));
@@ -841,53 +777,6 @@ export async function updateDraft(
 }
 
 /**
- * Regenerate the first paragraph of an existing draft. Only on an explicit button: there are
- * no background regenerations, because each is a paid model call with no way to tell whether
- * the new text is better than the old.
- */
-export async function regenerateIntro(id: number): Promise<DraftRow | null> {
-  const db = getDb();
-  const [draft] = await db.select().from(outreach).where(eq(outreach.id, id));
-  if (!draft) throw new Error(`no draft ${id}`);
-  if (draft.status !== 'draft') throw new Error('only a draft can be regenerated');
-  if (!draft.templateId) throw new Error('the draft does not remember its template');
-
-  const [template] = await db.select().from(templates).where(eq(templates.id, draft.templateId));
-  if (!template) throw new Error('the template was deleted, the draft has to be rebuilt');
-
-  const [candidate] = (await draftCandidatesFor([draft.companyId])) ?? [];
-  if (!candidate) throw new Error('company not found');
-
-  const language = (draft.language as Language) ?? pickLanguage(candidate.country);
-  const ai = await generateParagraph(candidate, language, {
-    letter: template.body,
-    subject: template.subject,
-  });
-  const built = buildDraft(
-    { ...candidate, vacancyId: draft.vacancyId },
-    template,
-    language,
-    ai.paragraph,
-    await readSignature(),
-  );
-
-  await db
-    .update(outreach)
-    .set({
-      subjectFinal: built.subject,
-      bodyFinal: built.body,
-      error: built.error,
-      aiUsed: ai.used,
-      aiParagraph: ai.paragraph,
-      aiFallbackReason: ai.reason,
-    })
-    .where(eq(outreach.id, id));
-
-  const list = await listDrafts();
-  return list.find((row) => row.id === id) ?? null;
-}
-
-/**
  * A different template for an existing draft.
  *
  * Code picks the sending template by role and language, and that is the right default. But a
@@ -895,7 +784,7 @@ export async function regenerateIntro(id: number): Promise<DraftRow | null> {
  * able to move the letter onto another text without rebuilding the draft or losing the
  * first paragraph already written.
  *
- * No model calls here: the paragraph, if it came from the model, carries over as is.
+ * No model calls here.
  */
 export async function retemplateDraft(id: number, slug: string): Promise<DraftRow | null> {
   const db = getDb();
@@ -910,13 +799,7 @@ export async function retemplateDraft(id: number, slug: string): Promise<DraftRo
   if (!candidate) throw new Error('company not found');
 
   const language = (template.language as Language) ?? (draft.language as Language);
-  const built = buildDraft(
-    { ...candidate, vacancyId: draft.vacancyId },
-    template,
-    language,
-    draft.aiParagraph,
-    await readSignature(),
-  );
+  const built = buildDraft(candidate, template, language, await readSignature());
 
   await db
     .update(outreach)
@@ -934,47 +817,19 @@ export async function retemplateDraft(id: number, slug: string): Promise<DraftRo
   return list.find((row) => row.id === id) ?? null;
 }
 
-/** The same candidate data, but for known companies: regeneration needs it. */
+/** The same candidate data, but for known companies: a draft for one company needs it. */
 export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCandidate[]> {
   const db = getDb();
   const result: DraftCandidate[] = [];
-
   for (const companyId of companyIds) {
     const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-    if (!company) continue;
-
-    const [vacancy] = await db
-      .select()
-      .from(vacancies)
-      .where(and(eq(vacancies.companyId, company.id), isNull(vacancies.closedAt)))
-      .orderBy(desc(vacancies.score))
-      .limit(1);
-
-    const list = await db.select().from(contacts).where(eq(contacts.companyId, company.id));
-
-    result.push({
-      companyId: company.id,
-      company: company.name,
-      domain: company.domain,
-      country: company.country,
-      city: company.city,
-      kind: company.kind,
-      sizeHint: company.sizeHint,
-      techHints: company.techHints,
-      tags: company.tags,
-      description: company.description,
-      vacancyId: vacancy?.id ?? null,
-      vacancyTitle: vacancy?.title ?? null,
-      vacancyStack: vacancy?.stack ?? [],
-      contact: pickContact(list),
-    });
+    if (company) result.push(await candidateFor(company));
   }
-
   return result;
 }
 
 /**
- * A draft for a specific company, from the button on Queue or Studios.
+ * A draft for a specific company, from the button on a lead card.
  *
  * This is the same path as the nightly preparation: the same templates, the same choice of
  * language and contact, the same checks. Separate "quick letter" logic would be a second set
@@ -982,8 +837,7 @@ export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCan
  */
 export async function draftForCompany(
   companyId: number,
-  vacancyId?: number | null,
-  options: { ai?: boolean; enrich?: boolean; templateSlug?: string | null } = {},
+  options: { enrich?: boolean; templateSlug?: string | null } = {},
 ): Promise<{ draft: PreparedDraft | null; id: number | null; reason: string | null }> {
   const db = getDb();
 
@@ -1025,18 +879,8 @@ export async function draftForCompany(
    */
   const missingEmail = !candidate.contact?.email;
 
-  if (vacancyId) {
-    const [vacancy] = await db.select().from(vacancies).where(eq(vacancies.id, vacancyId));
-    if (vacancy) {
-      candidate.vacancyId = vacancy.id;
-      candidate.vacancyTitle = vacancy.title;
-      candidate.vacancyStack = vacancy.stack;
-    }
-  }
-
   const language = pickLanguage(candidate.country);
   const target = pickTargetType({
-    hasVacancy: candidate.vacancyId !== null,
     contactName: candidate.contact?.name,
     contactEmail: candidate.contact?.email,
   });
@@ -1055,7 +899,7 @@ export async function draftForCompany(
     return { draft: null, id: null, reason: `no template ${options.templateSlug}` };
   }
 
-  const template = chosen ?? matchTemplate(await outreachTemplates(), target, language);
+  const template = chosen ?? matchTemplate(await outreachTemplates(), target, language, candidate.kind);
   if (!template) {
     return { draft: null, id: null, reason: `no ${target} template in ${language}` };
   }
@@ -1063,19 +907,12 @@ export async function draftForCompany(
   // The language follows the template: the person picked a text, and it is written in one specific language.
   const letterLanguage = chosen ? ((chosen.language as Language) ?? language) : language;
 
-  const ai = options.ai
-    ? await generateParagraph(candidate, letterLanguage, {
-        letter: template.body,
-        subject: template.subject,
-      })
-    : { paragraph: null, used: false, reason: null, confidence: null };
-
-  const built = buildDraft(candidate, template, letterLanguage, ai.paragraph, await readSignature());
+  const built = buildDraft(candidate, template, letterLanguage, await readSignature());
   const [row] = await db
     .insert(outreach)
     .values({
       companyId: candidate.companyId,
-      vacancyId: candidate.vacancyId,
+      leadId: candidate.leadId,
       contactId: candidate.contact?.id ?? null,
       channel: 'email',
       status: 'draft',
@@ -1088,9 +925,6 @@ export async function draftForCompany(
       bodyFinal: built.body,
       contactName: built.contactName,
       contactEmail: built.contactEmail,
-      aiUsed: ai.used,
-      aiParagraph: ai.paragraph,
-      aiFallbackReason: ai.reason,
       error: built.error,
     })
     .returning({ id: outreach.id });
@@ -1098,11 +932,8 @@ export async function draftForCompany(
   return {
     draft: {
       companyId: candidate.companyId,
-      vacancyId: candidate.vacancyId,
+      leadId: candidate.leadId,
       contactId: candidate.contact?.id ?? null,
-      aiUsed: ai.used,
-      aiParagraph: ai.paragraph,
-      aiFallbackReason: ai.reason,
       ...built,
     },
     id: row!.id,

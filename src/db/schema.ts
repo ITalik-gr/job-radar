@@ -30,11 +30,26 @@ export const companies = sqliteTable(
     // Catalog tags: business type, domain, services. Not the stack, the stack lives in tech_hints.
     tags: text('tags', { mode: 'json' }).$type<string[]>().notNull().default([]),
     /**
-     * Company kind: studio | design | startup | product | outstaff | unknown.
-     * Needed to separate the Studios and Startups pages and to let the letter template pick
-     * itself: a design studio gets a very different letter from a startup.
+     * The segment: studio | design | startup | product | outstaff | smb | ecommerce | public
+     * | unknown. The main filter of the radar and the key a letter template is picked by: a
+     * dental clinic, a design studio and a founder get very different letters.
      */
     kind: text('kind').notNull().default('unknown'),
+    /** ua | intl. Derived from the country, stored so the most common filter is one index. */
+    market: text('market'),
+    /** clinic, dental, beauty, legal, restaurant, retail, saas, fintech... Free text, lower case. */
+    industry: text('industry'),
+    /** Businesses without a team page are reached by phone or a shared mailbox. */
+    phone: text('phone'),
+    address: text('address'),
+    /**
+     * The only thing kept from vacancies: the company is hiring developers right now. A team
+     * that needs hands is a team that might take a contractor. `hiring_seen_at` lets the
+     * signal fade: a role seen two months ago says nothing about today.
+     */
+    hiringDevs: integer('hiring_devs', { mode: 'boolean' }).notNull().default(false),
+    hiringRoles: integer('hiring_roles'),
+    hiringSeenAt: integer('hiring_seen_at'),
     /**
      * Signs of life on the site, collected by enrichment. An agency with a 2019 copyright and
      * a dead blog neither hires nor answers letters, and that shows before the owner spends
@@ -91,6 +106,8 @@ export const companies = sqliteTable(
   (t) => [
     uniqueIndex('companies_domain_uq').on(t.domain),
     index('companies_last_checked_idx').on(t.lastChecked),
+    index('companies_kind_idx').on(t.kind),
+    index('companies_market_idx').on(t.market),
   ],
 );
 
@@ -156,6 +173,10 @@ export const snapshots = sqliteTable(
   (t) => [index('snapshots_company_fetched_idx').on(t.companyId, t.fetchedAt)],
 );
 
+/**
+ * Archive. The radar no longer collects vacancies (CLAUDE.md section 10), but the rows stay:
+ * nothing is deleted, and old letters still point at them. No code writes here any more.
+ */
 export const vacancies = sqliteTable(
   'vacancies',
   {
@@ -203,6 +224,8 @@ export const outreach = sqliteTable(
       .notNull()
       .references(() => companies.id, { onDelete: 'cascade' }),
     vacancyId: integer('vacancy_id').references(() => vacancies.id, { onDelete: 'set null' }),
+    /** The lead the letter answers: a tender, a request. Empty for a plain cold letter. */
+    leadId: integer('lead_id').references(() => leads.id, { onDelete: 'set null' }),
     /**
      * The contact written to. Unlike `contact_name` and `contact_email`, this is a live link:
      * it is needed to mark the address invalid after a hard bounce. The name and email
@@ -278,11 +301,8 @@ export const outreach = sqliteTable(
 );
 
 /**
- * A whitelist of facts about the owner that the model may mention in the first paragraph.
- *
- * Why in the database rather than the prompt: the list is edited from the interface, and any
- * fact can be switched off without touching code. The model may not say anything that is not
- * here, and the validator checks that.
+ * Archive. Facts about the owner fed the model-written first paragraph, which is gone: letters
+ * are the owner's templates with placeholders only. Kept so the owner's texts are not lost.
  */
 export const facts = sqliteTable(
   'facts',
@@ -324,11 +344,7 @@ export const runs = sqliteTable(
   (t) => [index('runs_source_started_idx').on(t.source, t.startedAt)],
 );
 
-/**
- * The daily queue slice. Without it the list reshuffles every day under the reader: a new
- * vacancy with a higher score pushes out one the owner has not looked at yet. The order is
- * fixed once a day, and the decision is written here too.
- */
+/** Archive: the daily slice of the old vacancy queue. */
 export const queueItems = sqliteTable(
   'queue_items',
   {
@@ -430,12 +446,8 @@ export const templates = sqliteTable(
     forKind: text('for_kind'),
     subject: text('subject'),
     /**
-     * Static first paragraph. The letter body inserts it through `{{intro}}`.
-     *
-     * Split out on purpose: the first paragraph is the only thing the model personalises,
-     * while the second and third hold facts about the owner and must not be generated. A
-     * validation fallback means substituting exactly this text, so a letter is never left
-     * without a first paragraph and never blocked by the model.
+     * Archive. The old static first paragraph behind `{{intro}}`; migration 0018 folded it
+     * into `body`. Nothing reads it any more.
      */
     intro: text('intro'),
     body: text('body').notNull().default(''),
@@ -445,6 +457,76 @@ export const templates = sqliteTable(
     updatedAt: integer('updated_at').notNull().default(now),
   },
   (t) => [uniqueIndex('templates_slug_uq').on(t.slug)],
+);
+
+/**
+ * A site check: the concrete reason to write. "Your site takes 9 seconds on a phone" lands,
+ * "I build websites" does not. One row per check, the latest one is what the card shows.
+ */
+export const siteAudits = sqliteTable(
+  'site_audits',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    checkedAt: integer('checked_at').notNull().default(now),
+    url: text('url').notNull(),
+    https: integer('https', { mode: 'boolean' }),
+    mobileOk: integer('mobile_ok', { mode: 'boolean' }),
+    /** PageSpeed performance score, 0 to 100, mobile. */
+    perfScore: integer('perf_score'),
+    lcpMs: integer('lcp_ms'),
+    cms: text('cms'),
+    copyrightYear: integer('copyright_year'),
+    /** Short, concrete, letter-ready: "loads 9 s on a phone", "no mobile layout". */
+    issues: text('issues', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  },
+  (t) => [index('site_audits_company_idx').on(t.companyId, t.checkedAt)],
+);
+
+/**
+ * Explicit demand: a tender, a funding round, a public request. A lead belongs to a company
+ * and has a deadline or a date, unlike the company itself, which lives for years.
+ */
+export const leads = sqliteTable(
+  'leads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+    source: text('source').notNull(),
+    externalId: text('external_id').notNull(),
+    url: text('url').notNull(),
+    title: text('title').notNull(),
+    text: text('text'),
+    budget: real('budget'),
+    currency: text('currency'),
+    deadlineAt: integer('deadline_at'),
+    firstSeen: integer('first_seen').notNull().default(now),
+    closedAt: integer('closed_at'),
+    /** The model's fit score, 0 to 100. Advice for sorting, not a verdict. */
+    fit: integer('fit'),
+    // new | interesting | contacted | skipped
+    status: text('status').notNull().default('new'),
+  },
+  (t) => [
+    uniqueIndex('leads_source_external_uq').on(t.source, t.externalId),
+    index('leads_company_idx').on(t.companyId),
+    index('leads_deadline_idx').on(t.deadlineAt),
+  ],
+);
+
+/** A named filter: "UA, clinics, slow site, has email". The query is the shape `search_companies` takes. */
+export const savedFilters = sqliteTable(
+  'saved_filters',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    query: text('query', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: integer('created_at').notNull().default(now),
+    updatedAt: integer('updated_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('saved_filters_name_uq').on(t.name)],
 );
 
 export type Company = typeof companies.$inferSelect;
@@ -461,3 +543,6 @@ export type Contact = typeof contacts.$inferSelect;
 export type Fact = typeof facts.$inferSelect;
 export type SendLog = typeof sendLog.$inferSelect;
 export type NewTemplate = typeof templates.$inferInsert;
+export type SiteAudit = typeof siteAudits.$inferSelect;
+export type Lead = typeof leads.$inferSelect;
+export type SavedFilter = typeof savedFilters.$inferSelect;

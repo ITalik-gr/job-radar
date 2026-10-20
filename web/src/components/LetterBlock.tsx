@@ -32,7 +32,7 @@ export function LetterBlock({
   stack,
   contactName,
   contactEmail,
-  vacancyTitle,
+  industry,
   city,
   country,
   templateKind,
@@ -45,10 +45,10 @@ export function LetterBlock({
   stack?: string[];
   contactName?: string | null;
   contactEmail?: string | null;
-  vacancyTitle?: string | null;
+  industry?: string | null;
   city?: string | null;
   country?: string | null;
-  templateKind: 'vacancy' | 'studio';
+  templateKind: 'studio' | 'resume';
   /**
    * The template choice, shared with the card. Without it the block had its own choice,
    * and one question got two answers: the preview showed one text while the send queue
@@ -82,8 +82,8 @@ export function LetterBlock({
   }, [onSlug, selected, slug]);
 
   /*
-   * The same context for subject and body, with the first paragraph inside. The preview
-   * must show exactly what goes into the mail, otherwise it is not a preview but another text.
+   * The same context for subject and body. The preview must show exactly what goes into
+   * the mail, otherwise it is not a preview but another text.
    */
   const context = useMemo(
     () => ({
@@ -92,13 +92,12 @@ export function LetterBlock({
       kind,
       stack,
       contactName,
-      vacancyTitle,
+      industry,
       city,
       country,
       language: selected?.language,
-      intro: selected?.intro ?? '',
     }),
-    [company, domain, kind, stack, contactName, vacancyTitle, city, country, selected],
+    [company, domain, kind, stack, contactName, industry, city, country, selected],
   );
 
   const rendered = useMemo(

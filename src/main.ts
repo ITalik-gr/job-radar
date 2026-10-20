@@ -60,7 +60,7 @@ if (isConfigured() && process.env.TELEGRAM_BOT !== 'off') void startBot();
  * the process has to live for weeks unattended, and one uncaught promise somewhere
  * in new code crashes all of Node by default. A radar stopped silently is worse than
  * an error in the log: it looks like it is working right up until the day the owner
- * notices there have been no new vacancies for a week.
+ * notices there have been no new companies for a week.
  */
 process.on('unhandledRejection', (reason) => {
   log.error({ err: reason instanceof Error ? reason.message : String(reason) }, 'unhandled promise rejection');

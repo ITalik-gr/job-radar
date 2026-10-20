@@ -101,9 +101,14 @@ function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; on
           </Text>
 
           <Group gap={4} mt={6} wrap="nowrap" style={{ overflow: 'hidden' }}>
-            {card.openVacancies > 0 && (
+            {card.hiring && (
               <Badge size="xs" color="green">
-                {card.openVacancies} vacancies
+                hiring{card.hiringRoles ? ` ${card.hiringRoles}` : ''}
+              </Badge>
+            )}
+            {card.market === 'ua' && (
+              <Badge size="xs" color="blue" variant="light">
+                UA
               </Badge>
             )}
             {/* The rating shows in the list already: otherwise reputation takes opening cards one by one. */}
@@ -130,8 +135,10 @@ function Row({ card, active, onSelect }: { card: StudioCard; active: boolean; on
  * So the first ten are visible by default and the rest expand and collapse again:
  * the "6 more" counter used to be plain text that did nothing.
  */
-function TagList({ tags, limit = 10 }: { tags: string[]; limit?: number }) {
+function TagList({ tags: raw, limit = 10 }: { tags: string[]; limit?: number }) {
   const [expanded, setExpanded] = useState(false);
+  // Two catalogs write the same tag in different case ("B2B", "b2b"): one badge, not two.
+  const tags = [...new Map(raw.map((tag) => [tag.toLowerCase(), tag])).values()];
   const hidden = tags.length - limit;
   const visible = expanded ? tags : tags.slice(0, limit);
 
@@ -235,7 +242,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
   });
 
   const toDrafts = useMutation({
-    mutationFn: () => api.draftForCompany(card.companyId, null, template),
+    mutationFn: () => api.draftForCompany(card.companyId, template),
     onSuccess: (result) =>
       notifications.show({
         color: result.id && !result.reason ? 'green' : 'yellow',
@@ -595,6 +602,7 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
             contactName={card.contacts.find((contact) => contact.name)?.name ?? null}
             city={card.city}
             country={card.country}
+            industry={card.industry}
             slug={template}
             onSlug={setTemplate}
             contactEmail={

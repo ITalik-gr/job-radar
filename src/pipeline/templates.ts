@@ -5,16 +5,17 @@ import { log } from '../lib/log.js';
 
 /**
  * Letter and resume templates. The tool only stores them, records them in the contact history
- * and lets them be edited. Generating text is forbidden by section 11 of CLAUDE.md, so there is
+ * and lets them be edited. Generating text is forbidden by section 7 of CLAUDE.md, so there is
  * no model call here and there never will be.
  *
  * The template list used to be an array of strings in the front end code, and only a label went
  * into the database. Changing a template meant editing code, and the text itself lived in someone's head.
  */
 
-export type TemplateKind = 'vacancy' | 'studio' | 'resume';
+/** studio means an outreach letter (the name is historical), resume a CV text kept for copying. */
+export type TemplateKind = 'studio' | 'resume';
 
-export const TEMPLATE_KINDS: TemplateKind[] = ['vacancy', 'studio', 'resume'];
+export const TEMPLATE_KINDS: TemplateKind[] = ['studio', 'resume'];
 
 export interface TemplateInput {
   slug?: string;
@@ -28,12 +29,10 @@ export interface TemplateInput {
   /** uk | en. The text language, used to match the template to the company country. Defaults to en. */
   language?: string;
   /**
-   * Sending role: vacancy | studio_named | studio_generic | followup.
+   * Sending role: studio_named | studio_generic | followup.
    * Empty means the template takes no part in sending and is kept for copying.
    */
   targetType?: string | null;
-  /** Static first paragraph. Inserted into the body through {{intro}}. */
-  intro?: string | null;
 }
 
 /** The slug lands in outreach.template_used, so it must be stable and without spaces. Cyrillic names are kept as is. */
@@ -51,9 +50,6 @@ export function slugify(value: string): string {
  * contact history keeps its link to the template. The texts are empty: the owner writes them.
  */
 const SEED: { slug: string; name: string; kind: TemplateKind }[] = [
-  { slug: 'fullstack_ai', name: 'Fullstack and AI', kind: 'vacancy' },
-  { slug: 'frontend_react', name: 'Frontend React', kind: 'vacancy' },
-  { slug: 'referral', name: 'Referral', kind: 'vacancy' },
   { slug: 'studio_pitch', name: 'Studio pitch', kind: 'studio' },
   { slug: 'agency_cold', name: 'Cold letter to an agency', kind: 'studio' },
   { slug: 'project_offer', name: 'Project offer', kind: 'studio' },
@@ -117,10 +113,9 @@ export async function createTemplate(input: TemplateInput): Promise<Template> {
     .values({
       slug: await uniqueSlug(input.slug?.trim() || input.name),
       name: input.name.trim(),
-      kind: input.kind ?? 'vacancy',
+      kind: input.kind ?? 'studio',
       forKind: input.forKind ?? null,
       subject: input.subject ?? null,
-      intro: input.intro ?? null,
       body: input.body ?? '',
       note: input.note ?? null,
       language: input.language ?? 'en',
@@ -165,7 +160,6 @@ export async function updateTemplate(id: number, input: Partial<TemplateInput>):
   if (input.subject !== undefined) patch.subject = input.subject;
   if (input.body !== undefined) patch.body = input.body;
   if (input.note !== undefined) patch.note = input.note;
-  if (input.intro !== undefined) patch.intro = input.intro;
   if (input.language !== undefined) patch.language = input.language;
   if (input.targetType !== undefined) patch.targetType = input.targetType || null;
   if (input.archived !== undefined) patch.archived = input.archived;
@@ -229,7 +223,6 @@ export async function duplicateTemplate(id: number): Promise<Template> {
     kind: existing.kind,
     forKind: existing.forKind,
     subject: existing.subject,
-    intro: existing.intro,
     body: existing.body,
     note: existing.note,
     language: existing.language,

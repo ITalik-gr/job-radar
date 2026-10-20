@@ -82,7 +82,7 @@ const ROLE_MENTIONS_COMPANY = /(?:\bof\b|\bat\b|,|@)\s*([A-Z][\w.&-]{2,})/g;
  * The word after "of" is far from always a company. "Head of Engineering", "VP of Operations",
  * "Director of Product" are departments, that is, the company's own people, yet the rule read
  * them as a foreign firm and threw them away. Enrichment silently dropped exactly the titles it
- * was written for: section 9 of CLAUDE.md asks for Head of Engineering specifically.
+ * was written for: section 5 of CLAUDE.md asks for named roles like these.
  */
 const NOT_A_COMPANY =
   /^(engineering|operations|product|design|technology|technologies|development|delivery|people|marketing|sales|growth|data|platform|talent|partnerships|business|digital|strategy|innovation|quality|security|research|support|success|staff|department|team|projects?|accounts?|customer|client|content|brand|creative|communications|ux|ui|it|ai|qa|hr|pmo|ceo|cto|coo|cpo|cio|cmo|vp|director|founder|board|the)$/i;

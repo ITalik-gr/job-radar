@@ -7,10 +7,9 @@ import { log } from './lib/log.js';
 import { listSources } from './sources/registry.js';
 import './sources/index.js';
 import { syncSource } from './pipeline/sync.js';
-import { syncCareers } from './pipeline/careers.js';
 import { syncDou } from './pipeline/catalogs.js';
 import { discover } from './pipeline/discover.js';
-import { classifyPending } from './pipeline/reclassify.js';
+import { enrich } from './pipeline/enrich.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
 import { setAiBinding } from './lib/workers-ai.js';
@@ -29,16 +28,14 @@ import './lib/gmail-store.env.js';
 export interface Env {
   DB: D1Database;
   /**
-   * Workers AI. Company vectors are always computed here, and classification is too
-   * when `LLM_PROVIDER=workers-ai`: this uses the paid plan's included quota instead
-   * of a separate bill for Anthropic tokens.
+   * Workers AI. Company vectors are always computed here, and model calls are too when
+   * `LLM_PROVIDER=workers-ai`: this uses the paid plan's included quota instead of a
+   * separate bill for Anthropic tokens.
    */
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
   RADAR_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
-  /** The model for the letter's first paragraph. Empty means the same one as classification. */
-  OUTREACH_MODEL?: string;
   LLM_PROVIDER?: string;
   WORKERS_AI_MODEL?: string;
   TELEGRAM_BOT_TOKEN?: string;
@@ -77,9 +74,8 @@ async function runSchedule(cron: string): Promise<void> {
     for (const source of rotate(listSources('board'), Math.floor(Date.now() / (6 * 3_600_000)))) {
       await safely(`sync:${source.id}`, () => syncSource(source.id));
     }
-    // Few career pages per run: each one is a page plus detail pages, all subrequests.
-    await safely('careers', () => syncCareers({ limit: 10 }));
-    await safely('classify:pending', () => classifyPending(50));
+    // A few sites per run: each is several pages, all subrequests under the same ceiling.
+    await safely('enrich', () => enrich({ limit: 10 }));
     return;
   }
 

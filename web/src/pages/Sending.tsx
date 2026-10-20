@@ -96,7 +96,7 @@ function DraftCard({
   const [email, setEmail] = useState(draft.contactEmail ?? '');
   const [name, setName] = useState(draft.contactName);
 
-  // The card may have been regenerated or swapped: the fields must follow the data.
+  // The template may have been swapped: the fields must follow the data.
   useEffect(() => {
     setSubject(draft.subject ?? '');
     setBody(draft.body ?? '');
@@ -155,13 +155,6 @@ function DraftCard({
       notifications.show({ color: 'red', title: 'template not changed', message: failure.message }),
   });
 
-  const regenerate = useMutation({
-    mutationFn: () => api.regenerateIntro(draft.id),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['drafts'] }),
-    onError: (failure: Error) =>
-      notifications.show({ color: 'red', title: 'intro not regenerated', message: failure.message }),
-  });
-
   const dirty =
     subject !== (draft.subject ?? '') ||
     body !== (draft.body ?? '') ||
@@ -193,7 +186,7 @@ function DraftCard({
           <Text size="xs" c="dimmed">
             {draft.contactName ? `${draft.contactName}, ` : ''}
             {draft.contactEmail ?? 'no address'}
-            {draft.vacancyTitle ? ` | ${draft.vacancyTitle}` : ''}
+            {draft.leadTitle ? ` | ${draft.leadTitle}` : ''}
           </Text>
         </div>
         <Group gap={6}>
@@ -207,11 +200,6 @@ function DraftCard({
             allowDeselect={false}
             onChange={(slug) => slug && slug !== draft.templateUsed && retemplate.mutate(slug)}
           />
-          <Tooltip label={draft.aiFallbackReason ?? (draft.aiUsed ? 'first paragraph by the model' : 'first paragraph from the template')}>
-            <Badge variant="light" color={draft.aiUsed ? 'violet' : 'gray'}>
-              {draft.aiUsed ? 'AI' : 'template'}
-            </Badge>
-          </Tooltip>
           <Badge variant="light" color="gray">
             {draft.language ?? ''}
           </Badge>
@@ -321,14 +309,6 @@ function DraftCard({
             onClick={() => save.mutate()}
           >
             Save edits
-          </Button>
-          <Button
-            size="xs"
-            variant="subtle"
-            loading={regenerate.isPending}
-            onClick={() => regenerate.mutate()}
-          >
-            Regenerate intro
           </Button>
         </Group>
         <Button

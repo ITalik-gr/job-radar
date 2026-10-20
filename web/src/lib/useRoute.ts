@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { href, parse } from './route';
+import { href, ownsAddress, parse } from './route';
 
 /**
  * The current address and moving along it. A thin wrapper over `hashchange`: all the
@@ -48,5 +48,12 @@ export function useSelection(section: string): [string | null, (key: string | nu
   const { segments, go } = useRoute();
   const selected = segments[0] === section ? (segments[1] ?? null) : null;
 
-  return [selected, (key: string | null) => go(key ? [section, key] : [section], true)];
+  return [
+    selected,
+    (key: string | null) => {
+      // The address may already belong to another section the owner just switched to.
+      if (!ownsAddress(window.location.hash, section)) return;
+      go(key ? [section, key] : [section], true);
+    },
+  ];
 }

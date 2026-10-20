@@ -3,10 +3,8 @@ import { Button, Menu, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   Building2,
-  Calculator,
   ChevronDown,
   Compass,
-  Inbox,
   Play,
   RefreshCw,
   Sparkles,
@@ -31,8 +29,8 @@ interface Task {
 const TASKS: Task[] = [
   {
     id: 'sources',
-    label: 'Refresh vacancies',
-    hint: 'every board and ATS in turn',
+    label: 'Refresh boards',
+    hint: 'every board and ATS in turn: new companies and the hiring signal',
     icon: RefreshCw,
     run: async () => {
       const sources = await api.sources();
@@ -53,15 +51,6 @@ const TASKS: Task[] = [
     run: () => api.runDou(),
     describe: (result: { itemsFound: number; itemsNew: number }) =>
       `found ${result.itemsFound}, new ${result.itemsNew}`,
-  },
-  {
-    id: 'top-up',
-    label: 'Top up the queue',
-    hint: 'when the daily slice was fixed before the sources ran',
-    icon: Inbox,
-    run: () => api.topUpQueue(),
-    describe: (result: { added: number; total: number }) =>
-      result.added > 0 ? `added ${result.added}, ${result.total} in the slice` : 'no new candidates',
   },
   {
     id: 'enrich',
@@ -91,17 +80,6 @@ const TASKS: Task[] = [
     run: () => api.discover(40),
     describe: (result: { checked: number; withAts: number; withHtml: number }) =>
       `checked ${result.checked}, ATS ${result.withAts}, html ${result.withHtml}`,
-  },
-  {
-    id: 'recalc',
-    label: 'Rescore',
-    hint: 'after changing the weights',
-    icon: Calculator,
-    run: () => api.recalc(),
-    describe: (result: Record<string, number>) =>
-      Object.entries(result)
-        .map(([key, value]) => `${key} ${value}`)
-        .join(', '),
   },
 ];
 

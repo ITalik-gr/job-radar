@@ -104,7 +104,7 @@ export function OutreachPage() {
             icon={<Send size={28} />}
             withIndicatorBackground
             title="No letters yet"
-            description="Work through the queue and mark sent letters with the Contacted button."
+            description="Work through the leads and mark sent letters with the Contacted button."
           />
         </Card>
       </Box>
@@ -152,10 +152,10 @@ export function OutreachPage() {
                 <Table.Th w={90}>when</Table.Th>
                 <Table.Th w={200}>company</Table.Th>
                 <Table.Th w={170}>to</Table.Th>
-                <Table.Th>vacancy</Table.Th>
+                <Table.Th>subject</Table.Th>
                 <Table.Th w={100}>channel</Table.Th>
                 <Table.Th w={150}>template</Table.Th>
-                <Table.Th w={90}>intro</Table.Th>
+                <Table.Th w={90}>language</Table.Th>
                 <Table.Th w={160}>reply</Table.Th>
                 <Table.Th w={130} />
               </Table.Tr>
@@ -206,15 +206,9 @@ export function OutreachPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      {row.vacancyUrl ? (
-                        <Anchor href={row.vacancyUrl} target="_blank" rel="noreferrer" size="sm" truncate>
-                          {row.vacancyTitle ?? row.vacancyUrl}
-                        </Anchor>
-                      ) : (
-                        <Text size="sm" c="dimmed">
-                          no vacancy
-                        </Text>
-                      )}
+                      <Text size="sm" truncate c={row.subject ? undefined : 'dimmed'}>
+                        {row.subject ?? 'no subject recorded'}
+                      </Text>
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm" c="dimmed">
@@ -231,16 +225,9 @@ export function OutreachPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <Group gap={4} wrap="nowrap">
-                        <Badge size="sm" variant="light" color={row.aiUsed ? 'violet' : 'gray'}>
-                          {row.aiUsed ? 'AI' : 'template'}
-                        </Badge>
-                        {row.language && (
-                          <Text size="xs" c="dimmed">
-                            {row.language}
-                          </Text>
-                        )}
-                      </Group>
+                      <Text size="sm" c="dimmed">
+                        {row.language ?? '-'}
+                      </Text>
                     </Table.Td>
                     <Table.Td>
                       {row.bounceType ? (

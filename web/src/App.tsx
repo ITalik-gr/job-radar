@@ -22,11 +22,9 @@ import {
 import {
   BarChart3,
   Building2,
-  CircleAlert,
   Inbox,
   FileText,
   MailPlus,
-  Palette,
   Play,
   Radar,
   Rocket,
@@ -38,7 +36,6 @@ import { api, setToken } from './lib/api';
 import { useRoute } from './lib/useRoute';
 import { useHotkeys } from './lib/hotkeys';
 import { RunMenu } from './components/RunMenu';
-import { QueuePage } from './pages/Queue';
 import { CompaniesPage } from './pages/Companies';
 import { OutreachPage } from './pages/Outreach';
 import { SendingPage } from './pages/Sending';
@@ -53,23 +50,22 @@ import { RulesPage } from './pages/Rules';
 const StatsPage = lazy(() => import('./pages/Stats').then((module) => ({ default: module.StatsPage })));
 
 const TABS = [
-  { id: 'queue', label: 'Queue', icon: Inbox, hint: 'ten cards a day, one decision each' },
-  { id: 'studios', label: 'Studios', icon: Palette, hint: 'who to write to without a vacancy: everything from the catalogs above the score threshold' },
-  { id: 'startups', label: 'Startups', icon: Rocket, hint: 'a cold letter to a startup: whether they hire shows in the number of vacancies found' },
+  { id: 'studios', label: 'Leads', icon: Inbox, hint: 'who to write to: every company above the score threshold, with filters' },
+  { id: 'startups', label: 'Startups', icon: Rocket, hint: 'founders and small startups; the hiring badge shows who needs hands right now' },
   { id: 'companies', label: 'Companies', icon: Building2, hint: 'the whole database as a directory: search, statuses, history. Not the place to write from' },
   { id: 'sending', label: 'Outbox', icon: MailPlus, hint: 'ready letter drafts, one click each' },
   { id: 'outreach', label: 'Contacts', icon: Send, hint: 'who was written to and who replied' },
-  { id: 'stats', label: 'Stats', icon: BarChart3, hint: 'stack, salaries, vacancy lifetime' },
+  { id: 'stats', label: 'Stats', icon: BarChart3, hint: 'what is in the base: segments, markets, sources, reach' },
   { id: 'sources', label: 'Sources', icon: Radio, hint: 'adapter status and manual runs' },
   { id: 'templates', label: 'Templates', icon: FileText, hint: 'your letter texts and resumes' },
-  { id: 'rules', label: 'Rules', icon: SlidersHorizontal, hint: 'threshold, stop words and term weights' },
+  { id: 'rules', label: 'Rules', icon: SlidersHorizontal, hint: 'lead scoring: threshold and weights' },
   { id: 'operations', label: 'Operations', icon: Play, hint: 'everything that used to live in the CLI: collection, processing, checks' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 /** Two-pane pages manage their own scrolling, the rest scroll as a whole. */
-const FULL_HEIGHT: TabId[] = ['queue', 'studios', 'startups', 'templates'];
+const FULL_HEIGHT: TabId[] = ['studios', 'startups', 'templates'];
 
 function TokenGate() {
   const [value, setValue] = useState('');
@@ -85,7 +81,7 @@ function TokenGate() {
           <ThemeIcon variant="light" size="md">
             <Radar size={16} />
           </ThemeIcon>
-          <Title order={4}>Job Radar</Title>
+          <Title order={4}>Lead Radar</Title>
         </Group>
 
         <PasswordInput
@@ -160,7 +156,7 @@ export function App() {
    * through the whole tree, and the back button works as it should.
    */
   const { segments, go } = useRoute();
-  const tab: TabId = (TABS.find((item) => item.id === segments[0])?.id ?? 'queue') as TabId;
+  const tab: TabId = (TABS.find((item) => item.id === segments[0])?.id ?? 'studios') as TabId;
   const setTab = (id: TabId) => go([id]);
 
   const { data: stats, error: statsError } = useQuery({
@@ -175,7 +171,6 @@ export function App() {
     refetchInterval: 60_000,
   });
   // The same keys as on the pages, so the navigation counters come from the cache.
-  const { data: queue } = useQuery({ queryKey: ['queue'], queryFn: () => api.queue() });
   const { data: sources } = useQuery({ queryKey: ['sources'], queryFn: () => api.sources() });
   // Mail is either connected or not. A silent third state would mean letters just
   // stopped going out, and the owner would find out a week later.
@@ -186,7 +181,7 @@ export function App() {
     retry: false,
   });
 
-  // Digits switch sections: hands stay on the keyboard while working the queue.
+  // Digits switch sections: hands stay on the keyboard while working the list.
   useHotkeys(
     useMemo(() => Object.fromEntries(TABS.map((item, index) => [String(index + 1), () => setTab(item.id)])), []),
   );
@@ -196,13 +191,11 @@ export function App() {
     return <TokenGate />;
   }
 
-  const pending = queue?.cards.filter((card) => !card.decision).length ?? 0;
   const overdue = waiting?.length ?? 0;
   const broken =
     sources?.filter((row) => row.lastRun?.status === 'warn' || row.lastRun?.status === 'error').length ?? 0;
 
   const counters: Partial<Record<TabId, { value: number; color: string }>> = {
-    queue: pending > 0 ? { value: pending, color: 'brand' } : undefined,
     outreach: overdue > 0 ? { value: overdue, color: 'yellow' } : undefined,
     sources: broken > 0 ? { value: broken, color: 'red' } : undefined,
   };
@@ -232,7 +225,7 @@ export function App() {
             <ThemeIcon variant="light" size="md">
               <Radar size={16} />
             </ThemeIcon>
-            <Text fw={600}>Job Radar</Text>
+            <Text fw={600}>Lead Radar</Text>
           </Group>
 
           <Group h="100%" px="lg" gap="lg" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -245,9 +238,9 @@ export function App() {
             <Group gap="xl" ml="auto" wrap="nowrap" visibleFrom="md">
               {stats && (
                 <>
-                  <HeaderStat label="open vacancies" value={stats.vacancies.open} />
-                  <HeaderStat label="above threshold" value={stats.vacancies.aboveThreshold} />
+                  <HeaderStat label="companies" value={stats.funnel.companies ?? 0} />
                   <HeaderStat label="contacted" value={stats.funnel.contacted ?? 0} />
+                  <HeaderStat label="replied" value={stats.funnel.replied ?? 0} />
                   {overdue > 0 && <HeaderStat label="no reply 7+ days" value={overdue} color="yellow.8" />}
                 </>
               )}
@@ -297,18 +290,17 @@ export function App() {
                   switch sections
                 </Text>
               </Group>
-              <StatusRow label="score threshold" value={String(stats.threshold)} />
               <StatusRow
                 label="model calls"
                 value={String(stats.llmBudgetLeft)}
                 hint="calls left for today"
               />
               {/*
-                Who classifies is visible at a glance: Anthropic bills per token,
+                Which model provider is visible at a glance: Anthropic bills per token,
                 Workers AI uses the quota of an already paid Cloudflare plan.
               */}
               <StatusRow
-                label="classifier"
+                label="model"
                 value={stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
                 hint={stats.llmModel}
               />
@@ -332,12 +324,6 @@ export function App() {
                   gmail?.connected ? undefined : { label: 'connect', href: api.gmailConnectUrl() }
                 }
               />
-              {stats.vacancies.needsReview > 0 && (
-                <Group gap={6} c="yellow.8">
-                  <CircleAlert size={14} />
-                  <Text size="xs">for manual review {stats.vacancies.needsReview}</Text>
-                </Group>
-              )}
             </Stack>
           </>
         )}
@@ -345,7 +331,6 @@ export function App() {
 
       <AppShell.Main>
         <div className={fullHeight ? 'min-h-0 flex-1' : 'min-h-0 flex-1 overflow-auto'}>
-          {tab === 'queue' && <QueuePage />}
           {tab === 'studios' && <StudiosPage />}
           {tab === 'startups' && <StartupsPage />}
           {tab === 'companies' && <CompaniesPage />}

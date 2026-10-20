@@ -7,7 +7,23 @@ import type { Company } from '../db/schema.js';
  * developer and you'd expand your services", a startup gets "I was at a startup, I can
  * cover the front end", an outstaff company gets nothing at all. Without a kind, it's all one list.
  */
-export type CompanyKind = 'studio' | 'design' | 'startup' | 'product' | 'outstaff' | 'unknown';
+export type CompanyKind =
+  | 'studio'
+  | 'design'
+  | 'startup'
+  | 'product'
+  | 'outstaff'
+  | 'smb'
+  | 'ecommerce'
+  | 'public'
+  | 'unknown';
+
+/**
+ * smb, ecommerce and public are never guessed from catalog tags: a source that knows the
+ * segment (a business directory, a tender) sets them, and `upsertCompany` keeps them.
+ */
+/** Segments only a source can set, never `detectKind`. */
+const SOURCE_SET = new Set<CompanyKind>(['smb', 'ecommerce', 'public']);
 
 export const COMPANY_KINDS: CompanyKind[] = [
   'studio',
@@ -15,6 +31,9 @@ export const COMPANY_KINDS: CompanyKind[] = [
   'startup',
   'product',
   'outstaff',
+  'smb',
+  'ecommerce',
+  'public',
   'unknown',
 ];
 
@@ -104,18 +123,16 @@ export async function backfillKinds(force = false): Promise<Record<CompanyKind, 
 
   const db = getDb();
   const rows = await db.select().from(companies);
-  const counts: Record<CompanyKind, number> = {
-    studio: 0,
-    design: 0,
-    startup: 0,
-    product: 0,
-    outstaff: 0,
-    unknown: 0,
-  };
+  const counts = Object.fromEntries(COMPANY_KINDS.map((kind) => [kind, 0])) as Record<CompanyKind, number>;
 
   for (const row of rows) {
-    const kind = detectKind(row);
-    counts[kind] += 1;
+    /*
+     * A kind set by a source that knows the segment is kept even with --force: tags cannot
+     * tell a clinic is an smb. Same for "no evidence": unknown never erases a kind.
+     */
+    const detected = detectKind(row);
+    const kind = SOURCE_SET.has(row.kind as CompanyKind) || detected === 'unknown' ? (row.kind as CompanyKind) : detected;
+    counts[kind] = (counts[kind] ?? 0) + 1;
     if (!force && row.kind === kind) continue;
     await db.update(companies).set({ kind }).where(eq(companies.id, row.id));
   }

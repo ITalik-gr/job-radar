@@ -108,7 +108,7 @@ pages with the same code it uses for pages loaded by the server, so a name from 
 page and an address from another end up merged into one contact.
 
 The pause and the per-pass limit are not arbitrary: these are other people's sites,
-and they have to be visited the way a human would, section 4 of CLAUDE.md. The walk
+and they have to be visited the way a human would, rule 4 of CLAUDE.md. The walk
 lives in the service worker, so the popup can be closed and the work continues.
 
 If the popup says "empty N" after a walk, that is not silence, it is a report: the

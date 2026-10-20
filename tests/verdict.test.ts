@@ -23,7 +23,7 @@ function reply(body: Record<string, unknown>) {
 }
 
 const valid = {
-  template_slug: 'send_studio_named_en',
+  template_slug: 'send_named_en',
   alternative_slug: null,
   language: 'en',
   confidence: 80,
@@ -75,8 +75,8 @@ describe('system block', () => {
       { slug: 'a', name: 'A', kind: 'studio', for_kind: null, language: 'en', target_type: 'studio_generic', note: null, body: 'Hello' },
     ];
 
-    expect(buildSystem(list, ['fact'])).toBe(buildSystem([...list], ['fact']));
-    expect(buildSystem(list, [])).toContain('studio_named');
+    expect(buildSystem(list)).toBe(buildSystem([...list]));
+    expect(buildSystem(list)).toContain('studio_named');
   });
 });
 
@@ -85,7 +85,7 @@ describe('company verdict', () => {
     const report = await companyVerdict(studio.id, { caller: reply(valid), skipCache: true });
 
     expect(report.source).toBe('llm');
-    expect(report.verdict?.template_slug).toBe('send_studio_named_en');
+    expect(report.verdict?.template_slug).toBe('send_named_en');
     expect(report.error).toBeNull();
     // A company in Poland means English, and the code computes that, not the model.
     expect(report.language).toBe('en');
@@ -99,13 +99,13 @@ describe('company verdict', () => {
    */
   it('rejects a non-existent template key', async () => {
     const report = await companyVerdict(studio.id, {
-      caller: reply({ ...valid, template_slug: 'send_studio_named_pl' }),
+      caller: reply({ ...valid, template_slug: 'send_named_pl' }),
       skipCache: true,
     });
 
     expect(report.verdict).toBeNull();
     expect(report.source).toBe('invalid');
-    expect(report.error).toContain('send_studio_named_pl');
+    expect(report.error).toContain('send_named_pl');
     // The fallback stays: the owner is never left without an answer to "what to write with".
     expect(report.fallbackSlug).toBeTruthy();
   });
@@ -138,7 +138,7 @@ describe('company verdict', () => {
     });
 
     expect(second.source).toBe('cache');
-    expect(second.verdict?.template_slug).toBe('send_studio_named_en');
+    expect(second.verdict?.template_slug).toBe('send_named_en');
     expect(called).toBe(0);
   });
 });

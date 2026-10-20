@@ -127,6 +127,13 @@
       "when": 1788802551671,
       "tag": "0017_slimy_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792516359518,
+      "tag": "0018_bizarre_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

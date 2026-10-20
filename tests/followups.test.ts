@@ -13,7 +13,7 @@ import {
   followupDelayDays,
   prepareFollowups,
 } from '../src/pipeline/followups.js';
-import { seedOutreachTemplates } from '../src/pipeline/outreach.js';
+import { saveSignature, seedOutreachTemplates } from '../src/pipeline/outreach.js';
 import { outreachStats } from '../src/pipeline/outreach-stats.js';
 
 let acme: Company;
@@ -32,7 +32,7 @@ async function sentLetter(over: Record<string, unknown> = {}): Promise<number> {
       contactEmail: 'anton@acme.com',
       contactName: 'Anton',
       language: 'uk',
-      templateUsed: 'send_vacancy_uk',
+      templateUsed: 'send_named_uk',
       subjectFinal: 'Senior Frontend, Acme',
       bodyFinal: 'letter text',
       ...over,
@@ -46,6 +46,7 @@ beforeAll(async () => {
   runMigrations().sqlite.close();
   acme = (await upsertCompany({ name: 'Acme', domain: 'acme.com', source: 'test' })).company;
   await seedOutreachTemplates();
+  await saveSignature('Test Sender');
 });
 
 beforeEach(async () => {
@@ -125,19 +126,15 @@ describe('follow-up draft', () => {
 });
 
 describe('outreach statistics', () => {
-  it('counts conversion by template and validation fallbacks', async () => {
-    await sentLetter({ replyAt: NOW.getTime(), replyType: 'positive', status: 'replied', aiUsed: true });
-    await sentLetter({ templateUsed: 'send_studio_generic_en', aiFallbackReason: 'words 84' });
-    await sentLetter({ templateUsed: 'send_studio_generic_en', aiFallbackReason: 'words 12' });
+  it('counts conversion by template and by segment', async () => {
+    await sentLetter({ replyAt: NOW.getTime(), replyType: 'positive', status: 'replied' });
+    await sentLetter({ templateUsed: 'send_generic_en' });
+    await sentLetter({ templateUsed: 'send_generic_en' });
 
     const stats = await outreachStats();
-    const generic = stats.byTemplate.find((row) => row.template === 'send_studio_generic_en');
+    const generic = stats.byTemplate.find((row) => row.key === 'send_generic_en');
     expect(generic?.sent).toBe(2);
-    expect(stats.ai).toMatchObject({ sent: 1, positive: 1 });
-
-    // Two reasons that are the same in substance collapse into one row, not two of one each.
-    expect(stats.fallbacks).toEqual([{ reason: 'words', count: 2 }]);
-    expect(stats.fallbackShare).toBeCloseTo(2 / 3);
+    expect(stats.byKind).toEqual([{ key: acme.kind, sent: 3, replied: 1, positive: 1 }]);
   });
 
   it('the median reply time is counted only over those who replied', async () => {

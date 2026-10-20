@@ -22,12 +22,11 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Archive, ArchiveRestore, Copy, FileText, Plus, Save, Trash2 } from 'lucide-react';
-import { FactsPanel } from '../components/FactsPanel';
 import { api, formatDate, type TemplateRow } from '../lib/api';
 import { COMPANY_KINDS, type CompanyKind } from '../../../src/pipeline/company-kind';
 import type { Language, OutreachTarget } from '../../../src/pipeline/outreach';
 import type { TemplateKind } from '../../../src/pipeline/templates';
-import { LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
+import { FALLBACK_HINT, LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { useSelection } from '../lib/useRoute';
 
@@ -40,21 +39,19 @@ import { useSelection } from '../lib/useRoute';
  * Only types are imported, so pipeline files with the database stay out of the front end bundle.
  */
 const KIND_LABELS: Record<TemplateKind, string> = {
-  vacancy: 'for a vacancy',
-  studio: 'for a studio',
+  studio: 'letter',
   resume: 'resume',
 };
 
 const KIND_OPTIONS = Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }));
 
 /**
- * The sending role. This is what a draft picks its template by, and code makes the choice:
- * there is a vacancy, there is a named contact, or there is only a generic mailbox.
+ * The sending role. This is what a draft picks its template by, together with language and
+ * company kind, and code makes the choice: a named contact or only a generic mailbox.
  */
 const TARGET_LABELS: Record<OutreachTarget, string> = {
-  vacancy: 'has an open vacancy',
-  studio_named: 'no vacancy, named contact',
-  studio_generic: 'no vacancy, generic mailbox',
+  studio_named: 'named contact',
+  studio_generic: 'generic mailbox',
   followup: 'follow-up, second letter in the thread',
 };
 
@@ -78,6 +75,9 @@ const FOR_KIND_LABELS: Record<CompanyKind, string> = {
   startup: 'startup',
   product: 'product company',
   outstaff: 'outstaffing',
+  smb: 'small or medium business',
+  ecommerce: 'online store',
+  public: 'public sector',
   // Some companies really have this kind, and letters get written for them too.
   unknown: 'kind not determined',
 };
@@ -149,7 +149,7 @@ function Row({
  * server and the "unsaved changes" flag.
  *
  * These used to be two hand-written field lists in different places, and they drifted:
- * language, sending role and first paragraph made it into neither. The button stayed
+ * language and sending role made it into neither. The button stayed
  * grey, and when a change elsewhere enabled it, the select values silently never reached
  * the database and came back unchanged.
  */
@@ -159,7 +159,6 @@ const EDITABLE = [
   'kind',
   'forKind',
   'subject',
-  'intro',
   'body',
   'note',
   'language',
@@ -377,28 +376,6 @@ function Editor({
             />
 
             <Textarea
-              label="First paragraph, static"
-              description="replaces {{intro}}. Placeholders work here the same as in the body. The fallback uses it too when the model paragraph fails validation"
-              autosize
-              minRows={2}
-              maxRows={6}
-              value={draft.intro ?? ''}
-              onChange={(event) => setDraft({ ...draft, intro: event.currentTarget.value })}
-              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
-            />
-
-            {/*
-              A paragraph without its placeholder in the body goes nowhere. This must not be
-              silent: the field looks filled in, yet the letter lacks it.
-            */}
-            {draft.intro?.trim() && !/\{\{\s*intro\s*\}\}/i.test(draft.body) && (
-              <Alert color="yellow">
-                The first paragraph is written, but the body has no {'{{intro}}'} placeholder, so it
-                will not reach the letter. Put the placeholder where the paragraph belongs.
-              </Alert>
-            )}
-
-            <Textarea
               label="Body"
               description="your text, the tool neither generates nor rewrites it"
               autosize
@@ -431,8 +408,8 @@ function Editor({
                 ))}
               </Group>
               <Text size="xs" c="dimmed" mt={6}>
-                Click to append to the body. Empty values come out blank, and the radar warns
-                about it before sending.
+                Click to append to the body. An empty value blocks the draft, unless the
+                placeholder has a fallback. {FALLBACK_HINT}
               </Text>
             </Box>
 
@@ -457,9 +434,6 @@ function Editor({
         >
           {dirty ? 'Save' : 'No changes'}
         </Button>
-
-        {/* Facts sit next to the letter text, because that is what they affect. */}
-        <FactsPanel />
 
         <Tooltip label="make a variant of this text with its own key">
           <Button
@@ -600,7 +574,7 @@ export function TemplatesPage() {
   const [slug, selectSlug] = useSelection('templates');
   const [signing, setSigning] = useState(false);
   const [name, setName] = useState('');
-  const [kind, setKind] = useState('vacancy');
+  const [kind, setKind] = useState('studio');
 
   const { data, error, isLoading } = useQuery({ queryKey: ['templates'], queryFn: () => api.templates() });
 

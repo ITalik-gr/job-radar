@@ -5,7 +5,7 @@ import journal from '../db/migrations/meta/_journal.json' with { type: 'json' };
 import { desc, eq, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { getDb } from '../db/client.js';
-import { runs, vacancies } from '../db/schema.js';
+import { runs } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { authUrl, exchangeCode, gmailStatus, isConfigured as gmailConfigured } from '../lib/gmail.js';
 import { deliver, mailer, mailerStatuses } from '../lib/mailer.js';
@@ -19,43 +19,25 @@ import {
   saveSignature,
   rememberContact,
   normalizeEmail,
-  regenerateIntro,
   updateDraft,
 } from '../pipeline/outreach.js';
 import { checkSend, sendCounters } from '../pipeline/send-guards.js';
 import { checkReplies } from '../pipeline/replies.js';
 import { notify } from '../notify/telegram.js';
-
-import { classifyPending } from '../pipeline/reclassify.js';
-import { refreshDetails } from '../pipeline/sync.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
 import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
-import { callModelWith } from '../pipeline/classify.js';
+import { callModelWith, remainingBudget } from '../lib/llm.js';
+import { localDay } from '../lib/time.js';
 import { seedOutreachTemplates } from '../pipeline/outreach.js';
 import { seedTemplates } from '../pipeline/templates.js';
 import { GETRO_NETWORKS, nextGetroNetwork } from '../sources/boards/getro.js';
-import { createFact, deleteFact, listFacts, updateFact } from '../pipeline/facts.js';
 import { prepareFollowups } from '../pipeline/followups.js';
-import { mergeWeeklyDuplicates } from '../pipeline/merge-duplicates.js';
-import { syncCareers } from '../pipeline/careers.js';
 import { oauthState, sameSecret } from '../lib/secret.js';
 import { outreachStats } from '../pipeline/outreach-stats.js';
 import { sendDraft } from '../pipeline/send.js';
 import { listSources } from '../sources/registry.js';
 import '../sources/index.js';
-import {
-  ACTIONS,
-  applyAction,
-  followUps,
-  funnel,
-  listOutreach,
-  markReply,
-  REPLY_TYPES,
-  type Action,
-  type ReplyType,
-} from '../pipeline/actions.js';
-import { remainingBudget } from '../pipeline/classify.js';
-import { getQueue, pendingCount, todayKey, topUpQueue } from '../pipeline/queue.js';
+import { followUps, funnel, listOutreach, markReply, REPLY_TYPES, type ReplyType } from '../pipeline/actions.js';
 import { toCsv } from '../lib/csv.js';
 import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
 import { syncSource } from '../pipeline/sync.js';
@@ -65,7 +47,6 @@ import { browserQueue, enrich, saveBrowserFindings, type BrowserFindings } from 
 import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes } from './companies.js';
 import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
-import { recalcScores } from '../pipeline/recalc.js';
 import { resetRules, rules, rulesSource, saveRules } from '../pipeline/rules.js';
 import {
   TEMPLATE_KINDS,
@@ -123,7 +104,7 @@ app.use(
       c.req.path.startsWith('/api/import/') ? origin ?? '*' : WEB_ORIGINS.includes(origin) ? origin : null,
     /*
      * The list must match what the application really sends. Edits to templates, drafts,
-     * facts, rules and contacts go through PATCH, PUT and DELETE, and while they were
+     * rules and contacts go through PATCH, PUT and DELETE, and while they were
      * missing here any call from another origin bounced at preflight. Locally this never
      * showed, because vite proxies `/api` and makes the requests same-origin, so the trap
      * waited for the first person to open the interface without the proxy.
@@ -183,7 +164,7 @@ async function migrationsApplied(): Promise<number | null> {
 }
 
 app.get('/api/health', async (c) => {
-  const base = { ok: true, day: todayKey() };
+  const base = { ok: true, day: localDay() };
   if (c.req.query('deep') !== '1') return c.json(base);
 
   try {
@@ -195,15 +176,15 @@ app.get('/api/health', async (c) => {
       'companies',
       'company_state',
       'contacts',
+      'leads',
       'llm_cache',
       'llm_usage',
       'outreach',
-      'queue_items',
       'runs',
+      'saved_filters',
       'settings',
-      'snapshots',
+      'site_audits',
       'templates',
-      'vacancies',
     ];
     const missing = expected.filter((name) => !tables.includes(name));
 
@@ -215,7 +196,7 @@ app.get('/api/health', async (c) => {
      */
     let columns: string | null = null;
     try {
-      await getDb().all(sql`select rating, reviews_count, extra from companies limit 1`);
+      await getDb().all(sql`select market, industry, hiring_devs from companies limit 1`);
     } catch (error) {
       columns = describe(error);
     }
@@ -251,25 +232,6 @@ app.get('/api/health', async (c) => {
   }
 });
 
-app.get('/api/queue', async (c) => {
-  const day = c.req.query('day') ?? todayKey();
-  const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined;
-  const cards = await getQueue(day, limit);
-
-  return c.json({
-    day,
-    pending: await pendingCount(day),
-    total: cards.length,
-    cards,
-  });
-});
-
-/**
- * Top up today's slice. An owner action rather than automatic: the slice is fixed on
- * purpose, otherwise a new vacancy with a higher score would push out one not yet looked at.
- */
-app.post('/api/queue/top-up', async (c) => c.json(await topUpQueue()));
-
 /**
  * CSV export straight from the interface. Served as a file, so the browser saves it at
  * once instead of showing it as text.
@@ -280,25 +242,14 @@ app.get('/api/export/:what', async (c) => {
 
   let rows: Record<string, unknown>[] = [];
 
-  if (what === 'queue') {
-    rows = (await getQueue(todayKey())).map((card) => ({
-      company: card.company,
-      domain: card.domain,
-      vacancy: card.title,
-      score: card.score,
-      seniority: card.seniority,
-      location: card.location,
-      salary: [card.salaryMin, card.salaryMax].filter(Boolean).join(' - '),
-      stack: card.stack.join(' '),
-      url: card.url,
-      decision: card.decision ?? '',
-    }));
-  } else if (what === 'studios') {
+  if (what === 'studios') {
     const page = await studioPage({ limit: 1000, withNamedContact: named });
     rows = page.cards.map((card) => ({
       company: card.name,
       domain: card.domain,
       kind: card.kind,
+      market: card.market ?? '',
+      industry: card.industry ?? '',
       score: card.score,
       location: [card.city, card.country].filter(Boolean).join(', '),
       contact: card.contacts.find((contact) => contact.name)?.name ?? '',
@@ -307,7 +258,8 @@ app.get('/api/export/:what', async (c) => {
         card.contacts.find((contact) => contact.name && contact.email)?.email ??
         card.contacts.find((contact) => contact.email)?.email ??
         '',
-      vacancies: card.openVacancies,
+      phone: card.phone ?? '',
+      hiring: card.hiring ? card.hiringRoles ?? 'yes' : '',
       rating: card.rating ?? '',
       reviews: card.reviewsCount ?? '',
       hourly_rate: card.hourlyRate ?? '',
@@ -320,39 +272,9 @@ app.get('/api/export/:what', async (c) => {
   return new Response(toCsv(rows), {
     headers: {
       'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': `attachment; filename="job-radar-${what}-${todayKey()}.csv"`,
+      'content-disposition': `attachment; filename="lead-radar-${what}-${localDay()}.csv"`,
     },
   });
-});
-
-app.post('/api/vacancies/:id/action', async (c) => {
-  const id = Number(c.req.param('id'));
-  const body = await c.req.json<{
-    action: string;
-    note?: string;
-    days?: number;
-    channel?: string;
-    templateUsed?: string;
-    contactName?: string;
-    contactEmail?: string;
-  }>();
-
-  if (!ACTIONS.includes(body.action as Action)) {
-    return c.json({ error: `unknown action: ${body.action}` }, 400);
-  }
-
-  const result = await applyAction({
-    vacancyId: id,
-    action: body.action as Action,
-    note: body.note ?? null,
-    days: body.days,
-    channel: body.channel,
-    templateUsed: body.templateUsed ?? null,
-    contactName: body.contactName ?? null,
-    contactEmail: body.contactEmail ?? null,
-  });
-
-  return c.json(result);
 });
 
 app.post('/api/import/catalog', async (c) => {
@@ -373,6 +295,8 @@ app.get('/api/studios', async (c) => {
     limit: c.req.query('limit') ? Number(c.req.query('limit')) : 1000,
     minScore: c.req.query('min') ? Number(c.req.query('min')) : undefined,
     country: c.req.query('country'),
+    market: c.req.query('market'),
+    industry: c.req.query('industry'),
     search: c.req.query('q'),
     kind: c.req.query('kind'),
     withNamedContact: c.req.query('named') === '1',
@@ -403,12 +327,10 @@ app.post('/api/companies/:id/action', async (c) => {
   return c.json(result);
 });
 
-app.post('/api/score/recalc', async (c) => c.json(await recalcScores()));
-
 /*
- * Selection rules and letter templates are edited from the interface, not only from a file.
+ * Scoring rules and letter templates are edited from the interface, not only from a file.
  * Workers has no filesystem, so without these routes production could change neither the
- * threshold, nor the stop words, nor the letter text, except by a new deploy.
+ * weights nor the letter text, except by a new deploy.
  */
 
 app.get('/api/rules', (c) => c.json({ rules: rules(), source: rulesSource() }));
@@ -422,38 +344,6 @@ app.put('/api/rules', async (c) => {
 app.post('/api/rules/reset', async (c) => {
   const restored = await resetRules();
   return c.json({ rules: restored, source: rulesSource() });
-});
-
-/**
- * Small one-click edits: spot a tag in a vacancy and send it straight to the stop words or
- * give it a weight. The full rules object does not travel back and forth for this.
- */
-app.post('/api/rules/stop-words', async (c) => {
-  const { word, remove } = (await c.req.json()) as { word?: string; remove?: boolean };
-  const value = word?.trim().toLowerCase();
-  if (!value) return c.json({ error: 'a word is required' }, 400);
-
-  const current = rules();
-  const set = new Set(current.stopWords);
-  if (remove) set.delete(value);
-  else set.add(value);
-
-  const saved = await saveRules({ ...current, stopWords: [...set].sort() });
-  return c.json({ rules: saved, source: rulesSource() });
-});
-
-app.post('/api/rules/weights', async (c) => {
-  const { term, weight } = (await c.req.json()) as { term?: string; weight?: number | null };
-  const value = term?.trim().toLowerCase();
-  if (!value) return c.json({ error: 'a term is required' }, 400);
-
-  const current = rules();
-  const terms = { ...current.weights.terms };
-  if (weight === null || weight === undefined) delete terms[value];
-  else terms[value] = weight;
-
-  const saved = await saveRules({ ...current, weights: { ...current.weights, terms } });
-  return c.json({ rules: saved, source: rulesSource() });
 });
 
 /**
@@ -572,28 +462,19 @@ app.get('/api/outreach/drafts', async (c) =>
 );
 
 app.post('/api/outreach/prepare', async (c) => {
-  const body = await c.req
-    .json<{ limit?: number; ai?: boolean }>()
-    .catch(() => ({}) as { limit?: number; ai?: boolean });
-  return c.json(await prepareDrafts({ limit: body.limit, ai: body.ai }));
+  const body = await c.req.json<{ limit?: number }>().catch(() => ({}) as { limit?: number });
+  return c.json(await prepareDrafts({ limit: body.limit }));
 });
 
-/** A draft for one company: the button on Queue and Studios. */
+/** A draft for one company: the button on a lead card. */
 app.post('/api/outreach/drafts', async (c) => {
   const body = await c.req.json<{
     companyId: number;
-    vacancyId?: number | null;
-    ai?: boolean;
-    /** Template picked by hand on the card. Empty means choosing by role and language. */
+    /** Template picked by hand on the card. Empty means choosing by role, language and segment. */
     templateSlug?: string | null;
   }>();
 
-  return c.json(
-    await draftForCompany(body.companyId, body.vacancyId ?? null, {
-      ai: body.ai,
-      templateSlug: body.templateSlug ?? null,
-    }),
-  );
+  return c.json(await draftForCompany(body.companyId, { templateSlug: body.templateSlug ?? null }));
 });
 
 app.patch('/api/outreach/drafts/:id', async (c) => {
@@ -611,20 +492,12 @@ app.delete('/api/outreach/drafts/:id', async (c) =>
   c.json(await discardDraft(Number(c.req.param('id')))),
 );
 
-/**
- * A different template for a draft. The text is rebuilt from the same company data, and the
- * already written first paragraph carries over: no model call here.
- */
+/** A different template for a draft. The text is rebuilt from the same company data, no model call. */
 app.post('/api/outreach/drafts/:id/template', async (c) => {
   const body = await c.req.json<{ slug?: string }>().catch(() => ({}) as { slug?: string });
   if (!body.slug) return c.json({ error: 'a template key is required' }, 400);
   return c.json(await retemplateDraft(Number(c.req.param('id')), body.slug));
 });
-
-/** Regenerate the first paragraph. Only on a button press, there are no background regenerations. */
-app.post('/api/outreach/drafts/:id/regenerate', async (c) =>
-  c.json(await regenerateIntro(Number(c.req.param('id')))),
-);
 
 app.post('/api/outreach/followups', async (c) => c.json(await prepareFollowups()));
 
@@ -637,29 +510,9 @@ app.get('/api/stats/outreach', async (c) => c.json(await outreachStats()));
  */
 app.post('/api/catalogs/:id/run', async (c) => c.json(await syncCatalog(c.req.param('id'))));
 
-app.post('/api/classify/pending', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
-  return c.json(await classifyPending(body.limit ?? 50));
-});
-
 app.post('/api/maintenance/kinds', async (c) => c.json(await backfillKinds()));
 
-app.post('/api/careers/run', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
-  return c.json(await syncCareers({ limit: body.limit ?? 10 }));
-});
-
-app.post('/api/maintenance/merge-duplicates', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { mode?: string; limit?: number };
-  return c.json(await mergeWeeklyDuplicates({ apply: body.mode === 'apply', limit: body.limit ?? 100 }));
-});
-
 app.post('/api/maintenance/backfill-catalog', async (c) => c.json(await backfillCatalogFields()));
-
-app.post('/api/maintenance/fix-detail', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { limit?: number; source?: string };
-  return c.json(await refreshDetails({ limit: body.limit ?? 25, source: body.source }));
-});
 
 app.post('/api/outreach/replies', async (c) =>
   c.json(await checkReplies({ ownEmail: config.gmail.fromEmail })),
@@ -700,9 +553,9 @@ app.post('/api/gmail/test', async (c) => {
 
   const result = await deliver({
     to,
-    subject: 'Job Radar: encoding check, тест, café',
+    subject: 'Lead Radar: encoding check, тест, café',
     body: [
-      'This is a technical letter from Job Radar.',
+      'This is a technical letter from Lead Radar.',
       '',
       'If the subject and this line read without garbled characters, the encoding is right.',
       '',
@@ -729,16 +582,6 @@ app.put('/api/outreach/signature', async (c) => {
   const body = await c.req.json<{ signature?: string }>().catch(() => ({}) as { signature?: string });
   return c.json({ signature: await saveSignature(body.signature ?? '') });
 });
-
-app.get('/api/facts', async (c) => c.json(await listFacts()));
-
-app.post('/api/facts', async (c) => c.json(await createFact(await c.req.json())));
-
-app.patch('/api/facts/:id', async (c) =>
-  c.json(await updateFact(Number(c.req.param('id')), await c.req.json())),
-);
-
-app.delete('/api/facts/:id', async (c) => c.json(await deleteFact(Number(c.req.param('id')))));
 
 /** A check without sending: the interface shows the reasons before the button is pressed. */
 app.get('/api/outreach/drafts/:id/check', async (c) =>
@@ -812,11 +655,11 @@ app.get('/api/sources/getro/networks', (c) =>
 
 app.post('/api/sources/:id/run', async (c) => {
   const id = c.req.param('id');
-  const body: { limit?: number; skipLlm?: boolean; slug?: string } = await c.req
-    .json<{ limit?: number; skipLlm?: boolean; slug?: string }>()
+  const body: { limit?: number; slug?: string } = await c.req
+    .json<{ limit?: number; slug?: string }>()
     .catch(() => ({}));
 
-  const result = await syncSource(id, { limit: body.limit, skipLlm: body.skipLlm, slug: body.slug });
+  const result = await syncSource(id, { limit: body.limit, slug: body.slug });
 
   /*
    * Getro goes through networks one at a time, because the worker cannot finish all twelve
@@ -831,28 +674,15 @@ app.post('/api/sources/:id/run', async (c) => {
   return c.json(result);
 });
 
-app.get('/api/stats', async (c) => {
-  const db = getDb();
-  const [scores] = await db
-    .select({
-      total: sql<number>`count(*)`,
-      open: sql<number>`sum(case when ${vacancies.closedAt} is null then 1 else 0 end)`,
-      aboveThreshold: sql<number>`sum(case when ${vacancies.score} >= ${config.pipeline.scoreThreshold} then 1 else 0 end)`,
-      stopped: sql<number>`sum(case when ${vacancies.score} = -100 then 1 else 0 end)`,
-      needsReview: sql<number>`sum(case when ${vacancies.needsReview} = 1 then 1 else 0 end)`,
-    })
-    .from(vacancies);
-
-  return c.json({
-    vacancies: scores,
+app.get('/api/stats', async (c) =>
+  c.json({
     funnel: await funnel(),
     llmBudgetLeft: await remainingBudget(),
-    // Shows who classifies: Anthropic billing per token or the Workers AI quota.
+    // Shows who answers model calls: Anthropic billing per token or the Workers AI quota.
     llmProvider: config.llm.provider,
     llmModel: config.llm.activeModel,
-    threshold: config.pipeline.scoreThreshold,
-  });
-});
+  }),
+);
 
 app.get('/api/stats/full', async (c) => c.json(await fullStats()));
 
@@ -908,12 +738,6 @@ app.post('/api/telegram/webhook', async (c) => {
   const { buildBot, isConfigured: telegramReady } = await import('../notify/telegram.js');
   if (!telegramReady()) return c.json({ error: 'telegram is not configured' }, 400);
   return webhookCallback(buildBot(), 'hono')(c);
-});
-
-app.get('/api/vacancies/:id', async (c) => {
-  const db = getDb();
-  const [row] = await db.select().from(vacancies).where(eq(vacancies.id, Number(c.req.param('id'))));
-  return row ? c.json(row) : c.json({ error: 'no such vacancy' }, 404);
 });
 
 /**

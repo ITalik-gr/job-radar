@@ -2,7 +2,7 @@
  * Filling values into a letter template.
  *
  * There is **no text generation** here: the owner writes the letter, and this function only fills
- * in the company name, the contact name and the stack. Section 11 of CLAUDE.md forbids generating
+ * in the company name, the contact name and the rest. CLAUDE.md section 7 forbids model-written
  * letters, and this file has no model calls and never will.
  *
  * The file lives in `src/lib` rather than the front end so that the shared tests and typecheck
@@ -14,10 +14,10 @@ export interface LetterContext {
   company: string;
   domain: string;
   contactName?: string | null;
-  /** studio | design | startup | product | outstaff */
+  /** The segment, `companies.kind`: studio | design | startup | smb | ecommerce | ... */
   kind?: string | null;
+  industry?: string | null;
   stack?: string[];
-  vacancyTitle?: string | null;
   city?: string | null;
   country?: string | null;
   /**
@@ -25,11 +25,10 @@ export interface LetterContext {
    * label inside an English letter reads as a glitch. Defaults to en.
    */
   language?: string | null;
-  /**
-   * The first paragraph of the letter: either from the model or static from the template. It
-   * arrives as a ready string, because who wrote it is decided before substitution.
-   */
-  intro?: string | null;
+  /** One concrete issue from the site audit: "loads 9 s on a phone". The reason to write. */
+  finding?: string | null;
+  /** The open lead the letter answers: a tender or a public request. */
+  leadTitle?: string | null;
   /**
    * The signature. Kept apart from the template text because it is the same in every letter, and
    * editing it in ten templates one by one means they drift apart sooner or later.
@@ -41,16 +40,21 @@ export interface LetterContext {
 export const LETTER_PLACEHOLDERS: { token: string; hint: string }[] = [
   { token: 'company', hint: 'company name' },
   { token: 'domain', hint: 'domain, e.g. acme.com' },
+  { token: 'site', hint: 'site address, https://acme.com' },
   { token: 'contact_name', hint: 'contact name, if found' },
   { token: 'first_name', hint: 'only the first word of the name' },
-  { token: 'niche', hint: 'studio, design studio, startup, in the letter language' },
+  { token: 'niche', hint: 'studio, startup, business..., in the letter language' },
+  { token: 'industry', hint: 'industry: dental, legal, saas...' },
   { token: 'their_stack', hint: 'stack from their site, comma separated' },
-  { token: 'vacancy_title', hint: 'vacancy title, if the letter comes from the Queue' },
-  { token: 'intro', hint: 'first paragraph: from the model or static from the template' },
-  { token: 'signature', hint: 'the signature shared by all letters' },
+  { token: 'finding', hint: 'one issue from the site audit' },
+  { token: 'lead_title', hint: 'title of the open lead: a tender, a request' },
   { token: 'city', hint: 'company city' },
   { token: 'country', hint: 'company country' },
+  { token: 'signature', hint: 'the signature shared by all letters' },
 ];
+
+/** Placeholder syntax, shown in the editor: a fallback after a bar is used when the value is empty. */
+export const FALLBACK_HINT = '{{first_name|колеги}}: the text after | is used when there is no value';
 
 const NICHE_LABELS: Record<'en' | 'uk', Record<string, string>> = {
   en: {
@@ -59,6 +63,9 @@ const NICHE_LABELS: Record<'en' | 'uk', Record<string, string>> = {
     startup: 'a startup',
     product: 'a product company',
     outstaff: 'an outstaffing company',
+    smb: 'a business',
+    ecommerce: 'an online store',
+    public: 'an organisation',
   },
   // Ukrainian letters get Ukrainian words: this is letter content, not interface copy.
   uk: {
@@ -67,62 +74,61 @@ const NICHE_LABELS: Record<'en' | 'uk', Record<string, string>> = {
     startup: 'стартап',
     product: 'продуктова компанія',
     outstaff: 'аутстаф-компанія',
+    smb: 'бізнес',
+    ecommerce: 'інтернет-магазин',
+    public: 'організація',
   },
 };
 
 export interface RenderedLetter {
   text: string;
-  /** Placeholders that got no value. The interface has to highlight them. */
+  /** Placeholders that got no value and have no fallback. The interface has to highlight them. */
   missing: string[];
   /** Tokens missing from the supported list. Most often a typo. */
   unknown: string[];
 }
 
 /**
- * An empty placeholder is replaced with an empty string rather than left as `{{...}}`. The reason
- * is simple: the owner copies the text into a mail client, and curly braces in a letter look
- * careless. But the list of empty ones is returned, so the interface can warn before the letter goes.
+ * Fills a template. There is no text generation here: the owner writes the letter, this only
+ * puts in values.
+ *
+ * `{{token}}` with no value is replaced by an empty string and reported in `missing`, so a draft
+ * saying "Hi ," is blocked before it exists. `{{token|fallback}}` uses the fallback instead and
+ * is never missing: `{{first_name|колеги}}` gives "колеги" for a shared mailbox, and
+ * `{{finding|}}` makes a sentence optional.
  */
 export function renderLetter(template: string, context: LetterContext): RenderedLetter {
-  const base: Record<string, string> = {
+  const language = context.language === 'uk' ? 'uk' : 'en';
+  const values: Record<string, string> = {
     company: context.company ?? '',
     domain: context.domain ?? '',
+    site: context.domain ? `https://${context.domain}` : '',
     contact_name: context.contactName ?? '',
-    first_name: (context.contactName ?? '').split(' ')[0] ?? '',
-    niche: context.kind ? (NICHE_LABELS[context.language === 'uk' ? 'uk' : 'en'][context.kind] ?? '') : '',
+    first_name: (context.contactName ?? '').trim().split(/\s+/)[0] ?? '',
+    niche: context.kind ? (NICHE_LABELS[language][context.kind] ?? '') : '',
+    industry: context.industry ?? '',
     their_stack: (context.stack ?? []).join(', '),
-    vacancy_title: context.vacancyTitle ?? '',
+    finding: context.finding ?? '',
+    lead_title: context.leadTitle ?? '',
     city: context.city ?? '',
     country: context.country ?? '',
     signature: context.signature ?? '',
   };
 
-  /*
-   * The first paragraph is not inserted as a ready string, it goes through substitution itself.
-   * Otherwise `{{company}}` written in the "First paragraph" field would reach the mail as curly
-   * braces: replacement is a single pass, and inserted text is not scanned again.
-   *
-   * The `intro` token inside the paragraph itself is left out on purpose: it lands in `unknown`,
-   * and the owner sees a warning instead of silent recursion.
-   */
-  const introMissing = new Set<string>();
-  const introUnknown = new Set<string>();
-  const intro = substitute(context.intro ?? '', base, introMissing, introUnknown);
-
-  const values: Record<string, string> = { ...base, intro };
-
   const missing = new Set<string>();
   const unknown = new Set<string>();
-  const text = substitute(template, values, missing, unknown);
-
-  /*
-   * Paragraph complaints count only when the template actually uses it. A paragraph written
-   * "just in case" for a template without the marker must not block the letter.
-   */
-  if (HAS_INTRO.test(template)) {
-    for (const token of introMissing) missing.add(token);
-    for (const token of introUnknown) unknown.add(token);
-  }
+  const text = template.replace(TOKEN, (_match, rawToken: string, fallback: string | undefined) => {
+    const token = rawToken.toLowerCase();
+    if (!(token in values)) {
+      unknown.add(token);
+      return '';
+    }
+    const value = values[token]!;
+    if (value) return value;
+    if (fallback !== undefined) return fallback.trim();
+    missing.add(token);
+    return '';
+  });
 
   return {
     // Substituting an empty value leaves double spaces and dangling commas.
@@ -132,28 +138,8 @@ export function renderLetter(template: string, context: LetterContext): Rendered
   };
 }
 
-const TOKEN = /\{\{\s*([a-z_]+)\s*\}\}/gi;
-
-/** Whether the template uses the first paragraph at all. Without it the paragraph is checked for nothing. */
-export const HAS_INTRO = /\{\{\s*intro\s*\}\}/i;
-
-function substitute(
-  template: string,
-  values: Record<string, string>,
-  missing: Set<string>,
-  unknown: Set<string>,
-): string {
-  return template.replace(TOKEN, (_match, rawToken: string) => {
-    const token = rawToken.toLowerCase();
-    if (!(token in values)) {
-      unknown.add(token);
-      return '';
-    }
-    const value = values[token]!;
-    if (!value) missing.add(token);
-    return value;
-  });
-}
+/** `{{ token }}` or `{{ token | fallback text }}`. The fallback cannot contain a closing brace. */
+export const TOKEN = /\{\{\s*([a-z_]+)\s*(?:\|([^}]*))?\}\}/gi;
 
 /** A `mailto:` link with subject and body. An empty address means the button is disabled. */
 export function mailtoLink(email: string | null, subject: string, body: string): string | null {

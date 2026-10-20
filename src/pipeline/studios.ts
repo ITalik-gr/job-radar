@@ -1,13 +1,19 @@
 import { and, desc, eq, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
-import { companies, companyState, contacts, outreach, vacancies, type Company } from '../db/schema.js';
+import { companies, companyState, contacts, outreach, type Company } from '../db/schema.js';
 import { scoreCompany, type CompanyBreakdown } from './company-score.js';
+import { hiringNow } from './hiring.js';
 import { rules } from './rules.js';
-import { HIDDEN_STATUSES } from './queue.js';
 
 /**
- * The studio queue: who to write to with an offer of services. No vacancy is needed here, so this
- * is a list separate from the vacancy queue, with the same actions on company state.
+ * Statuses that keep a company out of the lead list: already written to, answered, turned
+ * down, blocked. A snooze is handled separately by its end date.
+ */
+export const HIDDEN_STATUSES = ['contacted', 'replied', 'rejected_by_me', 'rejected_by_them', 'blacklist'];
+
+/**
+ * The lead list: who to write to with an offer of services, scored and filtered. The name is
+ * historical, it covers every segment now, not only studios.
  */
 
 export interface StudioCard {
@@ -18,6 +24,9 @@ export interface StudioCard {
   city: string | null;
   sizeHint: string | null;
   kind: string;
+  market: string | null;
+  industry: string | null;
+  phone: string | null;
   /** Signs of life on the site. null means enrichment has not been there yet. */
   copyrightYear: number | null;
   lastPostAt: number | null;
@@ -36,8 +45,11 @@ export interface StudioCard {
   /** The company page in the catalog it came from. */
   sourceUrl: string | null;
   sources: string[];
+  firstSeen: number;
   status: string;
-  openVacancies: number;
+  /** Hiring developers right now, and how many roles were seen. */
+  hiring: boolean;
+  hiringRoles: number | null;
   score: number;
   why: { reason: string; weight: number }[];
   /** `id` is there so the contact can be edited right from the card. */
@@ -58,8 +70,11 @@ export interface StudioFilters {
   /** Show everyone, including those already contacted. */
   includeContacted?: boolean;
   country?: string;
+  /** ua | intl. */
+  market?: string;
+  industry?: string;
   search?: string;
-  /** studio | design | startup | product | outstaff. Empty means everything except product companies. */
+  /** A segment from `companies.kind`. Empty means everything except product companies. */
   kind?: string;
   /** Only those with a named contact. A letter to hello@ is read by a manager, not a tech lead. */
   withNamedContact?: boolean;
@@ -101,9 +116,11 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     // A company without a domain leads nowhere: no letter, no site, no crawl.
     ne(companies.domain, ''),
     filters.country ? eq(companies.country, filters.country) : undefined,
+    filters.market ? eq(companies.market, filters.market) : undefined,
+    filters.industry ? eq(companies.industry, filters.industry.toLowerCase()) : undefined,
     /*
      * Without an explicit kind, product companies are removed from the list: a cold "I can help
-     * with your project" letter does not work for them, they have the vacancy Queue.
+     * with your project" letter rarely works on a company with its own engineering department.
      */
     filters.kind ? eq(companies.kind, filters.kind) : ne(companies.kind, 'product'),
     filters.minRating === undefined
@@ -138,10 +155,6 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
       company: companies,
       status: companyState.status,
       snoozedUntil: companyState.snoozedUntil,
-      openVacancies: sql<number>`(
-        select count(*) from ${vacancies}
-        where ${vacancies.companyId} = ${companies.id} and ${vacancies.closedAt} is null
-      )`,
       lastContactedAt: sql<number | null>`(
         select max(${outreach.sentAt}) from ${outreach} where ${outreach.companyId} = ${companies.id}
       )`,
@@ -158,7 +171,7 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
    * way as locally.
    *
    * SQL sets the order: named contacts before generic mailboxes, because a letter to hello@ is read
-   * by a manager, section 9 of CLAUDE.md.
+   * by a manager, section 5 of CLAUDE.md.
    */
   const chosen = db
     .select({ id: companies.id })
@@ -185,7 +198,6 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     .map((row) => {
       const breakdown: CompanyBreakdown = scoreCompany({
         company: row.company,
-        openVacancies: row.openVacancies,
         status: row.status,
       });
 
@@ -197,6 +209,9 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         city: row.company.city,
         sizeHint: row.company.sizeHint,
         kind: row.company.kind,
+        market: row.company.market,
+        industry: row.company.industry,
+        phone: row.company.phone,
         copyrightYear: row.company.copyrightYear,
         lastPostAt: row.company.lastPostAt,
         tags: row.company.tags,
@@ -211,8 +226,10 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         careersUrl: row.company.careersUrl,
         sourceUrl: row.company.sourceUrl,
         sources: row.company.sources,
+        firstSeen: row.company.firstSeen,
         status: row.status ?? 'new',
-        openVacancies: row.openVacancies,
+        hiring: hiringNow(row.company, now),
+        hiringRoles: row.company.hiringRoles,
         score: breakdown.score,
         why: [...breakdown.positives, ...breakdown.negatives].sort((a, b) => b.weight - a.weight),
         contacts: (byCompany.get(row.company.id) ?? []).map((contact) => ({
@@ -271,14 +288,21 @@ const STATUS_BY_ACTION: Record<StudioActionInput['action'], string> = {
   snooze: 'snoozed',
 };
 
-/** Actions on a studio: the same as on a vacancy card, but without a vacancy. */
+/** Actions on a lead card. They write the company state, and "contacted" also logs a letter. */
 export async function applyStudioAction(input: StudioActionInput): Promise<{ status: string; outreachId: number | null }> {
   const db = getDb();
-  const status = STATUS_BY_ACTION[input.action];
-  if (!status) throw new Error(`unknown action: ${input.action}`);
+  const requested = STATUS_BY_ACTION[input.action];
+  if (!requested) throw new Error(`unknown action: ${input.action}`);
 
   const snoozedUntil = input.action === 'snooze' ? Date.now() + (input.days ?? 30) * 86_400_000 : null;
   const [existing] = await db.select().from(companyState).where(eq(companyState.companyId, input.companyId));
+
+  /*
+   * "Interesting" on a company already written to must not erase that fact: one click used to
+   * turn `contacted` back into `interesting`, and the list then treated it as never contacted.
+   */
+  const keepContact = requested === 'interesting' && ['contacted', 'replied'].includes(existing?.status ?? '');
+  const status = keepContact ? existing!.status : requested;
 
   if (existing) {
     await db
@@ -297,7 +321,6 @@ export async function applyStudioAction(input: StudioActionInput): Promise<{ sta
       .insert(outreach)
       .values({
         companyId: input.companyId,
-        vacancyId: null,
         channel: input.channel ?? 'email',
         status: 'sent',
         sentAt: Date.now(),

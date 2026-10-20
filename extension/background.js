@@ -148,7 +148,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
  * The tab is created **inactive**: it never switches the owner away, he keeps doing
  * his own thing. Once read, the tab closes itself.
  *
- * The pace is human, as section 4 of CLAUDE.md requires: the pause between sites is
+ * The pace is human, as rule 4 of CLAUDE.md requires: the pause between sites is
  * never less than three seconds, and there is a limit of domains per pass. These are
  * other people's sites, and they must be visited the way a human would.
  */
@@ -159,7 +159,7 @@ const BROWSER_WALK = {
   /*
    * The pause between pages of one site, and how many pages per domain.
    *
-   * Three seconds is the floor from section 4 of CLAUDE.md, and it fits doubly well
+   * Three seconds is the floor from rule 4 of CLAUDE.md, and it fits doubly well
    * here: this is not catalog pagination, it is another studio's own site, and a
    * "human" is reading it right now. Four pages is the home page plus contacts,
    * about, and vacancies, exactly the ones where what we came for lives. Going

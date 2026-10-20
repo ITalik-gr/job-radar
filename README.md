@@ -23,7 +23,7 @@ mail tokens and running a cold email platform, which is a different product.
 - **Collects companies**: DOU, YC, HN "Who is hiring", Awwwards automatically; Clutch,
   GoodFirms, DesignRush, Sortlist and others through a Chrome extension in your own browser
   (they sit behind Cloudflare, and the radar does not bypass that). Planned: Prozorro
-  tenders, Google Places businesses, Freelancehunt projects.
+  tenders, Google Places businesses, funding news.
 - **Enriches** each company: site stack, signs of an abandoned site, named contacts from team
   pages, and a site audit that gives a concrete reason to write.
 - **Scores and filters** deterministically, with weights you can read and edit. A cheap model

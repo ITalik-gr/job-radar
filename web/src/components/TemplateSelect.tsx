@@ -15,7 +15,7 @@ export function TemplateSelect({
   onChange,
   width = 240,
 }: {
-  kind: 'vacancy' | 'studio';
+  kind: 'studio' | 'resume';
   value: string | null;
   onChange: (slug: string) => void;
   width?: number;

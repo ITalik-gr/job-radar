@@ -1,38 +1,3 @@
-export interface QueueCard {
-  queueItemId: number;
-  position: number;
-  decision: string | null;
-  vacancyId: number;
-  title: string | null;
-  url: string;
-  score: number | null;
-  stack: string[];
-  seniority: string | null;
-  remote: boolean | null;
-  location: string | null;
-  salaryMin: number | null;
-  salaryMax: number | null;
-  currency: string | null;
-  why: string | null;
-  rawText: string | null;
-  needsReview: boolean;
-  companyId: number;
-  company: string;
-  domain: string;
-  careersUrl: string | null;
-  companyStatus: string;
-  contactedNote: string | null;
-  /** When the card was first shown. Earlier than today means it was carried over. */
-  firstShownAt: number;
-}
-
-export interface QueueResponse {
-  day: string;
-  pending: number;
-  total: number;
-  cards: QueueCard[];
-}
-
 export interface CompanyRow {
   id: number;
   name: string;
@@ -40,6 +5,10 @@ export interface CompanyRow {
   country: string | null;
   city: string | null;
   sizeHint: string | null;
+  kind: string;
+  market: string | null;
+  industry: string | null;
+  phone: string | null;
   tags: string[];
   sourceUrl: string | null;
   score: number;
@@ -53,7 +22,9 @@ export interface CompanyRow {
   lastChecked: number | null;
   status: string | null;
   snoozedUntil: number | null;
-  openVacancies: number;
+  /** Hiring developers right now. */
+  hiring: boolean;
+  hiringRoles: number | null;
 }
 
 /**
@@ -70,6 +41,14 @@ export interface CompanyDetail {
     country: string | null;
     city: string | null;
     sizeHint: string | null;
+    kind: string;
+    market: string | null;
+    industry: string | null;
+    phone: string | null;
+    address: string | null;
+    hiringDevs: boolean;
+    hiringRoles: number | null;
+    hiringSeenAt: number | null;
     sources: string[];
     careersUrl: string | null;
     careersKind: string;
@@ -83,20 +62,39 @@ export interface CompanyDetail {
     lastChangeAt: number | null;
   };
   state: { status: string; reason: string | null; updatedAt: number } | null;
-  vacancies: {
-    id: number;
-    title: string | null;
-    url: string;
-    score: number | null;
-    stack: string[];
-    firstSeen: number;
-    lastSeen: number;
-    closedAt: number | null;
-    llmWhy: string | null;
-  }[];
   contacts: CompanyContact[];
   outreach: OutreachRow[];
-  snapshots: { id: number; url: string; fetchedAt: number; contentHash: string; blocks: number }[];
+  audits: SiteAudit[];
+  leads: Lead[];
+}
+
+/** A site check: the concrete reason to write. */
+export interface SiteAudit {
+  id: number;
+  checkedAt: number;
+  url: string;
+  https: boolean | null;
+  mobileOk: boolean | null;
+  perfScore: number | null;
+  lcpMs: number | null;
+  cms: string | null;
+  copyrightYear: number | null;
+  issues: string[];
+}
+
+/** Explicit demand: a tender, a funding round, a public request. */
+export interface Lead {
+  id: number;
+  source: string;
+  url: string;
+  title: string;
+  budget: number | null;
+  currency: string | null;
+  deadlineAt: number | null;
+  firstSeen: number;
+  closedAt: number | null;
+  fit: number | null;
+  status: string;
 }
 
 export interface OutreachRow {
@@ -104,9 +102,6 @@ export interface OutreachRow {
   companyId: number;
   company: string;
   domain: string;
-  vacancyId: number | null;
-  vacancyTitle: string | null;
-  vacancyUrl: string | null;
   channel: string;
   sentAt: number;
   templateUsed: string | null;
@@ -118,7 +113,6 @@ export interface OutreachRow {
   waitingDays: number | null;
   status: string;
   language: string | null;
-  aiUsed: boolean;
   bounceType: string | null;
   subject: string | null;
   body: string | null;
@@ -132,7 +126,11 @@ export interface StudioCard {
   country: string | null;
   city: string | null;
   sizeHint: string | null;
+  /** The segment: studio, design, startup, smb, ecommerce... */
   kind: string;
+  market: string | null;
+  industry: string | null;
+  phone: string | null;
   copyrightYear: number | null;
   lastPostAt: number | null;
   tags: string[];
@@ -149,8 +147,11 @@ export interface StudioCard {
   careersUrl: string | null;
   sourceUrl: string | null;
   sources: string[];
+  firstSeen: number;
   status: string;
-  openVacancies: number;
+  /** Hiring developers right now, and how many roles were seen. */
+  hiring: boolean;
+  hiringRoles: number | null;
   score: number;
   why: { reason: string; weight: number }[];
   contacts: CompanyContact[];
@@ -180,15 +181,18 @@ export interface SourceRow {
   } | null;
 }
 
+export interface Bucket {
+  key: string;
+  count: number;
+}
+
 export interface FullStats {
-  topTech: { tech: string; count: number }[];
-  salariesBySeniority: { group: string; median: number | null; count: number }[];
-  salariesByCountry: { group: string; median: number | null; count: number }[];
-  lifetimes: {
-    medianDays: number | null;
-    closedCount: number;
-    ghosts: { id: number; title: string | null; company: string; url: string; days: number }[];
-  };
+  byKind: Bucket[];
+  byMarket: Bucket[];
+  byCountry: Bucket[];
+  byIndustry: Bucket[];
+  bySource: Bucket[];
+  reach: { total: number; withEmail: number; withNamedContact: number; withPhone: number; hiring: number };
   perDay: { day: string; count: number }[];
   funnel: Record<string, number>;
 }
@@ -198,15 +202,18 @@ export interface RulesPayload {
   source: 'db' | 'file' | 'bundled';
 }
 
-/** Only what the interface edits. The rest of the config goes back and forth as is. */
+/** Lead scoring rules. Only what the interface edits is typed, the rest goes back and forth as is. */
 export interface Rules {
-  threshold: number;
-  stopWords: string[];
-  weights: { titleMultiplier: number; bodyCap: number; terms: Record<string, number> };
-  roleGate: { enabled: boolean; mustMatch: string[]; neverMatch: string[] };
-  geo: { enabled: boolean; homeCity: string[]; blockedRegions: string[] } & Record<string, unknown>;
   companies: {
     threshold: number;
+    kindWeights: Record<string, number>;
+    industryWeights: Record<string, number>;
+    tagWeights: Record<string, number>;
+    techWeights: Record<string, number>;
+    countryWeights: Record<string, number>;
+    sizeWeights: Record<string, number>;
+    hiring: number;
+    hasCareersPage: number;
     /** Catalog reputation. May be missing from a config saved before it existed. */
     reputation?: {
       goodRating: number;
@@ -229,14 +236,12 @@ export interface TemplateRow {
   /** The company kind the text is written for. Empty means universal. */
   forKind: string | null;
   subject: string | null;
-  /** Static first paragraph. The body inserts it through {{intro}}. */
-  intro: string | null;
   body: string;
   note: string | null;
   archived: boolean;
   /** uk | en. The language is how a template is matched to the company's country. */
   language: string;
-  /** vacancy | studio_named | studio_generic | followup. Empty means manual copying. */
+  /** studio_named | studio_generic | followup. Empty means manual copying. */
   targetType: string | null;
   /** How many letters were sent under this key. Shown before deletion. */
   usageCount: number;
@@ -245,13 +250,11 @@ export interface TemplateRow {
 }
 
 export interface Stats {
-  vacancies: { total: number; open: number; aboveThreshold: number; stopped: number; needsReview: number };
   funnel: Record<string, number>;
   llmBudgetLeft: number;
-  /** anthropic or workers-ai. Shows what exactly classification is billed to. */
+  /** anthropic or workers-ai. Shows what exactly model calls are billed to. */
   llmProvider: string;
   llmModel: string;
-  threshold: number;
 }
 
 /**
@@ -346,39 +349,34 @@ export interface DraftRow {
   companyId: number;
   company: string;
   domain: string;
-  vacancyTitle: string | null;
+  /** The lead the letter answers: a tender, a request. */
+  leadTitle: string | null;
   contactName: string | null;
   contactEmail: string | null;
   templateUsed: string | null;
   language: string | null;
   subject: string | null;
   body: string | null;
-  aiUsed: boolean;
-  aiFallbackReason: string | null;
   error: string | null;
   queuedAt: number | null;
   /** Every address of this company. Dead ones too, but marked. */
   companyContacts: { name: string | null; role: string | null; email: string; emailValid: boolean }[];
 }
 
+export interface Conversion {
+  key: string;
+  sent: number;
+  replied: number;
+  positive: number;
+}
+
 export interface OutreachStats {
-  byTemplate: { template: string; sent: number; replied: number; positive: number }[];
-  ai: { sent: number; replied: number; positive: number };
-  static: { sent: number; replied: number; positive: number };
-  fallbacks: { reason: string; count: number }[];
-  fallbackShare: number;
+  byTemplate: Conversion[];
+  byKind: Conversion[];
   bounceRate: number;
   medianReplyHours: number | null;
   drafts: number;
   needsAttention: number;
-}
-
-export interface FactRow {
-  id: number;
-  key: string;
-  textUk: string;
-  textEn: string;
-  isActive: boolean;
 }
 
 export interface Blocker {
@@ -439,12 +437,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  queue: (day?: string) => request<QueueResponse>(`/queue${day ? `?day=${day}` : ''}`),
-  act: (vacancyId: number, body: Record<string, unknown>) =>
-    request<{ companyId: number; status: string }>(`/vacancies/${vacancyId}/action`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
   companies: (params: Record<string, string>) => {
     const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
     return request<CompanyRow[]>(`/companies${query ? `?${query}` : ''}`);
@@ -469,15 +461,10 @@ export const api = {
   },
   companyAction: (id: number, body: Record<string, unknown>) =>
     request<{ status: string }>(`/companies/${id}/action`, { method: 'POST', body: JSON.stringify(body) }),
-  recalc: () => request<Record<string, number>>('/score/recalc', { method: 'POST', body: '{}' }),
 
   rules: () => request<RulesPayload>('/rules'),
   saveRules: (next: Rules) => request<RulesPayload>('/rules', { method: 'PUT', body: JSON.stringify(next) }),
   resetRules: () => request<RulesPayload>('/rules/reset', { method: 'POST', body: '{}' }),
-  stopWord: (word: string, remove = false) =>
-    request<RulesPayload>('/rules/stop-words', { method: 'POST', body: JSON.stringify({ word, remove }) }),
-  termWeight: (term: string, weight: number | null) =>
-    request<RulesPayload>('/rules/weights', { method: 'POST', body: JSON.stringify({ term, weight }) }),
 
   templates: (kind?: string) =>
     request<{ kinds: string[]; templates: TemplateRow[] }>(`/templates${kind ? `?kind=${kind}` : ''}`),
@@ -502,12 +489,12 @@ export const api = {
   gmailConnectUrl,
   drafts: () => request<{ drafts: DraftRow[]; counters: SendCounters }>('/outreach/drafts'),
   /** `templateSlug` is the template picked by hand on the card. Empty means automatic choice. */
-  draftForCompany: (companyId: number, vacancyId?: number | null, templateSlug?: string | null) =>
+  draftForCompany: (companyId: number, templateSlug?: string | null) =>
     request<{ id: number | null; reason: string | null }>('/outreach/drafts', {
       method: 'POST',
-      body: JSON.stringify({ companyId, vacancyId, templateSlug }),
+      body: JSON.stringify({ companyId, templateSlug }),
     }),
-  /** A different template for a draft: the text is rebuilt, the intro carries over. */
+  /** A different template for a draft: the text is rebuilt from the company data. */
   retemplateDraft: (id: number, slug: string) =>
     request<DraftRow>(`/outreach/drafts/${id}/template`, {
       method: 'POST',
@@ -557,8 +544,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  regenerateIntro: (id: number) =>
-    request<DraftRow>(`/outreach/drafts/${id}/regenerate`, { method: 'POST', body: '{}' }),
   outreachStats: () => request<OutreachStats>('/stats/outreach'),
   prepareFollowups: () =>
     request<{ due: number; created: number }>('/outreach/followups', { method: 'POST', body: '{}' }),
@@ -570,12 +555,6 @@ export const api = {
   getroNetworks: () => request<{ networks: string[] }>('/sources/getro/networks'),
   run: (path: string, body: Record<string, unknown> = {}) =>
     request<Record<string, unknown>>(path, { method: 'POST', body: JSON.stringify(body) }),
-  facts: () => request<FactRow[]>('/facts'),
-  createFact: (body: Record<string, unknown>) =>
-    request<FactRow>('/facts', { method: 'POST', body: JSON.stringify(body) }),
-  updateFact: (id: number, body: Record<string, unknown>) =>
-    request<FactRow>(`/facts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteFact: (id: number) => request<{ deleted: boolean }>(`/facts/${id}`, { method: 'DELETE' }),
   prepareDrafts: (limit?: number) =>
     request<{ candidates: number; created: number; needsAttention: number }>('/outreach/prepare', {
       method: 'POST',
@@ -591,8 +570,6 @@ export const api = {
       body: '{}',
     }),
   fullStats: () => request<FullStats>('/stats/full'),
-  topUpQueue: () =>
-    request<{ added: number; total: number }>('/queue/top-up', { method: 'POST', body: '{}' }),
   similar: (companyId: number) =>
     request<{ companyId: number; name: string; domain: string; kind: string; similarity: number }[]>(
       `/companies/${companyId}/similar`,
@@ -619,21 +596,6 @@ export const api = {
     }),
 };
 
-/** How many full days a card has waited for a decision. Zero means it was shown today. */
-export function waitingDays(firstShownAt: number): number {
-  return Math.floor((Date.now() - firstShownAt) / 86_400_000);
-}
-
 export function formatDate(ms: number | null): string {
   return ms ? new Date(ms).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : '';
-}
-
-export function formatSalary(card: {
-  salaryMin: number | null;
-  salaryMax: number | null;
-  currency: string | null;
-}): string {
-  if (!card.salaryMin && !card.salaryMax) return '';
-  const range = [card.salaryMin, card.salaryMax].filter(Boolean).join(' - ');
-  return `${range} ${card.currency ?? ''}`.trim();
 }

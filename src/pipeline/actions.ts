@@ -1,105 +1,6 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
-import { companies, companyState, outreach, queueItems, vacancies } from '../db/schema.js';
-import { log } from '../lib/log.js';
-import { todayKey } from './queue.js';
-
-export const ACTIONS = ['interesting', 'not_interesting', 'contacted', 'blacklist', 'snooze'] as const;
-export type Action = (typeof ACTIONS)[number];
-
-/** An action on a card means the company's status, not the vacancy's: we write to the company, not the vacancy. */
-const STATUS_BY_ACTION: Record<Action, string> = {
-  interesting: 'interesting',
-  not_interesting: 'rejected_by_me',
-  contacted: 'contacted',
-  blacklist: 'blacklist',
-  snooze: 'snoozed',
-};
-
-export interface ActionInput {
-  vacancyId: number;
-  action: Action;
-  note?: string | null;
-  /** Only for snooze, defaults to 30 days. */
-  days?: number;
-  /** Only for contacted. */
-  channel?: string;
-  templateUsed?: string | null;
-  /** Snapshot of the contact at the time of the letter: a year later it should still be clear who exactly was written to. */
-  contactName?: string | null;
-  contactEmail?: string | null;
-}
-
-export interface ActionResult {
-  companyId: number;
-  status: string;
-  outreachId: number | null;
-}
-
-export async function applyAction(input: ActionInput): Promise<ActionResult> {
-  const db = getDb();
-  const [vacancy] = await db.select().from(vacancies).where(eq(vacancies.id, input.vacancyId));
-  if (!vacancy) throw new Error(`vacancy ${input.vacancyId} does not exist`);
-
-  // Validation here, not only in the API: the CLI and a future cron also call this function.
-  const requested = STATUS_BY_ACTION[input.action];
-  if (!requested) throw new Error(`unknown action: ${input.action}`);
-  const snoozedUntil =
-    input.action === 'snooze' ? Date.now() + (input.days ?? 30) * 86_400_000 : null;
-
-  const [existing] = await db
-    .select()
-    .from(companyState)
-    .where(eq(companyState.companyId, vacancy.companyId));
-
-  /*
-   * "Interesting" on a card of a company already written to must not erase that fact: the
-   * 90 day exception shows such cards, and one click used to turn `contacted` back into
-   * `interesting`, after which the queue treated the company as never contacted.
-   */
-  const keepContact = requested === 'interesting' && ['contacted', 'replied'].includes(existing?.status ?? '');
-  const status = keepContact ? existing!.status : requested;
-
-  if (existing) {
-    await db
-      .update(companyState)
-      .set({ status, snoozedUntil, reason: input.note ?? existing.reason, updatedAt: Date.now() })
-      .where(eq(companyState.companyId, vacancy.companyId));
-  } else {
-    await db
-      .insert(companyState)
-      .values({ companyId: vacancy.companyId, status, snoozedUntil, reason: input.note ?? null });
-  }
-
-  let outreachId: number | null = null;
-  if (input.action === 'contacted') {
-    const [row] = await db
-      .insert(outreach)
-      .values({
-        companyId: vacancy.companyId,
-        vacancyId: vacancy.id,
-        channel: input.channel ?? 'email',
-        // The "Wrote" button records a letter that was already sent, so it's sent right away.
-        // Outreach drafts live in this same table with status = draft.
-        status: 'sent',
-        sentAt: Date.now(),
-        templateUsed: input.templateUsed ?? null,
-        contactName: input.contactName ?? null,
-        contactEmail: input.contactEmail ?? null,
-        note: input.note ?? null,
-      })
-      .returning({ id: outreach.id });
-    outreachId = row!.id;
-  }
-
-  await db
-    .update(queueItems)
-    .set({ decision: input.action, decidedAt: Date.now() })
-    .where(and(eq(queueItems.vacancyId, input.vacancyId), isNull(queueItems.decision)));
-
-  log.info({ vacancyId: input.vacancyId, action: input.action, status }, 'action applied');
-  return { companyId: vacancy.companyId, status, outreachId };
-}
+import { companies, companyState, outreach } from '../db/schema.js';
 
 export const REPLY_TYPES = ['positive', 'rejection', 'auto'] as const;
 export type ReplyType = (typeof REPLY_TYPES)[number];
@@ -139,9 +40,6 @@ export interface OutreachRow {
   companyId: number;
   company: string;
   domain: string;
-  vacancyId: number | null;
-  vacancyTitle: string | null;
-  vacancyUrl: string | null;
   channel: string;
   sentAt: number | null;
   status: string;
@@ -170,25 +68,19 @@ export async function listOutreach(): Promise<OutreachRow[]> {
       row: outreach,
       company: companies.name,
       domain: companies.domain,
-      vacancyTitle: vacancies.title,
-      vacancyUrl: vacancies.url,
     })
     .from(outreach)
     .innerJoin(companies, eq(companies.id, outreach.companyId))
-    .leftJoin(vacancies, eq(vacancies.id, outreach.vacancyId))
     // A draft is not a letter yet. Its place is on the "To send" page, not in the history.
     .where(sql`${outreach.sentAt} is not null`)
     .orderBy(desc(outreach.sentAt));
 
   const now = Date.now();
-  return rows.map(({ row, company, domain, vacancyTitle, vacancyUrl }) => ({
+  return rows.map(({ row, company, domain }) => ({
     id: row.id,
     companyId: row.companyId,
     company,
     domain,
-    vacancyId: row.vacancyId,
-    vacancyTitle,
-    vacancyUrl,
     channel: row.channel,
     sentAt: row.sentAt,
     status: row.status,
@@ -217,8 +109,7 @@ export async function followUps(days = 7): Promise<OutreachRow[]> {
 
 export interface FunnelStats {
   companies: number;
-  vacanciesOpen: number;
-  shown: number;
+  /** Companies the owner has looked at and decided on. */
   decided: number;
   contacted: number;
   replied: number;
@@ -235,10 +126,8 @@ export async function funnel(): Promise<FunnelStats> {
 
   return {
     companies: await count(db.select({ n }).from(companies)),
-    vacanciesOpen: await count(db.select({ n }).from(vacancies).where(isNull(vacancies.closedAt))),
-    shown: await count(db.select({ n }).from(queueItems)),
     decided: await count(
-      db.select({ n }).from(queueItems).where(sql`${queueItems.decision} is not null`),
+      db.select({ n }).from(companyState).where(sql`${companyState.status} <> 'new'`),
     ),
     contacted: await count(db.select({ n }).from(outreach).where(sent)),
     replied: await count(
@@ -253,4 +142,3 @@ export async function funnel(): Promise<FunnelStats> {
   };
 }
 
-export { todayKey };

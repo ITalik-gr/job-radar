@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
 import { getDb } from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { outreach, runs, vacancies, type Company } from '../src/db/schema.js';
+import { outreach, runs, type Company } from '../src/db/schema.js';
 import { upsertCompany } from '../src/pipeline/companies.js';
 import { HELP_TEXT, isConfigured, notify, statusText, WEB_URL } from '../src/notify/telegram.js';
 import { SCHEDULE } from '../src/scheduler.js';
@@ -21,6 +21,18 @@ beforeAll(async () => {
   acme = (await upsertCompany({ name: 'Acme', domain: 'acme.com', source: 'test' })).company;
 });
 
+/** A company the default rules score well above the alert line: a Ukrainian web studio of 10 to 49. */
+function strong(name: string, domain: string) {
+  return upsertCompany({
+    name,
+    domain,
+    source: 'test',
+    country: 'UA',
+    sizeHint: '10 - 49',
+    tags: ['web development', 'ui/ux design'],
+  });
+}
+
 describe('notifications', () => {
   it('an empty state produces no messages', async () => {
     expect(await notify.digest({ sender })).toBe(false);
@@ -30,42 +42,29 @@ describe('notifications', () => {
     expect(sent).toHaveLength(0);
   });
 
-  it('a score 12+ alert contains the company, the score and the link', async () => {
-    await getDb().insert(vacancies).values({
-      companyId: acme.id,
-      source: 'greenhouse',
-      url: 'https://acme.com/jobs/1',
-      title: 'Senior Frontend Developer',
-      score: 18,
-      dedupeKey: 'acme|senior|w1',
-    });
+  it('a new strong lead alert contains the company, the domain and the score', async () => {
+    await strong('Strong Studio', 'strong.ua');
 
     expect(await notify.highScore({ sender })).toBe(true);
     const message = sent.at(-1)!;
-    expect(message).toContain('Acme');
-    expect(message).toContain('18.0');
-    expect(message).toContain('https://acme.com/jobs/1');
+    expect(message).toContain('Strong Studio');
+    expect(message).toContain('strong.ua');
+    expect(message).toMatch(/\(\d+\.\d\)/);
   });
 
-  it('a vacancy below the threshold does not trigger the alert', async () => {
+  it('a weak lead does not trigger the alert', async () => {
     sent.length = 0;
-    await getDb().insert(vacancies).values({
-      companyId: acme.id,
-      source: 'greenhouse',
-      url: 'https://acme.com/jobs/2',
-      title: 'Weak vacancy',
-      score: 7,
-      dedupeKey: 'acme|weak|w1',
-    });
+    await upsertCompany({ name: 'Weak Corp', domain: 'weak.com', source: 'test' });
 
     await notify.highScore({ sender });
     expect(sent.at(-1)).not.toContain('Weak');
   });
 
-  it('the digest shows the queue size and a link to the web', async () => {
+  it('the digest shows the leads and a link to the web', async () => {
     expect(await notify.digest({ sender })).toBe(true);
     const message = sent.at(-1)!;
-    expect(message).toContain('Queue for');
+    expect(message).toContain('Leads');
+    expect(message).toContain('Strong Studio');
     expect(message).toContain(WEB_URL);
   });
 
@@ -90,19 +89,7 @@ describe('notifications', () => {
   });
 
   it('HTML in names is escaped so Telegram does not fail', async () => {
-    await upsertCompany({ name: '<b>Evil</b> company', domain: 'evil.com', source: 'test' });
-    const [company] = await getDb().select().from(vacancies).limit(0);
-    expect(company).toBeUndefined();
-
-    const evil = await upsertCompany({ name: '<b>Evil</b> company', domain: 'evil.com', source: 'test' });
-    await getDb().insert(vacancies).values({
-      companyId: evil.company.id,
-      source: 'test',
-      url: 'https://evil.com/1',
-      title: '<script>alert(1)</script>',
-      score: 20,
-      dedupeKey: 'evil|1|w1',
-    });
+    await strong('<script>alert(1)</script>', 'evil.ua');
 
     await notify.highScore({ sender });
     const message = sent.at(-1)!;
@@ -116,7 +103,7 @@ describe('notifications', () => {
     expect(sent.length).toBe(before + 1);
 
     const message = sent.at(-1)!;
-    expect(message).toContain('Finds with score 12+');
+    expect(message).toContain('New leads with score 10+');
     expect(message).toContain('Problem sources');
     expect(message.split(WEB_URL).length - 1).toBe(1);
   });
@@ -130,7 +117,7 @@ describe('test isolation', () => {
 
 describe('bot help', () => {
   it('explains every part of the system', () => {
-    for (const topic of ['Sources', 'Company catalogs', 'Scoring', 'Queue', 'Stats', 'Bot commands']) {
+    for (const topic of ['Sources', 'Enrichment', 'Scoring', 'Letters', 'Bot commands']) {
       expect(HELP_TEXT).toContain(topic);
     }
     expect(HELP_TEXT).toContain('/status');
@@ -145,9 +132,8 @@ describe('bot help', () => {
 
   it('status shows real numbers from the database', async () => {
     const text = await statusText();
-    expect(text).toContain('companies: 2');
-    expect(text).toContain('open vacancies');
-    expect(text).toContain("in today's queue");
+    expect(text).toMatch(/companies: \d+, Ukrainian: \d+/);
+    expect(text).toContain('leads above the threshold');
   });
 });
 

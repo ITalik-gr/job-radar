@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -13,7 +12,6 @@ import {
   ScrollArea,
   Skeleton,
   Stack,
-  Switch,
   Table,
   Text,
   TextInput,
@@ -21,7 +19,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Ban, Plus, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
+import { Plus, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
 import { api, type Rules } from '../lib/api';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -41,100 +39,15 @@ function SectionTitle({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-/**
- * A word list edited in place. Shared by stop words and allowed role names: the
- * behaviour is the same, only the content differs.
- */
-function WordList({
-  words,
-  onChange,
-  placeholder,
-  tone = 'gray',
-}: {
-  words: string[];
-  onChange: (next: string[]) => void;
-  placeholder: string;
-  tone?: string;
-}) {
-  const [draft, setDraft] = useState('');
-  const [filter, setFilter] = useState('');
-
-  const add = () => {
-    const value = draft.trim().toLowerCase();
-    if (!value || words.includes(value)) return setDraft('');
-    onChange([...words, value].sort());
-    setDraft('');
-  };
-
-  const shown = filter ? words.filter((word) => word.includes(filter.toLowerCase())) : words;
-
-  return (
-    <Stack gap="sm">
-      <Group gap="sm">
-        <TextInput
-          placeholder={placeholder}
-          value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={(event) => event.key === 'Enter' && add()}
-          style={{ flex: 1 }}
-        />
-        <Button variant="default" leftSection={<Plus size={15} />} onClick={add}>
-          Add
-        </Button>
-      </Group>
-
-      {words.length > 12 && (
-        <TextInput
-          placeholder="filter the list"
-          leftSection={<Search size={14} />}
-          value={filter}
-          onChange={(event) => setFilter(event.currentTarget.value)}
-        />
-      )}
-
-      <ScrollArea.Autosize mah={260}>
-        <Group gap={6}>
-          {shown.length === 0 && (
-            <Text size="sm" c="dimmed">
-              {words.length === 0 ? 'the list is empty' : 'nothing matches the filter'}
-            </Text>
-          )}
-          {shown.map((word) => (
-            <Badge
-              key={word}
-              color={tone}
-              rightSection={
-                <ActionIcon
-                  size={14}
-                  variant="transparent"
-                  color={tone}
-                  aria-label={`remove ${word}`}
-                  onClick={() => onChange(words.filter((item) => item !== word))}
-                >
-                  <Trash2 size={11} />
-                </ActionIcon>
-              }
-            >
-              {word}
-            </Badge>
-          ))}
-        </Group>
-      </ScrollArea.Autosize>
-
-      <Text size="xs" c="dimmed">
-        {words.length} total
-      </Text>
-    </Stack>
-  );
-}
-
-/** Term weights: a table of term plus number, with rows that can be added and removed. */
+/** A weight table: key plus number, with rows that can be added and removed. */
 function TermWeights({
   terms,
   onChange,
+  placeholder = 'e.g. dental',
 }: {
   terms: Record<string, number>;
   onChange: (next: Record<string, number>) => void;
+  placeholder?: string;
 }) {
   const [term, setTerm] = useState('');
   const [weight, setWeight] = useState<number | string>(1);
@@ -159,8 +72,8 @@ function TermWeights({
     <Stack gap="sm">
       <Group gap="sm" align="flex-end">
         <TextInput
-          label="Term"
-          placeholder="e.g. hono"
+          label="Key"
+          placeholder={placeholder}
           value={term}
           onChange={(event) => setTerm(event.currentTarget.value)}
           onKeyDown={(event) => event.key === 'Enter' && add()}
@@ -173,7 +86,7 @@ function TermWeights({
       </Group>
 
       <TextInput
-        placeholder="filter terms"
+        placeholder="filter"
         leftSection={<Search size={14} />}
         value={filter}
         onChange={(event) => setFilter(event.currentTarget.value)}
@@ -184,7 +97,7 @@ function TermWeights({
           <Table stickyHeader layout="fixed">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>term</Table.Th>
+                <Table.Th>key</Table.Th>
                 <Table.Th w={110} ta="right">
                   weight
                 </Table.Th>
@@ -231,7 +144,7 @@ function TermWeights({
       </Paper>
 
       <Text size="xs" c="dimmed">
-        {Object.keys(terms).length} terms total
+        {Object.keys(terms).length} total
       </Text>
     </Stack>
   );
@@ -241,8 +154,7 @@ export function RulesPage() {
   const client = useQueryClient();
   const { data, error, isLoading } = useQuery({ queryKey: ['rules'], queryFn: () => api.rules() });
 
-  // A local copy: edits are not sent to the server on every keystroke, otherwise every
-  // character in the threshold field would trigger a rescore.
+  // A local copy: edits go to the server on Save, not on every keystroke.
   const [draft, setDraft] = useState<Rules | null>(null);
   useEffect(() => {
     if (data) setDraft(data.rules);
@@ -254,7 +166,7 @@ export function RulesPage() {
       notifications.show({
         color: 'green',
         title: 'Rules saved',
-        message: 'To rescore existing vacancies, use Run, Rescore',
+        message: 'Scores are computed on the fly, the lists already use the new weights',
       });
       void client.invalidateQueries({ queryKey: ['rules'] });
     },
@@ -307,7 +219,8 @@ export function RulesPage() {
     reviewsBonus: 1,
     noReviewsPenalty: -1,
   };
-  const patch = (part: Partial<Rules>) => setDraft({ ...draft, ...part });
+  const patchCompanies = (part: Partial<Rules['companies']>) =>
+    setDraft({ ...draft, companies: { ...draft.companies, ...part } });
 
   return (
     <Stack gap="md" p="lg">
@@ -351,36 +264,43 @@ export function RulesPage() {
       </Paper>
 
       <Card>
-        <SectionTitle title="Thresholds" hint="below the threshold a record is kept in the database but not shown in the queue" />
+        <SectionTitle title="Threshold and signals" hint="below the threshold a company stays in the database but is not shown as a lead" />
         <Group gap="xl" align="flex-end">
           <NumberInput
-            label="Vacancy threshold"
-            description="sum of the weights plus the model opinion divided by 20"
-            value={draft.threshold}
-            onChange={(value) => patch({ threshold: Number(value) || 0 })}
+            label="Lead threshold"
+            description="sum of the weights below"
+            value={draft.companies.threshold}
+            onChange={(value) => patchCompanies({ threshold: Number(value) || 0 })}
             w={200}
             allowDecimal
           />
           <NumberInput
-            label="Company threshold"
-            description="for the Studios page"
-            value={draft.companies.threshold}
-            onChange={(value) =>
-              patch({ companies: { ...draft.companies, threshold: Number(value) || 0 } })
-            }
+            label="Hiring developers"
+            description="seen on a board in the last 45 days"
+            value={draft.companies.hiring}
+            onChange={(value) => patchCompanies({ hiring: Number(value) || 0 })}
             w={200}
             allowDecimal
+            allowNegative
+          />
+          <NumberInput
+            label="Has a careers page"
+            value={draft.companies.hasCareersPage}
+            onChange={(value) => patchCompanies({ hasCareersPage: Number(value) || 0 })}
+            w={200}
+            allowDecimal
+            allowNegative
           />
         </Group>
       </Card>
 
       {/*
-        Studio reputation. These weights used to be editable only in config/scoring.json,
+        Catalog reputation. These weights used to be editable only in config/scoring.json,
         and Workers has no filesystem, so in production they could not be changed at all.
       */}
       <Card>
         <SectionTitle
-          title="Studio reputation"
+          title="Catalog reputation"
           hint="catalog rating and reviews. An empty profile with no reviews often means an abandoned studio"
         />
         <Group gap="lg" align="flex-end" wrap="wrap">
@@ -400,14 +320,7 @@ export function RulesPage() {
               label={label}
               description={description || undefined}
               value={reputation[key]}
-              onChange={(value) =>
-                patch({
-                  companies: {
-                    ...draft.companies,
-                    reputation: { ...reputation, [key]: Number(value) || 0 },
-                  },
-                })
-              }
+              onChange={(value) => patchCompanies({ reputation: { ...reputation, [key]: Number(value) || 0 } })}
               w={168}
               allowDecimal
               allowNegative
@@ -417,86 +330,58 @@ export function RulesPage() {
       </Card>
 
       <Card>
-        <SectionTitle
-          title="Stop words"
-          hint="a vacancy with such a word is not classified at all and is stored with score -100"
-        />
-        <WordList
-          words={draft.stopWords}
-          onChange={(stopWords) => patch({ stopWords })}
-          placeholder="e.g. kotlin"
-          tone="red"
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle
-          title="Term weights"
-          hint="a plus lifts a vacancy, a minus lowers it. In the title the weight is multiplied by the factor below"
-        />
-        <Group gap="xl" mb="md" align="flex-end">
-          <NumberInput
-            label="Title multiplier"
-            value={draft.weights.titleMultiplier}
-            onChange={(value) =>
-              patch({ weights: { ...draft.weights, titleMultiplier: Number(value) || 0 } })
-            }
-            w={180}
-            allowDecimal
-          />
-          <NumberInput
-            label="Body score cap"
-            value={draft.weights.bodyCap}
-            onChange={(value) => patch({ weights: { ...draft.weights, bodyCap: Number(value) || 0 } })}
-            w={180}
-            allowDecimal
-          />
-        </Group>
+        <SectionTitle title="Segment" hint="studio, design, startup, smb, ecommerce, public, product, outstaff, unknown" />
         <TermWeights
-          terms={draft.weights.terms}
-          onChange={(terms) => patch({ weights: { ...draft.weights, terms } })}
+          terms={draft.companies.kindWeights}
+          onChange={(next) => patchCompanies({ kindWeights: next })}
+          placeholder="e.g. smb"
         />
       </Card>
 
       <Card>
-        <SectionTitle
-          title="Role title check"
-          hint="without it an accountant role at a company whose description mentions React and Next.js scores points and gets into the queue"
-        />
-        <Switch
-          mb="md"
-          checked={draft.roleGate.enabled}
-          onChange={(event) =>
-            patch({ roleGate: { ...draft.roleGate, enabled: event.currentTarget.checked } })
-          }
-          label="check the vacancy title"
-        />
-
-        <Text size="sm" fw={500} mb="xs">
-          The title must contain one of these
-        </Text>
-        <WordList
-          words={draft.roleGate.mustMatch}
-          onChange={(mustMatch) => patch({ roleGate: { ...draft.roleGate, mustMatch } })}
-          placeholder="e.g. platform engineer"
-          tone="brand"
-        />
-
-        <Text size="sm" fw={500} mt="lg" mb="xs">
-          The title must contain none of these
-        </Text>
-        <WordList
-          words={draft.roleGate.neverMatch}
-          onChange={(neverMatch) => patch({ roleGate: { ...draft.roleGate, neverMatch } })}
-          placeholder="e.g. sales manager"
-          tone="red"
+        <SectionTitle title="Industry" hint="lower case, as stored on the company. Niches you sell to go up, excluded ones strongly down" />
+        <TermWeights
+          terms={draft.companies.industryWeights}
+          onChange={(next) => patchCompanies({ industryWeights: next })}
+          placeholder="e.g. dental"
         />
       </Card>
 
-      <Alert color="gray" icon={<Ban size={16} />}>
-        The rest of the config (geo, experience, company size, studio weights) is not editable
-        here and is passed through unchanged. For now it is edited in `config/scoring.json`.
-      </Alert>
+      <Card>
+        <SectionTitle title="Catalog tags" hint="what the catalogs say a company does: web development, saas, branding" />
+        <TermWeights
+          terms={draft.companies.tagWeights}
+          onChange={(next) => patchCompanies({ tagWeights: next })}
+          placeholder="e.g. saas"
+        />
+      </Card>
+
+      <Card>
+        <SectionTitle title="Site stack" hint="what enrichment found on their site. A dated stack is a reason to write" />
+        <TermWeights
+          terms={draft.companies.techWeights}
+          onChange={(next) => patchCompanies({ techWeights: next })}
+          placeholder="e.g. wordpress"
+        />
+      </Card>
+
+      <Card>
+        <SectionTitle title="Country" hint="as stored on the company: UA, PL, DE" />
+        <TermWeights
+          terms={draft.companies.countryWeights}
+          onChange={(next) => patchCompanies({ countryWeights: next })}
+          placeholder="e.g. UA"
+        />
+      </Card>
+
+      <Card>
+        <SectionTitle title="Size" hint="catalog size buckets" />
+        <TermWeights
+          terms={draft.companies.sizeWeights}
+          onChange={(next) => patchCompanies({ sizeWeights: next })}
+          placeholder="e.g. 10 - 49"
+        />
+      </Card>
     </Stack>
   );
 }

@@ -1,16 +1,19 @@
 import type { Company } from '../db/schema.js';
+import { hiringNow } from './hiring.js';
 import { rules } from './rules.js';
-import type { ScoreReason } from './score.js';
+
+export interface ScoreReason {
+  reason: string;
+  weight: number;
+}
 
 /**
- * Scoring companies worth writing to. A separate task from vacancies: a small web studio needs no
- * vacancy, it needs a contractor for a project. So what matters here is size, service profile, a
- * living front end stack and country, not an open position.
+ * Scoring companies worth writing to. A small studio or a clinic needs no vacancy to need a
+ * developer: what matters is segment, industry, size, service profile, stack and country.
  */
 
 export interface CompanyScoreInput {
   company: Company;
-  openVacancies?: number;
   status?: string | null;
   /** The current time. A separate field so the staleness penalty can be tested. */
   now?: number;
@@ -113,6 +116,11 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   const kindWeight = config.kindWeights?.[company.kind];
   if (kindWeight) push(`kind: ${company.kind}`, kindWeight);
 
+  if (company.industry) {
+    const weight = config.industryWeights?.[normalize(company.industry)];
+    if (weight) push(`industry: ${company.industry}`, weight);
+  }
+
   /*
    * A dead site. The idea from CLAUDE.md section 5: an agency whose last post dates from 2019 neither hires
    * nor answers. Enrichment collects the signs, so the penalty appears only after a pass over the
@@ -134,7 +142,9 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   }
 
   if (company.careersUrl) push('has a careers page', config.hasCareersPage);
-  if ((input.openVacancies ?? 0) > 0) push('has open vacancies', config.hasOpenVacancies);
+  if (hiringNow(company, input.now)) {
+    push(`hiring ${company.hiringRoles ?? ''} developers`.replace('  ', ' '), config.hiring);
+  }
 
   const sum =
     positives.reduce((acc, item) => acc + item.weight, 0) +

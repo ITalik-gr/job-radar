@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 
 /** The calendar day in the owner's time zone as YYYY-MM-DD. */
-export function localDay(date: Date): string {
+export function localDay(date: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: config.timezone,
     year: 'numeric',

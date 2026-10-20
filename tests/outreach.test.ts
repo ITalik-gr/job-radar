@@ -8,9 +8,9 @@ import {
   companies,
   companyState,
   contacts,
+  leads,
   outreach,
   templates,
-  vacancies,
   type Company,
   type Contact,
   type Template,
@@ -64,13 +64,14 @@ function candidate(over: Partial<DraftCandidate> = {}): DraftCandidate {
     country: 'PL',
     city: 'Warsaw',
     kind: 'studio',
+    industry: null,
     sizeHint: null,
     techHints: ['react'],
     tags: [],
     description: null,
-    vacancyId: null,
-    vacancyTitle: null,
-    vacancyStack: [],
+    finding: null,
+    leadId: null,
+    leadTitle: null,
     contact: contact(),
     ...over,
   };
@@ -124,38 +125,40 @@ beforeAll(async () => {
       set: { status: 'blacklist' },
     });
 
-  await db.insert(vacancies).values({
+  await db.insert(leads).values({
     companyId: ukrainian.id,
     source: 'test',
-    url: 'https://koduemo.ua/jobs/1',
-    title: 'Senior Frontend',
-    stack: ['react', 'typescript'],
-    score: 18,
-    dedupeKey: 'koduemo|senior-frontend|w',
+    externalId: 'tender-1',
+    url: 'https://prozorro.gov.ua/tender/1',
+    title: 'Розробка вебсайту',
   });
 });
 
 describe('template choice', () => {
-  it('a vacancy beats everything else', () => {
-    expect(pickTargetType({ hasVacancy: true, contactName: null, contactEmail: 'hello@a.com' })).toBe(
-      'vacancy',
-    );
-  });
-
   it('a named contact with a personal address gives studio_named', () => {
-    expect(
-      pickTargetType({ hasVacancy: false, contactName: 'Anton', contactEmail: 'anton@a.com' }),
-    ).toBe('studio_named');
+    expect(pickTargetType({ contactName: 'Anton', contactEmail: 'anton@a.com' })).toBe('studio_named');
   });
 
   it('a name on a generic mailbox is still studio_generic', () => {
-    expect(
-      pickTargetType({ hasVacancy: false, contactName: 'Anton', contactEmail: 'hello@a.com' }),
-    ).toBe('studio_generic');
+    expect(pickTargetType({ contactName: 'Anton', contactEmail: 'hello@a.com' })).toBe('studio_generic');
   });
 
   it('no contact means studio_generic', () => {
-    expect(pickTargetType({ hasVacancy: false })).toBe('studio_generic');
+    expect(pickTargetType({})).toBe('studio_generic');
+  });
+
+  it('a template written for the segment beats a universal one', () => {
+    const list = [
+      template({ id: 1, slug: 'universal' }),
+      template({ id: 2, slug: 'for_clinics', forKind: 'smb' }),
+    ];
+    expect(matchTemplate(list, 'studio_named', 'en', 'smb')?.slug).toBe('for_clinics');
+    expect(matchTemplate(list, 'studio_named', 'en', 'design')?.slug).toBe('universal');
+  });
+
+  it('a segment template is never used for another segment', () => {
+    const list = [template({ slug: 'for_clinics', forKind: 'smb' })];
+    expect(matchTemplate(list, 'studio_named', 'en', 'design')).toBeNull();
   });
 });
 
@@ -242,13 +245,13 @@ describe('building a draft', () => {
 describe('starter templates', () => {
   it('are added once, a repeated call adds nothing', async () => {
     const added = await seedOutreachTemplates();
-    expect(added).toBe(8);
+    expect(added).toBe(6);
     expect(await seedOutreachTemplates()).toBe(0);
   });
 
   it('cover every case in two languages', async () => {
     const list = await outreachTemplates();
-    for (const target of ['vacancy', 'studio_named', 'studio_generic', 'followup'] as const) {
+    for (const target of ['studio_named', 'studio_generic', 'followup'] as const) {
       expect(matchTemplate(list, target, 'uk')).not.toBeNull();
       expect(matchTemplate(list, target, 'en')).not.toBeNull();
     }
@@ -267,11 +270,10 @@ describe('letter candidates', () => {
     expect(list.map((row) => row.companyId)).not.toContain(blocked.id);
   });
 
-  it('a vacancy above the threshold is attached to the company', async () => {
+  it('an open lead is attached to the company and puts it first', async () => {
     const list = await draftCandidates(50);
-    const row = list.find((item) => item.companyId === ukrainian.id);
-    expect(row?.vacancyTitle).toBe('Senior Frontend');
-    expect(row?.vacancyStack).toEqual(['react', 'typescript']);
+    expect(list[0]?.companyId).toBe(ukrainian.id);
+    expect(list[0]?.leadTitle).toBe('Розробка вебсайту');
   });
 
   it('a studio gets its named contact', async () => {
@@ -295,9 +297,10 @@ describe('preparing drafts', () => {
     const drafts = await listDrafts();
     const ua = drafts.find((row) => row.companyId === ukrainian.id);
     const pl = drafts.find((row) => row.companyId === studio.id);
-    expect(ua?.templateUsed).toBe('send_vacancy_uk');
+    expect(ua?.templateUsed).toBe('send_generic_uk');
     expect(ua?.language).toBe('uk');
-    expect(pl?.templateUsed).toBe('send_studio_named_en');
+    expect(ua?.leadTitle).toBe('Розробка вебсайту');
+    expect(pl?.templateUsed).toBe('send_named_en');
   });
 
   it('a draft does not count as a sent letter', async () => {
@@ -353,12 +356,14 @@ describe('company without an address', () => {
 });
 
 describe('swapping the template on a draft', () => {
-  it('the text is rebuilt and the first paragraph stays', async () => {
+  it('the text is rebuilt from the other template', async () => {
     const db = getDb();
     const [draft] = await listDrafts();
     const was = draft!.templateUsed;
 
-    const other = (await db.select().from(templates).where(eq(templates.slug, 'send_studio_generic_en')))[0]!;
+    // Whatever the draft has now, swap it to a different one, so the test does not depend on draft order.
+    const target = was === 'send_named_en' ? 'send_generic_en' : 'send_named_en';
+    const other = (await db.select().from(templates).where(eq(templates.slug, target)))[0]!;
     const updated = await retemplateDraft(draft!.id, other.slug);
 
     expect(updated?.templateUsed).toBe(other.slug);
@@ -375,7 +380,7 @@ describe('swapping the template on a draft', () => {
   });
 });
 
-describe('draft from the Queue button', () => {
+describe('draft from the card button', () => {
   /*
    * A template picked by hand on the card used to go nowhere: the code picked its own by
    * role and language, and the owner got a draft with a completely different text.
@@ -390,16 +395,16 @@ describe('draft from the Queue button', () => {
     await db.insert(contacts).values({ companyId: own.id, name: 'Ola', email: 'ola@choice.ua' });
 
     const auto = await draftForCompany(own.id);
-    expect(auto.draft?.templateSlug).toBe('send_studio_named_uk');
+    expect(auto.draft?.templateSlug).toBe('send_named_uk');
     await db.delete(outreach).where(eq(outreach.companyId, own.id));
 
-    const manual = await draftForCompany(own.id, null, { templateSlug: 'send_studio_generic_en' });
-    expect(manual.draft?.templateSlug).toBe('send_studio_generic_en');
+    const manual = await draftForCompany(own.id, { templateSlug: 'send_generic_en' });
+    expect(manual.draft?.templateSlug).toBe('send_generic_en');
     expect(manual.draft?.language).toBe('en');
 
     const [row] = await db.select().from(outreach).where(eq(outreach.id, manual.id!));
-    expect(row!.templateUsed).toBe('send_studio_generic_en');
-    // The template is remembered by id, otherwise intro regeneration would not know what to build from.
+    expect(row!.templateUsed).toBe('send_generic_en');
+    // The template is remembered by id, so swapping and follow-ups know what the letter was built from.
     expect(row!.templateId).not.toBeNull();
 
     await db.delete(outreach).where(eq(outreach.companyId, own.id));
@@ -413,7 +418,7 @@ describe('draft from the Queue button', () => {
       .company;
     await db.insert(contacts).values({ companyId: own.id, name: 'Ola', email: 'ola@notpl.ua' });
 
-    const result = await draftForCompany(own.id, null, { templateSlug: 'no_such_template' });
+    const result = await draftForCompany(own.id, { templateSlug: 'no_such_template' });
     expect(result.id).toBeNull();
     expect(result.reason).toContain('no_such_template');
 
@@ -439,7 +444,7 @@ describe('draft from the Queue button', () => {
     const db = getDb();
     const empty = (await upsertCompany({ name: 'Ghost', domain: 'ghost.io', source: 'test' })).company;
     // enrich: false keeps the test off the network.
-    const result = await draftForCompany(empty.id, null, { enrich: false });
+    const result = await draftForCompany(empty.id, { enrich: false });
 
     expect(result.id).not.toBeNull();
     expect(result.reason).toContain('type the email by hand');
@@ -459,7 +464,7 @@ describe('draft from the Queue button', () => {
   it('an address typed into a draft becomes a company contact', async () => {
     const db = getDb();
     const empty = (await upsertCompany({ name: 'Manual', domain: 'manual.io', source: 'test' })).company;
-    const created = await draftForCompany(empty.id, null, { enrich: false });
+    const created = await draftForCompany(empty.id, { enrich: false });
 
     const updated = await updateDraft(created.id!, { contactEmail: 'Hello@Manual.io ', contactName: 'Ola' });
     expect(updated?.contactEmail).toBe('hello@manual.io');
@@ -485,7 +490,7 @@ describe('draft from the Queue button', () => {
     await db
       .insert(contacts)
       .values({ companyId: company.id, name: 'Anna Koval', email: 'anna@swap.io' });
-    const created = await draftForCompany(company.id, null, { enrich: false });
+    const created = await draftForCompany(company.id, { enrich: false });
 
     await updateDraft(created.id!, {
       subject: 'Anna, front-end for Swap',
@@ -519,7 +524,7 @@ describe('draft from the Queue button', () => {
     await db
       .insert(contacts)
       .values({ companyId: company.id, name: 'Anna Koval', email: 'anna@orphan.io' });
-    const created = await draftForCompany(company.id, null, { enrich: false });
+    const created = await draftForCompany(company.id, { enrich: false });
 
     await updateDraft(created.id!, {
       subject: 'Front-end for Orphan',
@@ -552,7 +557,7 @@ describe('draft from the Queue button', () => {
       { companyId: company.id, name: 'Olena Marchuk', role: 'CTO', email: 'olena@many.io' },
       { companyId: company.id, name: 'No Email' },
     ]);
-    const created = await draftForCompany(company.id, null, { enrich: false });
+    const created = await draftForCompany(company.id, { enrich: false });
 
     const row = (await listDrafts()).find((item) => item.id === created.id);
     expect(row?.companyContacts.map((item) => item.email)).toEqual(['olena@many.io', 'hello@many.io']);
@@ -607,7 +612,7 @@ describe('signature in a letter', () => {
   const signature = 'Olena Koval\nolena.dev';
 
   it('is appended at the end when the template has no placeholder', () => {
-    const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', null, signature);
+    const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', signature);
     expect(built.body.endsWith(signature)).toBe(true);
   });
 
@@ -616,7 +621,6 @@ describe('signature in a letter', () => {
       candidate(),
       template({ body: 'Hi.\n\n{{signature}}\n\nP.S. one line.' }),
       'en',
-      null,
       signature,
     );
 
@@ -629,7 +633,6 @@ describe('signature in a letter', () => {
       candidate(),
       template({ body: `Hi.\n\nSaw {{domain}}.\n\n${signature}` }),
       'en',
-      null,
       signature,
     );
 
@@ -637,7 +640,7 @@ describe('signature in a letter', () => {
   });
 
   it('an empty signature appends nothing', () => {
-    const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', null, '');
+    const built = buildDraft(candidate(), template({ body: 'Hi.\n\nSaw {{domain}}.' }), 'en', '');
     expect(built.body).toBe('Hi.\n\nSaw acme.com.');
   });
 });

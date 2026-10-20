@@ -4,7 +4,7 @@ import { companyState, contacts, outreach } from '../db/schema.js';
 import { threadMessages, type ThreadMessage } from '../lib/gmail.js';
 import { log } from '../lib/log.js';
 import { notify } from '../notify/telegram.js';
-import { callModelWith, extractJson, noteLlmCall, remainingBudget } from './classify.js';
+import { callModelWith, extractJson, noteLlmCall, remainingBudget } from '../lib/llm.js';
 
 /**
  * Detecting replies and bounces, section 7 of CLAUDE.md.

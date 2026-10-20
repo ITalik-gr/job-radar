@@ -1,9 +1,9 @@
-# Фікстури
+# Fixtures
 
-Збережені відповіді джерел для smoke-тестів адаптерів.
+Saved source responses for adapter smoke tests.
 
-Правило з CLAUDE.md: адаптер без тесту на фікстурі не вважається готовим.
+The rule from CLAUDE.md: an adapter without a test on a fixture is not done.
 
-Іменування: `<source>/<опис>.<json|html>`, наприклад `greenhouse/acme-jobs.json`.
-Разом із фікстурою в тесті фіксується мінімальна кількість записів, які вона має дати.
-Нуль записів у тесті означає, що парсер зламався.
+Naming: `<source>/<description>.<json|html>`, for example `greenhouse/acme-jobs.json`.
+The test that uses a fixture also pins the minimum number of records it must yield.
+Zero records in a test means the parser broke.

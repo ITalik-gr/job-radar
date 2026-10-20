@@ -65,8 +65,7 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
     },
   });
 
-  const open = data?.vacancies.filter((vacancy) => !vacancy.closedAt) ?? [];
-  const closed = data?.vacancies.filter((vacancy) => vacancy.closedAt) ?? [];
+  const audit = data?.audits[0] ?? null;
 
   return (
     <Drawer
@@ -178,32 +177,58 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
 
           <Box>
             <SectionTitle>
-              vacancies: {open.length} open, {closed.length} closed
+              site audit{audit ? `, ${formatDate(audit.checkedAt)}` : ''}
             </SectionTitle>
-            {data.vacancies.length === 0 ? (
+            {!audit ? (
               <Text c="dimmed" size="sm" mt="xs">
-                none seen
+                not checked yet
+              </Text>
+            ) : (
+              <Stack gap={4} mt="xs">
+                <Group gap="xs">
+                  {audit.perfScore !== null && (
+                    <Badge color={audit.perfScore >= 80 ? 'green' : audit.perfScore >= 50 ? 'yellow' : 'red'}>
+                      speed {audit.perfScore}
+                    </Badge>
+                  )}
+                  {audit.mobileOk === false && <Badge color="red">no mobile layout</Badge>}
+                  {audit.https === false && <Badge color="red">no https</Badge>}
+                  {audit.cms && <Badge color="gray">{audit.cms}</Badge>}
+                </Group>
+                {audit.issues.map((issue) => (
+                  <Text key={issue} size="sm">
+                    {issue}
+                  </Text>
+                ))}
+              </Stack>
+            )}
+          </Box>
+
+          <Box>
+            <SectionTitle>leads</SectionTitle>
+            {data.leads.length === 0 ? (
+              <Text c="dimmed" size="sm" mt="xs">
+                no open requests or tenders
               </Text>
             ) : (
               <Stack gap={2} mt="xs">
-                {data.vacancies.map((vacancy) => (
-                  <Group key={vacancy.id} gap="sm" wrap="nowrap">
-                    <Score value={vacancy.score} size="sm" />
-                    <Tooltip label={vacancy.llmWhy} disabled={!vacancy.llmWhy} multiline w={280}>
-                      <Anchor
-                        href={vacancy.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        size="sm"
-                        style={{ flex: 1, minWidth: 0 }}
-                        truncate
-                      >
-                        {vacancy.title ?? vacancy.url}
-                      </Anchor>
-                    </Tooltip>
+                {data.leads.map((lead) => (
+                  <Group key={lead.id} gap="sm" wrap="nowrap">
+                    <Badge size="sm" color="gray">
+                      {lead.source}
+                    </Badge>
+                    <Anchor
+                      href={lead.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      size="sm"
+                      style={{ flex: 1, minWidth: 0 }}
+                      truncate
+                    >
+                      {lead.title}
+                    </Anchor>
                     <Text size="xs" c="dimmed" className="tabular" style={{ whiteSpace: 'nowrap' }}>
-                      {formatDate(vacancy.firstSeen)}
-                      {vacancy.closedAt ? ` - ${formatDate(vacancy.closedAt)}` : ' to date'}
+                      {lead.deadlineAt ? `until ${formatDate(lead.deadlineAt)}` : formatDate(lead.firstSeen)}
                     </Text>
                   </Group>
                 ))}
@@ -256,30 +281,6 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
             )}
           </Box>
 
-          <Box>
-            <SectionTitle>page snapshots</SectionTitle>
-            {data.snapshots.length === 0 ? (
-              <Text c="dimmed" size="sm" mt="xs">
-                none
-              </Text>
-            ) : (
-              <Stack gap={4} mt="xs">
-                {data.snapshots.map((snapshot) => (
-                  <Group key={snapshot.id} gap="sm">
-                    <Text size="xs" className="tabular">
-                      {formatDate(snapshot.fetchedAt)}
-                    </Text>
-                    <Text size="xs" c="dimmed" ff="monospace">
-                      {snapshot.contentHash.slice(0, 12)}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {snapshot.blocks} blocks
-                    </Text>
-                  </Group>
-                ))}
-              </Stack>
-            )}
-          </Box>
         </Stack>
       )}
     </Drawer>
@@ -440,7 +441,7 @@ export function CompaniesPage() {
                   <Table.Th w={130}>ats</Table.Th>
                   <Table.Th w={150}>status</Table.Th>
                   <Table.Th w={110} ta="right">
-                    open
+                    hiring
                   </Table.Th>
                   <Table.Th w={130} ta="right">
                     checked
@@ -514,8 +515,8 @@ export function CompaniesPage() {
                       <StatusCell status={row.status} />
                     </Table.Td>
                     <Table.Td ta="right">
-                      <Text size="sm" c={row.openVacancies ? undefined : 'dimmed'} className="tabular">
-                        {row.openVacancies}
+                      <Text size="sm" c={row.hiring ? undefined : 'dimmed'} className="tabular">
+                        {row.hiring ? (row.hiringRoles ?? 'yes') : '-'}
                       </Text>
                     </Table.Td>
                     <Table.Td ta="right">

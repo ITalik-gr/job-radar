@@ -92,7 +92,7 @@ describe('team cards without surnames', () => {
 
   /*
    * "VP of Operations" was read as a mention of a foreign company "Operations" and dropped.
-   * So enrichment threw away exactly the titles it exists for: section 9 of CLAUDE.md asks for
+   * So enrichment threw away exactly the titles it exists for: section 5 of CLAUDE.md asks for
    * Head of Engineering and the like.
    */
   it('a title with a department after of is not a foreign company', () => {

@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { modelAvailable } from '../pipeline/classify.js';
+import { modelAvailable } from './llm.js';
 import { isConfigured as telegramConfigured } from '../notify/telegram.js';
 import { mailer } from './mailer.js';
 
@@ -24,8 +24,8 @@ export function localChecks(): Check[] {
           what: 'model',
           message:
             config.llm.provider === 'workers-ai'
-              ? 'no CF_AI_ACCOUNT_ID and CF_AI_API_TOKEN: vacancies are collected and scored by keywords, not classified'
-              : 'no ANTHROPIC_API_KEY: vacancies are collected and scored by keywords, not classified',
+              ? 'no CF_AI_ACCOUNT_ID and CF_AI_API_TOKEN: companies are scored by rules only, the model is off'
+              : 'no ANTHROPIC_API_KEY: companies are scored by rules only, the model is off',
         },
   );
 

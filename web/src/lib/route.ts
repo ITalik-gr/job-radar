@@ -10,7 +10,7 @@
  * the server to answer any of them with `index.html`. A hash works everywhere with
  * no configuration, and it costs one extra character in the address. There is no
  * router library here on purpose either: a dependency to parse two segments is the
- * kind of extra part section 11 of CLAUDE.md is written against.
+ * kind of extra part section 12 of CLAUDE.md is written against.
  *
  * What this buys: a link to a company can be put anywhere. Into a draft, into the
  * correspondence history, into the Telegram digest, into browser bookmarks. And the
@@ -39,6 +39,21 @@ export function parse(hash: string): string[] {
 
 export function href(...segments: string[]): string {
   return `#/${segments.map(encodeURIComponent).join('/')}`;
+}
+
+/**
+ * Whether a page may still write its selection into the address.
+ *
+ * A list page keeps its open card in the address with `replaceState`, and an effect does that
+ * whenever the card and the address disagree. After a click on another section the hash
+ * already says `#/companies`, but the list page renders once more before it unmounts, sees
+ * "no card in the address" and writes `#/studios/<first card>` back. The section switch is
+ * undone and every click on the navigation looks dead. So a page writes only while the
+ * address is still its own, or still empty on the default section.
+ */
+export function ownsAddress(hash: string, section: string): boolean {
+  const [current] = parse(hash);
+  return current === undefined || current === section;
 }
 
 /** Link to a company card. By domain, because that is how the Companies page finds it. */

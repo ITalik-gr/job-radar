@@ -52,17 +52,17 @@ beforeEach(async () => {
 describe('rules from the database', () => {
   it('with no record in the database, the built-in values are used', async () => {
     expect(rulesSource()).not.toBe('db');
-    expect(rules().threshold).toBe(loadRules().threshold);
+    expect(rules().companies.threshold).toBe(loadRules().companies.threshold);
   });
 
   it('saved rules override the built-in ones and survive a cache reset', async () => {
-    await saveRules({ ...loadRules(), threshold: 42 });
-    expect(rules().threshold).toBe(42);
+    await saveRules({ ...loadRules(), companies: { ...loadRules().companies, threshold: 42 } });
+    expect(rules().companies.threshold).toBe(42);
     expect(rulesSource()).toBe('db');
 
     resetRulesCache();
     await refreshRulesFromDb();
-    expect(rules().threshold).toBe(42);
+    expect(rules().companies.threshold).toBe(42);
   });
 
   /*
@@ -85,33 +85,39 @@ describe('rules from the database', () => {
   });
 
   it('an invalid config does not reach the database', async () => {
-    await expect(saveRules({ threshold: 'a lot' })).rejects.toThrow();
+    await expect(saveRules({ companies: { threshold: 'a lot' } })).rejects.toThrow();
 
     const rows = await getDb().select().from(settings).where(eq(settings.key, RULES_KEY));
     expect(rows).toHaveLength(0);
-    expect(rules().threshold).toBe(loadRules().threshold);
+    expect(rules().companies.threshold).toBe(loadRules().companies.threshold);
   });
 
   it('a reset removes the record and returns the default value', async () => {
-    await saveRules({ ...loadRules(), threshold: 42 });
+    await saveRules({ ...loadRules(), companies: { ...loadRules().companies, threshold: 42 } });
     await resetRules();
 
-    expect(rules().threshold).toBe(loadRules().threshold);
+    expect(rules().companies.threshold).toBe(loadRules().companies.threshold);
     expect(rulesSource()).not.toBe('db');
     expect(await getDb().select().from(settings)).toHaveLength(0);
   });
 
-  it('a stop word and a term weight are saved as part of the full config', async () => {
+  it('an industry weight is saved as part of the full config', async () => {
     const current = loadRules();
-    await saveRules({ ...current, stopWords: [...current.stopWords, 'kotlin'].sort() });
-    expect(rules().stopWords).toContain('kotlin');
-
     await saveRules({
-      ...rules(),
-      weights: { ...rules().weights, terms: { ...rules().weights.terms, hono: 4 } },
+      ...current,
+      companies: { ...current.companies, industryWeights: { ...current.companies.industryWeights, dental: 4 } },
     });
-    expect(rules().weights.terms.hono).toBe(4);
-    expect(rules().stopWords).toContain('kotlin');
+    expect(rules().companies.industryWeights.dental).toBe(4);
+  });
+
+  /*
+   * A config saved from the UI before vacancies were removed still has their sections. It must
+   * keep parsing, otherwise every saved edit would silently fall back to the built-in rules.
+   */
+  it('an old config with vacancy sections still loads', async () => {
+    await saveRules({ ...loadRules(), threshold: 6, stopWords: ['angular'], roleGate: { enabled: true } });
+    expect(rulesSource()).toBe('db');
+    expect(rules().companies.threshold).toBe(loadRules().companies.threshold);
   });
 });
 
@@ -134,7 +140,7 @@ describe('templates', () => {
 
   /*
    * The editor form sends every field in one patch. The test keeps exactly this set, since
-   * this is what broke once: language, role and the first paragraph never reached the database.
+   * this is what broke once: language and role never reached the database.
    */
   it('a patch saves every editable field together', async () => {
     const created = await createTemplate({ name: 'Full Set' });
@@ -145,8 +151,7 @@ describe('templates', () => {
       kind: 'studio',
       forKind: 'design',
       subject: 'Subject for {{company}}',
-      intro: 'First paragraph about {{company}}',
-      body: '{{intro}} more text',
+      body: 'About {{company}}, {{first_name|колеги}}',
       note: 'when it fits',
       language: 'en',
       targetType: 'studio_named',
@@ -157,8 +162,7 @@ describe('templates', () => {
       kind: 'studio',
       forKind: 'design',
       subject: 'Subject for {{company}}',
-      intro: 'First paragraph about {{company}}',
-      body: '{{intro}} more text',
+      body: 'About {{company}}, {{first_name|колеги}}',
       note: 'when it fits',
       language: 'en',
       targetType: 'studio_named',
@@ -197,11 +201,11 @@ describe('templates', () => {
 
   it('a deleted starter template does not come back the next time the page opens', async () => {
     await seedTemplates();
-    const [seeded] = await getDb().select().from(templates).where(eq(templates.slug, 'referral'));
+    const [seeded] = await getDb().select().from(templates).where(eq(templates.slug, 'studio_pitch'));
     await deleteTemplate(seeded!.id);
 
     expect(await seedTemplates()).toBe(0);
-    expect(await getDb().select().from(templates).where(eq(templates.slug, 'referral'))).toHaveLength(0);
+    expect(await getDb().select().from(templates).where(eq(templates.slug, 'studio_pitch'))).toHaveLength(0);
   });
 
   it('renaming the key rewrites the outreach history to the new key', async () => {

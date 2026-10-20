@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { companyHref, href, parse } from '../web/src/lib/route';
+import { companyHref, href, ownsAddress, parse } from '../web/src/lib/route';
 
 /**
  * Page addresses. A small thing that decides whether a link to a company from a draft
@@ -35,5 +35,26 @@ describe('address parsing', () => {
     expect(href('companies', 'acme.com')).toBe('#/companies/acme.com');
     expect(companyHref('acme.com')).toBe('#/companies/acme.com');
     expect(parse(companyHref('sub.domain.co.uk'))).toEqual(['companies', 'sub.domain.co.uk']);
+  });
+});
+
+/*
+ * The bug this guards: after a click on another section the list page rendered once more and
+ * wrote its own card back into the address, so the navigation never moved.
+ */
+describe('who may write the selection', () => {
+  it('a page owns its own section', () => {
+    expect(ownsAddress('#/studios/acme.com', 'studios')).toBe(true);
+    expect(ownsAddress('#/studios', 'studios')).toBe(true);
+  });
+
+  it('a page does not own an address that already moved to another section', () => {
+    expect(ownsAddress('#/companies', 'studios')).toBe(false);
+    expect(ownsAddress('#/templates/pitch', 'studios')).toBe(false);
+  });
+
+  it('an empty address belongs to whoever is open by default', () => {
+    expect(ownsAddress('', 'studios')).toBe(true);
+    expect(ownsAddress('#/', 'studios')).toBe(true);
   });
 });

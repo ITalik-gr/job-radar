@@ -24,6 +24,20 @@ export interface CompanyInput {
   hourlyRate?: string | null;
   foundedYear?: number | null;
   extra?: Record<string, string> | null;
+  industry?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  /** The segment, when the source knows it: a business directory knows a clinic is an smb. */
+  kind?: string | null;
+}
+
+const UA_COUNTRY = new Set(['ua', 'ukraine', 'україна', 'украина']);
+
+/** ua | intl | null. Null when the country is unknown: a guess here would skew every UA filter. */
+export function marketOf(country: string | null | undefined): 'ua' | 'intl' | null {
+  const value = (country ?? '').trim().toLowerCase();
+  if (!value) return null;
+  return UA_COUNTRY.has(value) ? 'ua' : 'intl';
 }
 
 export interface UpsertResult {
@@ -49,8 +63,12 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
         name: input.name.trim(),
         domain,
         country: input.country ?? null,
+        market: marketOf(input.country),
         city: input.city ?? null,
         sizeHint: input.sizeHint ?? null,
+        industry: input.industry ?? null,
+        phone: input.phone ?? null,
+        address: input.address ?? null,
         sources: [input.source],
         careersUrl: input.careersUrl ? normalizeUrl(input.careersUrl) : null,
         careersKind: input.careersKind ?? 'unknown',
@@ -64,12 +82,14 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
         extra: input.extra ?? {},
         description: input.description ?? null,
         sourceUrl: input.sourceUrl ? normalizeUrl(input.sourceUrl) : null,
-        kind: detectKind({
-          tags: input.tags ?? [],
-          sources: [input.source],
-          description: input.description ?? null,
-          sizeHint: input.sizeHint ?? null,
-        }),
+        kind:
+          input.kind ??
+          detectKind({
+            tags: input.tags ?? [],
+            sources: [input.source],
+            description: input.description ?? null,
+            sizeHint: input.sizeHint ?? null,
+          }),
       })
       .returning();
 
@@ -88,22 +108,29 @@ export async function upsertCompany(input: CompanyInput): Promise<UpsertResult> 
   /*
    * The kind is recomputed on every update: a company could first arrive from an ATS
    * with no tags, then from a catalog with tags, and only then does it become clear it's a studio.
+   * A recomputed "unknown" means no evidence, not a change, so it never erases a kind a source
+   * or the owner set: tags cannot tell a clinic is an smb.
    */
+  const detected = detectKind({
+    tags,
+    sources,
+    description: existing.description ?? input.description ?? null,
+    sizeHint: existing.sizeHint ?? input.sizeHint ?? null,
+  });
   const [updated] = await db
     .update(companies)
     .set({
       sources,
       tags,
-      kind: detectKind({
-        tags,
-        sources,
-        description: existing.description ?? input.description ?? null,
-        sizeHint: existing.sizeHint ?? input.sizeHint ?? null,
-      }),
+      kind: input.kind ?? (detected === 'unknown' ? existing.kind : detected),
       description: existing.description ?? input.description ?? null,
       sourceUrl: existing.sourceUrl ?? (input.sourceUrl ? normalizeUrl(input.sourceUrl) : null),
       country: existing.country ?? input.country ?? null,
+      market: marketOf(existing.country ?? input.country),
       city: existing.city ?? input.city ?? null,
+      industry: existing.industry ?? input.industry ?? null,
+      phone: existing.phone ?? input.phone ?? null,
+      address: existing.address ?? input.address ?? null,
       sizeHint: existing.sizeHint ?? input.sizeHint ?? null,
       careersUrl: existing.careersUrl ?? (input.careersUrl ? normalizeUrl(input.careersUrl) : null),
       careersKind:

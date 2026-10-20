@@ -7,22 +7,18 @@ import './sources/index.js';
 import { syncSource } from './pipeline/sync.js';
 import { syncDou } from './pipeline/catalogs.js';
 import { discover } from './pipeline/discover.js';
-import { syncCareers } from './pipeline/careers.js';
-import { classifyPending } from './pipeline/reclassify.js';
+import { enrich } from './pipeline/enrich.js';
 import { notify } from './notify/telegram.js';
 import { isOverdue, lastSuccessAt } from './lib/runs.js';
 import { checkReplies } from './pipeline/replies.js';
 import { prepareFollowups } from './pipeline/followups.js';
 import './lib/gmail-store.node.js';
 
-/** The schedule from CLAUDE.md, section 8. All inside one process, no queues, no Docker. */
+/** The local schedule. All inside one process, no queues, no Docker. */
 export const SCHEDULE = {
   ats: '0 */6 * * *',
-  /**
-   * Own career pages. Every 6 hours, but each company only when due: interesting and new
-   * daily, the rest every three days (see `syncCareers`).
-   */
-  careers: '30 */6 * * *',
+  /** Site crawl for contacts, stack and signs of life, a batch at a time. */
+  enrich: '30 */6 * * *',
   catalogs: '0 4 * * 1',
   discovery: '0 5 * * 2',
   /**
@@ -50,7 +46,6 @@ async function runBoards(): Promise<void> {
   for (const source of listSources('board')) {
     await safely(`sync:${source.id}`, () => syncSource(source.id));
   }
-  await safely('classify:pending', () => classifyPending(50));
 }
 
 /**
@@ -111,7 +106,7 @@ export function startScheduler(): void {
   const timezone = config.timezone;
 
   cron.schedule(SCHEDULE.ats, () => void runBoards(), { timezone });
-  cron.schedule(SCHEDULE.careers, () => void safely('careers', () => syncCareers({ limit: 40 })), { timezone });
+  cron.schedule(SCHEDULE.enrich, () => void safely('enrich', () => enrich({ limit: 25 })), { timezone });
   cron.schedule(SCHEDULE.catalogs, () => void safely('catalog:dou', () => syncDou({ limit: 60 })), { timezone });
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });
   cron.schedule(SCHEDULE.summary, () => void safely('notify:summary', () => notify.summary()), { timezone });

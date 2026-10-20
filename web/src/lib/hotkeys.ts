@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 /**
- * Hotkeys for working through the queue. The owner goes over ten cards a day,
+ * Hotkeys for working through the lead list. The owner goes over a dozen cards a day,
  * and with a mouse that takes three times longer than one hand on the keyboard.
  * They fire only when focus is outside an input and no modifier is held.
  */

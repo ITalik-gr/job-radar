@@ -32,7 +32,7 @@ The repository is public (MIT). Anyone can fork it and run their own copy.
    site faster than a human scrolls (pause no shorter than 3 seconds, no more than 50 pages
    per run).
 5. Respect `robots.txt`, use your own User-Agent with a contact, no more than 1 request per
-   domain per second. Paid or keyed APIs (Google Places, Freelancehunt) are used within their
+   domain per second. Paid or keyed APIs (Google Places, PageSpeed) are used within their
    terms and quotas.
 6. **Do not make up data.** If a field did not parse, it is `null`, not a guess. This applies
    to the model too: it classifies the text it was given, it does not invent names, emails or
@@ -62,12 +62,13 @@ Chosen for what the owner already knows.
 - **Models:** the model only classifies and extracts, it never writes letters.
   - **Clef** (Cloudflare decision models on Workers AI): the default for classification.
     Calibrated, schema-bound scores, cheap (Clef-flash about $0.04 per million input
-    tokens). Used for: company segment and industry, "is this tender or project about web
+    tokens). Used for: company segment and industry, "is this tender about software
     development", lead fit. `@cf/cloudflare/clef-omni` when an image (site screenshot)
     is part of the input. Verify exact model ids in the Workers AI catalog before wiring
   - Anthropic Haiku stays as a fallback provider behind `LLM_PROVIDER`
   - `@cf/baai/bge-m3` for company vectors ("find similar")
-  - The cache is keyed by model and input hash, so providers never mix answers
+  - The cache is keyed by model and input hash, so providers never mix answers.
+    Shared model access lives in `src/lib/llm.ts`
 - **Frontend:** React + Vite + TypeScript, **Mantine** for every interface element,
   TanStack Query, `recharts`, `lucide-react`. Tailwind without preflight, layout only. No
   home-made wrapper components where Mantine already has one
@@ -89,7 +90,7 @@ Deploy details and known traps: `DEPLOY.md`.
   /db          schema.ts, migrations, client
   /sources     adapters, one file per source
     /catalogs  company sources (DOU, YC, Awwwards, Places, ...)
-    /leads     demand sources (Prozorro, Freelancehunt, ...)
+    /leads     demand sources (Prozorro, ...)
     registry.ts
   /pipeline    discover, enrich, audit, classify, score, dedupe, outreach, send
   /api         Hono routes
@@ -111,17 +112,22 @@ The company is the lead. Everything hangs off it.
 
 ```ts
 companies
-  id, name, domain (unique, nullable for a business without a site), country, city,
-  segment,        // founder_startup | smb | agency | studio | product | ecommerce | public | unknown
+  id, name, domain (unique; a business without a site needs a nullable domain, stage 4),
+  country, city,
+  kind,           // the segment: studio | design | startup | product | outstaff | smb
+                  // | ecommerce | public | unknown. Tags decide the first five; smb, ecommerce
+                  // and public only a source or the owner sets, and an "unknown" from tags
+                  // never overwrites them
   market,         // ua | intl (derived from country, stored for fast filters)
   industry,       // clinic, dental, beauty, legal, restaurant, retail, saas, fintech, ...
   size_hint, founded_year,
   rating, reviews_count, min_project, hourly_rate,  // catalog reputation
   extra,          // label-value pairs from a catalog with no column of their own
-  phone, address, edrpou,                           // UA businesses
+  phone, address,                                   // UA businesses
   sources: string[], tags: string[],
   tech_hints: string[],  // Next.js, WordPress, Tilda, Wix, Prom, Horoshop, ...
-  hiring_devs,           // boolean signal from ATS or DOU, the only thing kept from vacancies
+  hiring_devs, hiring_roles, hiring_seen_at,
+                         // the only thing kept from vacancies; fades after 45 days
   copyright_year, last_post_at,
   first_seen, last_checked
 
@@ -129,7 +135,7 @@ site_audits      // the reason to write, see section 5
   company_id, checked_at, https, mobile_ok, perf_score, lcp_ms, cms,
   copyright_year, issues: string[], screenshot_url
 
-leads            // explicit demand: a tender, a freelance project, a funding round
+leads            // explicit demand: a tender, a funding round, a public request
   id, company_id, source, external_id, url, title, text, budget, currency,
   deadline_at, first_seen, closed_at, fit (model score), status
 
@@ -144,15 +150,16 @@ outreach         id, company_id, lead_id, contact_id, template_used, subject_fin
                  body_final, status, sent_at, reply_at, reply_type, followup_of, ...
                  // contact and template are snapshots: history must stay readable
 
-templates        id, slug, name, kind, for_segment, language, subject, body, archived
+templates        id, slug, name, kind, for_kind (segment), target_type, language, subject,
+                 body, archived
 
 saved_filters    id, name, query (json)   // "UA, SMB, slow site, has email"
 
 runs, settings, send_log, llm_cache, llm_usage
 ```
 
-Nothing is deleted, rejected records included. Vacancy tables stay in the database as an
-archive until the owner decides otherwise.
+Nothing is deleted, rejected records included. `vacancies`, `queue_items`, `snapshots`,
+`facts` and `templates.intro` stay in the database as an archive; no code writes them.
 
 ---
 
@@ -165,7 +172,8 @@ archive until the owner decides otherwise.
 - **Google Places API** (key, free monthly quota): businesses by niche and city (dental,
   clinics, beauty, legal, repair, restaurants, retail) with their site and phone. Every one
   with a site goes through the site audit
-- **Freelancehunt API** (token): client projects in web categories, plus the client profile
+- **Freelance marketplaces are out** (Freelancehunt, Upwork, Fiverr): bidding platforms do
+  not fit the positioning, and the owner's reasons are in `CLAUDE.local.md`
 - **DOU** companies (exists), extended past IT categories
 - Later: AIN.ua and dev.ua funding news (founders with fresh money), Brave1 and Ukrainian
   Startup Fund catalogs, Prom.ua stores with their own site, the state register by KVED for
@@ -276,9 +284,9 @@ claude.ai and Claude Desktop.
 
 Local `localhost:5173` or the worker URL with `RADAR_TOKEN`.
 
-Pages: **Queue** (today's leads), **Companies** (table, filters, saved filters, bulk status
-and tags, company card with audit, contacts, leads, letter history), **Leads** (open tenders
-and projects by deadline), **Sending** (drafts, daily counter, timer), **Outreach** (history,
+Pages: **Leads** (scored list with filters, route `studios` for now), **Startups**,
+**Companies** (table, filters, saved filters, bulk status and tags, company card with audit,
+contacts, leads, letter history), **Tenders** (open leads by deadline, stage 4), **Sending** (drafts, daily counter, timer), **Outreach** (history,
 replies, follow-ups), **Templates**, **Rules**, **Sources** (adapter health, run now),
 **Operations**.
 
@@ -292,16 +300,17 @@ last stage.
 Work in stages, show the result after each one, do not start the next one without the
 owner's confirmation.
 
-1. **Cleanup.** Remove vacancy boards, vacancy classification, the vacancy queue and vacancy
-   stats, keep `hiring_devs`. Remove the AI paragraph and `facts`, plain placeholders with
-   fallbacks. Schema: `segment`, `market`, `industry`, `phone`, `address`, `site_audits`,
-   `leads`, `saved_filters`
+1. ~~**Cleanup.**~~ Done 2026-10-20: vacancy pipeline, queue and stats removed, boards only
+   feed companies and `hiring_devs`; AI paragraph and facts removed, placeholders with
+   fallbacks; migration 0018 adds `market`, `industry`, `phone`, `address`, the hiring
+   columns, `site_audits`, `leads`, `saved_filters`, `outreach.lead_id`
 2. **MCP** on the worker, Claude Code first, then OAuth for claude.ai and Desktop
 3. **Filters and the Companies page**, saved filters, queue across segments
-4. **Ukrainian sources:** Prozorro, Google Places, Freelancehunt, each with a fixture test
+4. **Ukrainian sources:** Prozorro, Google Places, funding news (AIN.ua, dev.ua), each with
+   a fixture test
 5. **Site audit and lead scoring**, Clef for segment, industry and lead fit
 6. **Design pass**
-7. Later: funding news, Product Hunt, state register, renaming the project
+7. Later: Product Hunt, Brave1 and USF catalogs, state register, renaming the project
 
 Open items carried over: send window and day boundary follow `TZ` instead of a hardcoded
 Kyiv; worker crons are fixed UTC (digest shifts an hour after DST ends); the frontend was

@@ -129,26 +129,12 @@ export const config = {
       return str('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001');
     },
     /**
-     * Model for the first paragraph of a letter. Deliberately stronger than the classifier.
-     *
-     * The bill differs by two orders of magnitude in volume, not in price: classification is
-     * thousands of calls for thousands of vacancies, while the paragraph is one call per company
-     * that really gets a letter, that is, dozens a month. Saving on what a person will read costs
-     * more than a few dollars of difference.
-     */
-    get outreachModel() {
-      return str('OUTREACH_MODEL', 'claude-sonnet-5');
-    },
-    /**
-     * Model for the company verdict. By default the same one that writes the first paragraph.
-     *
-     * The task is of the same order in volume and cost of error: one decision per company the
-     * owner is about to write to, dozens a month rather than thousands. Haiku works here too, but
-     * confuses similar templates more often than the saved cent is worth, and prompt caching barely
-     * applies to it: the minimum cacheable block is 4096 tokens, and the template system block is shorter.
+     * Model for the company verdict: one decision per company the owner is about to write to,
+     * dozens a month rather than thousands. Haiku confuses similar templates more often than the
+     * saved cent is worth. `OUTREACH_MODEL` is the old name of the same setting, still read.
      */
     get verdictModel() {
-      return str('VERDICT_MODEL', this.outreachModel);
+      return str('VERDICT_MODEL', str('OUTREACH_MODEL', 'claude-sonnet-5'));
     },
     /** Workers AI model. Llama 3.3 is the cheapest of those that hold strict JSON. */
     get workersModel() {
@@ -186,10 +172,6 @@ export const config = {
       return this.provider === 'workers-ai'
         ? num('WORKERS_AI_DAILY_CALL_LIMIT', 5000)
         : num('LLM_DAILY_CALL_LIMIT', 500);
-    },
-    /** How many characters of vacancy text go to the model. A longer tail adds almost nothing. */
-    get maxInputChars() {
-      return num('LLM_MAX_INPUT_CHARS', 8000);
     },
   },
   /**
@@ -268,20 +250,6 @@ export const config = {
     },
     get chatId() {
       return str('TELEGRAM_CHAT_ID', '');
-    },
-  },
-  pipeline: {
-    get scoreThreshold() {
-      return num('SCORE_THRESHOLD', 6);
-    },
-    get recontactAfterDays() {
-      return num('RECONTACT_AFTER_DAYS', 90);
-    },
-    get queueDailyLimit() {
-      return num('QUEUE_DAILY_LIMIT', 10);
-    },
-    get snapshotsPerCompany() {
-      return num('SNAPSHOTS_PER_COMPANY', 5);
     },
   },
 };

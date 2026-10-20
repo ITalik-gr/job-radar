@@ -1,12 +1,11 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { getDb } from '../db/client.js';
-import { companies, companyState, contacts, llmCache, outreach, vacancies } from '../db/schema.js';
+import { companies, companyState, contacts, llmCache, outreach, siteAudits } from '../db/schema.js';
 import { log } from '../lib/log.js';
-import { callModelWith, extractJson, noteLlmCall, remainingBudget } from './classify.js';
-import { listFacts } from './facts.js';
-import { hash } from './normalize.js';
+import { callModelWith, extractJson, hash, noteLlmCall, remainingBudget } from '../lib/llm.js';
+import { hiringNow } from './hiring.js';
 import {
   matchTemplate,
   outreachTemplates,
@@ -28,12 +27,12 @@ import { scoreCompany } from './company-score.js';
  * opinion about a specific company with the deterministic choice next to it. A disagreement
  * between them is a signal to think, not an error, and a person decides either way.
  *
- * No letter text is generated here, section 11 of CLAUDE.md. The model sees the templates in
+ * No letter text is generated here, section 7 of CLAUDE.md. The model sees the templates in
  * order to choose among them, and returns a key, not text.
  */
 
-/** v2 moved the prompt to English and asks for English prose in the answer. */
-export const VERDICT_PROMPT_VERSION = 'verdict-v2';
+/** v3 dropped vacancies and owner facts from the input. */
+export const VERDICT_PROMPT_VERSION = 'verdict-v3';
 
 export const verdictSchema = z.object({
   /** Key of the chosen template. null means none fits. */
@@ -74,6 +73,7 @@ interface CompanyBlock {
   name: string;
   domain: string;
   kind: string;
+  industry: string | null;
   country: string | null;
   city: string | null;
   size: string | null;
@@ -94,7 +94,8 @@ interface CompanyBlock {
   score: number;
   score_reasons: string[];
   contacts: { name: string | null; role: string | null; email: string | null }[];
-  open_vacancies: { title: string; stack: string[]; seniority: string | null; remote: boolean | null }[];
+  hiring_developers: boolean;
+  site_issues: string[];
   previous_outreach: { sent_at: string; template: string | null; reply: string | null }[];
 }
 
@@ -124,12 +125,12 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
   const [state] = await db.select().from(companyState).where(eq(companyState.companyId, companyId));
   const people = await db.select().from(contacts).where(eq(contacts.companyId, companyId));
 
-  const open = await db
-    .select()
-    .from(vacancies)
-    .where(and(eq(vacancies.companyId, companyId), isNull(vacancies.closedAt)))
-    .orderBy(desc(vacancies.score))
-    .limit(5);
+  const [audit] = await db
+    .select({ issues: siteAudits.issues })
+    .from(siteAudits)
+    .where(eq(siteAudits.companyId, companyId))
+    .orderBy(desc(siteAudits.checkedAt))
+    .limit(1);
 
   const history = await db
     .select()
@@ -140,7 +141,6 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
 
   const breakdown = scoreCompany({
     company,
-    openVacancies: open.length,
     status: state?.status ?? null,
   });
 
@@ -150,6 +150,7 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
     name: company.name,
     domain: company.domain,
     kind: company.kind,
+    industry: company.industry,
     country: company.country,
     city: company.city,
     size: company.sizeHint,
@@ -173,12 +174,8 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
     contacts: people
       .slice(0, 8)
       .map((row) => ({ name: row.name, role: row.role, email: row.email })),
-    open_vacancies: open.map((row) => ({
-      title: row.title ?? 'untitled',
-      stack: row.stack,
-      seniority: row.seniority,
-      remote: row.remote,
-    })),
+    hiring_developers: hiringNow(company),
+    site_issues: audit?.issues ?? [],
     previous_outreach: history.map((row) => ({
       sent_at: day(row.sentAt) ?? 'unknown',
       template: row.templateUsed,
@@ -188,14 +185,14 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
 }
 
 /**
- * The system block: rules, templates and the allowed facts about the owner.
+ * The system block: rules and templates.
  *
  * It is stable across companies, which is exactly why the templates live here rather than in the
  * user part: when going through studios in a row Anthropic serves it from cache at a tenth of the
  * price. The order is deliberate too: the cache is a byte-for-byte match of the request start, so
  * everything that varies must come after this block.
  */
-export function buildSystem(list: TemplateBlock[], ownerFacts: string[]): string {
+export function buildSystem(list: TemplateBlock[]): string {
   return [
     'You advise a developer on which cold letter template to use for a specific company.',
     'Reply STRICTLY with a single JSON object, no preamble and no markdown fence.',
@@ -205,8 +202,8 @@ export function buildSystem(list: TemplateBlock[], ownerFacts: string[]): string
     '2. Do NOT write letter text. Your job is choosing a template and one sentence about the hook.',
     '3. Rely only on the COMPANY block. What is not there does not exist: do not assume',
     '   projects, clients, news or technologies.',
-    '4. `angle` is the reason to write to this particular company: their stack, type of work, market,',
-    '   an open vacancy. No compliments and no judgement of their work.',
+    '4. `angle` is the reason to write to this particular company: their segment, industry, market,',
+    '   a site issue, hiring developers. No compliments.',
     '5. `language`: uk for companies in Ukraine, en for everyone else.',
     '6. `contact` is a name from the company contact list, or null. A named person beats',
     '   a generic mailbox, a technical role beats a managerial one.',
@@ -216,9 +213,6 @@ export function buildSystem(list: TemplateBlock[], ownerFacts: string[]): string
     '9. `confidence` is an integer from 0 to 100: how sure you are about the choice.',
     '10. Write `angle`, `why`, `risks` and `skip_reason` in English.',
     '',
-    ...(ownerFacts.length > 0
-      ? ['About the sender you may take into account only this:', ...ownerFacts.map((item) => `- ${item}`), '']
-      : []),
     'Templates:',
     JSON.stringify(list, null, 1),
     '',
@@ -245,7 +239,7 @@ async function templateBlocks(): Promise<TemplateBlock[]> {
       language: row.language,
       target_type: row.targetType,
       note: row.note,
-      body: `${row.intro ? `${row.intro}\n` : ''}${row.body}`.slice(0, TEMPLATE_BODY_CHARS),
+      body: row.body.slice(0, TEMPLATE_BODY_CHARS),
     }))
     .sort((a, b) => a.slug.localeCompare(b.slug));
 }
@@ -273,12 +267,11 @@ export async function companyVerdict(
   const people = await db.select().from(contacts).where(eq(contacts.companyId, companyId));
   const contact = pickContact(people);
   const fallbackTarget = pickTargetType({
-    hasVacancy: company.open_vacancies.length > 0,
     contactName: contact?.name,
     contactEmail: contact?.email,
   });
   const rows = await outreachTemplates();
-  const fallbackSlug = matchTemplate(rows, fallbackTarget, language)?.slug ?? null;
+  const fallbackSlug = matchTemplate(rows, fallbackTarget, language, company.kind)?.slug ?? null;
 
   const base: VerdictReport = {
     companyId,
@@ -295,13 +288,7 @@ export async function companyVerdict(
     return { ...base, error: 'there are no sending templates at all: nothing to choose from' };
   }
 
-  const facts = await listFacts();
-  const ownerFacts = facts
-    .filter((row) => row.isActive)
-    .map((row) => (language === 'uk' ? row.textUk : row.textEn))
-    .filter(Boolean);
-
-  const system = buildSystem(list, ownerFacts);
+  const system = buildSystem(list);
   const user = `COMPANY:\n${JSON.stringify(company, null, 1)}`;
 
   /*

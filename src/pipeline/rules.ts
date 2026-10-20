@@ -10,52 +10,11 @@ import defaultRules from '../../config/scoring.json' with { type: 'json' };
 
 const numberMap = z.record(z.string(), z.number());
 
+/**
+ * Lead scoring rules. Vacancy rules (role gate, geo, experience, stop words, term weights) went
+ * away with vacancies; a config saved before that still parses, because Zod drops unknown keys.
+ */
 export const rulesSchema = z.object({
-  threshold: z.number(),
-  roleGate: z.object({
-    enabled: z.boolean(),
-    mustMatch: z.array(z.string()),
-    neverMatch: z.array(z.string()),
-  }),
-  geo: z.object({
-    enabled: z.boolean(),
-    homeCity: z.array(z.string()),
-    allowedRegions: z.array(z.string()),
-    blockedRegions: z.array(z.string()),
-    restrictionPhrases: z.array(z.string()),
-    remoteMarkers: z.array(z.string()),
-    penaltyBlockedRegion: z.number(),
-    penaltyHybridElsewhere: z.number(),
-    penaltyOnSitePlace: z.number(),
-    bonusUkraineFriendly: z.number(),
-  }),
-  experience: z.object({
-    years5: z.number(),
-    years7: z.number(),
-    leadTitle: z.number(),
-    juniorBonus: z.number(),
-  }),
-  stopWords: z.array(z.string()),
-  weights: z.object({
-    titleMultiplier: z.number(),
-    bodyCap: z.number(),
-    terms: numberMap,
-  }),
-  context: z.object({
-    equityOnly: z.number(),
-    englishC1WithVideo: z.number(),
-    noSalaryCompetitive: z.number(),
-    ukrainianVacancy: z.number(),
-  }),
-  companySize: z.object({
-    bigPenalty: z.number(),
-    bigFrom: z.number(),
-    midPenalty: z.number(),
-    midFrom: z.number(),
-    smallBonus: z.number(),
-    smallUpTo: z.number(),
-    knownBig: z.array(z.string()),
-  }),
   companies: z.object({
     threshold: z.number(),
     sizeWeights: numberMap,
@@ -63,7 +22,10 @@ export const rulesSchema = z.object({
     techWeights: numberMap,
     countryWeights: numberMap,
     hasCareersPage: z.number(),
-    hasOpenVacancies: z.number(),
+    /** The team is hiring developers right now, see `hiring.ts`. */
+    hiring: z.number().default(3),
+    /** By industry, lower case: "dental": 3, "gambling": -10. */
+    industryWeights: numberMap.default({}),
     /*
      * Weight by company kind. An optional field with a default on purpose: without it a config saved
      * from the interface before the field existed would stop passing Zod, and scoring would silently
@@ -214,7 +176,7 @@ export async function saveRules(next: unknown): Promise<Rules> {
     });
 
   fromDb = parsed;
-  log.info({ threshold: parsed.threshold }, 'rules saved from the interface');
+  log.info({ threshold: parsed.companies.threshold }, 'rules saved from the interface');
   return parsed;
 }
 
