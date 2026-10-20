@@ -7,7 +7,7 @@ import { notify } from '../notify/telegram.js';
 import { callModelWith, extractJson, noteLlmCall, remainingBudget } from './classify.js';
 
 /**
- * Detecting replies and bounces, section 5 of OUTREACH.md.
+ * Detecting replies and bounces, section 7 of CLAUDE.md.
  *
  * Cheap checks go first: a mailer-daemon sender, the auto-responder header, "out of office" in the
  * subject. The model is asked only when a letter really looks like a live human reply, because

@@ -82,7 +82,7 @@ function base64Body(value: string): string {
 
 /**
  * Only `text/plain`. An HTML letter from a stranger gets filtered more aggressively,
- * and this is a decision from OUTREACH.md, not an implementation shortcut.
+ * and this is a decision from CLAUDE.md section 7, not an implementation shortcut.
  */
 export function buildMime(message: MimeMessage): string {
   const headers: string[] = [

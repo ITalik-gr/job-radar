@@ -6,7 +6,7 @@ import { companyState, outreach, sendLog } from '../db/schema.js';
 import { BLOCKED_STATUSES, RECONTACT_DAYS } from './outreach.js';
 
 /**
- * Sending guards, section 9 of OUTREACH.md.
+ * Sending guards, section 7 of CLAUDE.md.
  *
  * Each is a separate function with its own test, and none lives inside a UI handler. The reason
  * is simple: a check written into a button handler exists only until someone adds a second

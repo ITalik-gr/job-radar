@@ -317,7 +317,7 @@ export async function getQueue(
  * Top up today's slice to the daily limit.
  *
  * Why a separate action rather than automatic: the slice is fixed on purpose, a decision
- * documented in STATUS.md. Without it a new vacancy with a higher score would push out one
+ * documented in CLAUDE.md section 11. Without it a new vacancy with a higher score would push out one
  * not yet looked at. But the opposite happens too: in the morning there were three
  * candidates, the slice fixed at three, then a daytime source run brought twenty more, and
  * the owner sees three cards over a full database. So topping up exists, but only on request.

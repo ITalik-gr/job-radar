@@ -9,7 +9,7 @@ import { setTokenStore, type StoredToken } from './gmail.js';
  * in isolate memory: it lives an hour, an isolate usually lives less, and at worst that means
  * one extra request to Google.
  *
- * The token deliberately never goes into the database, section 0 of OUTREACH.md: secrets stay
+ * The token deliberately never goes into the database, rule 7 in CLAUDE.md: secrets stay
  * apart from data, otherwise every database backup becomes mailbox access.
  */
 let cached: { accessToken: string; expiresAt?: number; email?: string } | null = null;

@@ -19,7 +19,7 @@ import { generateParagraph } from './ai-paragraph.js';
 import { enrich } from './enrich.js';
 
 /**
- * Preparing sending drafts. The module is described in OUTREACH.md.
+ * Preparing sending drafts. The rules are in section 7 of CLAUDE.md.
  *
  * There is neither sending nor model calls here: a draft is built from a template the owner
  * wrote and from facts already in the database. Sending is a separate step, and between it
@@ -35,7 +35,7 @@ export type OutreachTarget = (typeof OUTREACH_TARGETS)[number];
 
 export type Language = 'uk' | 'en';
 
-/** Companies in these states are never written to, section 9 of OUTREACH.md. */
+/** Companies in these states are never written to, section 7 of CLAUDE.md. */
 export const BLOCKED_STATUSES = ['blacklist', 'rejected_by_me', 'rejected_by_them'];
 
 /** Contacting again is allowed after a quarter, not after a week. */

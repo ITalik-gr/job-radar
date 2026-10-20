@@ -4,7 +4,7 @@ import { outreach } from '../db/schema.js';
 import { recentBounceRate } from './replies.js';
 
 /**
- * Outreach statistics, a supplement to section 7 of OUTREACH.md.
+ * Outreach statistics, a supplement to section 7 of CLAUDE.md.
  *
  * The most important thing here isn't conversion, it's the share of validation
  * fallbacks broken down by reason: above 30 percent means a bad prompt, and without

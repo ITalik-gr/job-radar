@@ -128,7 +128,7 @@ detected: mark them on the Outreach page by hand.
 4. `pnpm wrangler secret put GMAIL_REFRESH_TOKEN` and paste it
 
 The token is never stored in the database: a backup with it inside would be access to
-your mailbox. Limits, warmup and the rest: [OUTREACH.md](OUTREACH.md).
+your mailbox. Limits, warmup and the rest: [CLAUDE.md](CLAUDE.md), section 7.
 
 ## Telegram commands
 
@@ -226,4 +226,6 @@ every browser navigation, the Google callback included.
   CPU limit. The free plan's limit is much lower than the paid one's; the author runs the
   radar on Workers Paid.
 - Money goes to the model: Anthropic per token, or Workers AI from the plan's quota.
-  Numbers in [COSTS.md](COSTS.md).
+  Calls are capped per day (`LLM_DAILY_CALL_LIMIT`, `WORKERS_AI_DAILY_CALL_LIMIT`), cached
+  by input hash, and made only after the free deterministic filters. `pnpm cli llm:budget`
+  shows what is left today.

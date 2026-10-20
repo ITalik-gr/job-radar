@@ -38,7 +38,7 @@ const score = (patch: Partial<Company>) =>
 
 describe('dead site penalty', () => {
   it('an old copyright lowers the company', () => {
-    // The idea from STATUS.md: an agency with a 2019 copyright is not hiring.
+    // The idea from CLAUDE.md section 5: an agency with a 2019 copyright is not hiring.
     const fresh = score({ copyrightYear: 2026 }).score;
     const dead = score({ copyrightYear: 2019 }).score;
 

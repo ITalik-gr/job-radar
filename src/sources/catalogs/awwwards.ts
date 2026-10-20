@@ -7,8 +7,7 @@ import type { CatalogSource, RawCompany } from '../registry.js';
  * Awwwards as a design studio catalog.
  *
  * Why: this is exactly the niche the owner talked about, studios with a living
- * front end, where you write not about a vacancy but with an offer to help. Item 5
- * in "Next, by priority" in STATUS.md.
+ * front end, where you write not about a vacancy but with an offer to help.
  *
  * robots.txt allows `/directory/`, search and `/websites/?` are disallowed. So we
  * only go to the catalog and to studio profiles, we don't use search.

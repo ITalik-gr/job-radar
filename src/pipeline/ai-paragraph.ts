@@ -8,7 +8,7 @@ import { callModelWith, extractJson, noteLlmCall, remainingBudget } from './clas
 import type { DraftCandidate, Language } from './outreach.js';
 
 /**
- * Personalising the first paragraph of a letter, section 4 of OUTREACH.md.
+ * Personalising the first paragraph of a letter, a feature being removed, see CLAUDE.md section 10.
  *
  * The model proposes, the code decides. Everything it returns goes through a deterministic
  * check, and any suspicion means falling back to the static paragraph from the template. The
@@ -34,7 +34,7 @@ export const MIN_WORDS = 20;
 export const MAX_WORDS = 60;
 export const MIN_CONFIDENCE = 60;
 
-/** Words that make a letter read like a mass mailing. The list comes from OUTREACH.md. */
+/** Words that make a letter read like a mass mailing. The list was part of the old outreach spec. */
 export const STOP_PHRASES = [
   'excited',
   'passionate',

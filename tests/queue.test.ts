@@ -275,7 +275,7 @@ describe('topUpQueue', () => {
     expect(result.total).toBeLessThanOrEqual(config.pipeline.queueDailyLimit);
 
     const after = await getQueue(day);
-    // The existing cards stayed in their places: the slice is fixed, that is the decision from STATUS.md.
+    // The existing cards stayed in their places: the slice is fixed, that is the decision from CLAUDE.md section 11.
     expect(after.map((card) => `${card.vacancyId}:${card.position}`).slice(0, before.length)).toEqual(
       positionsBefore,
     );

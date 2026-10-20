@@ -8,7 +8,7 @@ import { checkSend, noteSent, type Blocker } from './send-guards.js';
 /**
  * Sending a single letter. Only one, and only on an explicit human command.
  *
- * There is no autopilot mode here and never will be, section 0 of OUTREACH.md. This
+ * There is no autopilot mode here and never will be, rule 10 in CLAUDE.md. This
  * is not a simplification of the implementation: bulk auto-sending from a personal
  * Gmail account ends in the account getting blocked, and a config flag that turns
  * this on eventually gets turned on.

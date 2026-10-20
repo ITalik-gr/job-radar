@@ -114,7 +114,7 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   if (kindWeight) push(`kind: ${company.kind}`, kindWeight);
 
   /*
-   * A dead site. The idea from STATUS.md: an agency whose last post dates from 2019 neither hires
+   * A dead site. The idea from CLAUDE.md section 5: an agency whose last post dates from 2019 neither hires
    * nor answers. Enrichment collects the signs, so the penalty appears only after a pass over the
    * site rather than being guessed out of thin air.
    */

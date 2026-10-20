@@ -17,7 +17,7 @@ import type { DraftCandidate } from '../src/pipeline/outreach.js';
 
 /**
  * The validator is the core of this module: the model proposes, the code decides. Every case
- * from section 11 of OUTREACH.md has a test, because a made-up fact in a cold letter is noticed
+ * from the old outreach spec has a test, because a made-up fact in a cold letter is noticed
  * only by the recipient, and exactly once.
  */
 

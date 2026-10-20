@@ -747,7 +747,7 @@ app.get('/api/outreach/drafts/:id/check', async (c) =>
 
 /*
  * Sending exactly one letter on an explicit press. There is no bulk action on purpose,
- * section 0 of OUTREACH.md: autopilot from a personal Gmail gets the account blocked, and a
+ * rule 10 in CLAUDE.md: autopilot from a personal Gmail gets the account blocked, and a
  * "send all" button is autopilot under another name.
  */
 app.post('/api/outreach/drafts/:id/send', async (c) => {

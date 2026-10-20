@@ -10,7 +10,7 @@ import { vacancies } from '../db/schema.js';
  * at Anthropic. Each such block was paid for as many times as the company had vacancies:
  * the Cloudflare description 313 times.
  *
- * This is item 1 on the "what else can be done" list in COSTS.md, the biggest one left.
+ * This was the biggest remaining saving on model input when it was written.
  */
 
 /** Below this, a shared part isn't worth stripping: the difference is within the margin of error. */

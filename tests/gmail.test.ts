@@ -10,7 +10,7 @@ import {
 import { explainSendError, stripEmDash } from '../src/lib/gmail.js';
 
 /**
- * The Cyrillic test is mandatory here, section 11 of OUTREACH.md. Broken encoding of a Ukrainian
+ * The Cyrillic test is mandatory here, section 7 of CLAUDE.md. Broken encoding of a Ukrainian
  * letter is a silent bug: in the database, in the logs and for the sender the text is right, and
  * only the recipient sees garbage. The Ukrainian fixtures below are therefore deliberate.
  */

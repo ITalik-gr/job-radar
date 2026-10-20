@@ -36,7 +36,7 @@ vi.mock('../src/lib/gmail.js', async (importOriginal) => ({
 }));
 
 /**
- * Every guard from section 9 of OUTREACH.md has its own test. The cost of a mistake here is not an
+ * Every guard from section 7 of CLAUDE.md has its own test. The cost of a mistake here is not an
  * interface bug but the owner's blocked personal Gmail.
  */
 

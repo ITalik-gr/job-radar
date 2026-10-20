@@ -29,7 +29,7 @@ import { useSelection } from '../lib/useRoute';
  * Outbox: the main working screen for sending.
  *
  * There is exactly one send button, for exactly one card. There is no bulk action on
- * purpose: section 0 of OUTREACH.md forbids autopilot, and "send all" is autopilot
+ * purpose: rule 10 in CLAUDE.md forbids autopilot, and "send all" is autopilot
  * under another name.
  */
 

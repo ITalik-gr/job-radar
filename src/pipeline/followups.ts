@@ -6,7 +6,7 @@ import { renderLetter } from '../lib/letter.js';
 import { matchTemplate, outreachTemplates, readSignature, type Language } from './outreach.js';
 
 /**
- * Follow-ups, section 6 of OUTREACH.md.
+ * Follow-ups, section 7 of CLAUDE.md.
  *
  * Exactly one per company, after 7-9 days, always in the same thread. A second
  * follow-up is no longer persistence, it's a reason to end up in spam, so it doesn't

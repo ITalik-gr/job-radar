@@ -196,7 +196,7 @@ export const config = {
    * Gmail for sending. OAuth2, not SMTP with an app password: without `threadId` and reading the
    * inbox neither reply detection nor correct follow-up threading is possible.
    *
-   * The token lives in a separate file, not in the database: OUTREACH.md, section 0, rule 6.
+   * The token lives in a separate file, not in the database: rule 7 in CLAUDE.md.
    * It must not be kept together with the data, and a database backup with the refresh token
    * inside is access to the owner's mailbox in an archive.
    */
@@ -255,7 +255,7 @@ export const config = {
      * The refresh token as an environment secret. This is the path for Workers, which have no
      * filesystem: `wrangler secret put GMAIL_REFRESH_TOKEN`.
      *
-     * It has no place in the database on purpose, section 0 of OUTREACH.md: a database backup
+     * It has no place in the database on purpose, rule 7 in CLAUDE.md: a database backup
      * with the token inside is access to the owner's mailbox in every archive.
      */
     get refreshToken() {
