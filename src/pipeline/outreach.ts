@@ -536,7 +536,8 @@ export async function prepareDrafts(
      * broken draft.
      */
     let walked = false;
-    if (!candidate.contact?.email && enrichBudget > 0) {
+    // No site, no crawl: an empty domain would make `enrich` pick companies on its own.
+    if (!candidate.contact?.email && candidate.domain && enrichBudget > 0) {
       enrichBudget -= 1;
       walked = true;
       try {
@@ -829,6 +830,61 @@ export async function draftCandidatesFor(companyIds: number[]): Promise<DraftCan
 }
 
 /**
+ * Which template a company gets, and in which language. One function for the real draft and the
+ * preview, so the two never pick differently.
+ */
+async function pickTemplate(
+  candidate: DraftCandidate,
+  templateSlug: string | null,
+): Promise<{ template: Template; language: Language } | { reason: string }> {
+  const db = getDb();
+  const language = pickLanguage(candidate.country);
+  const target = pickTargetType({
+    contactName: candidate.contact?.name,
+    contactEmail: candidate.contact?.email,
+  });
+
+  /*
+   * A template picked by hand on the card beats choosing by role and language. That choice
+   * used to go nowhere: the owner set a template in the select, pressed "To outbox" and got a
+   * draft with a completely different text, because the code picked its own. Automatic
+   * choice stays what it was: the default.
+   */
+  const chosen = templateSlug
+    ? (await db.select().from(templates).where(eq(templates.slug, templateSlug)))[0]
+    : undefined;
+
+  if (templateSlug && !chosen) return { reason: `no template ${templateSlug}` };
+
+  const template = chosen ?? matchTemplate(await outreachTemplates(), target, language, candidate.kind);
+  if (!template) return { reason: `no ${target} template in ${language}` };
+
+  // The language follows the template: the person picked a text, and it is written in one specific language.
+  return { template, language: chosen ? ((chosen.language as Language) ?? language) : language };
+}
+
+/**
+ * The letter a company would get, without writing anything: no draft row, no site crawl. The
+ * `error` field says what would block it, exactly as a draft would.
+ */
+export async function previewLetter(
+  companyId: number,
+  templateSlug: string | null = null,
+): Promise<{ letter: PreparedDraft | null; reason: string | null }> {
+  const [candidate] = await draftCandidatesFor([companyId]);
+  if (!candidate) return { letter: null, reason: 'company not found' };
+
+  const picked = await pickTemplate(candidate, templateSlug);
+  if ('reason' in picked) return { letter: null, reason: picked.reason };
+
+  const built = buildDraft(candidate, picked.template, picked.language, await readSignature());
+  return {
+    letter: { companyId, leadId: candidate.leadId, contactId: candidate.contact?.id ?? null, ...built },
+    reason: null,
+  };
+}
+
+/**
  * A draft for a specific company, from the button on a lead card.
  *
  * This is the same path as the nightly preparation: the same templates, the same choice of
@@ -862,7 +918,7 @@ export async function draftForCompany(
    * site, or there is no letter.
    */
   let enriched = false;
-  if (!candidate.contact?.email && options.enrich !== false) {
+  if (!candidate.contact?.email && candidate.domain && options.enrich !== false) {
     await enrich({ domain: candidate.domain, limit: 1 });
     enriched = true;
     [candidate] = await draftCandidatesFor([companyId]);
@@ -879,33 +935,9 @@ export async function draftForCompany(
    */
   const missingEmail = !candidate.contact?.email;
 
-  const language = pickLanguage(candidate.country);
-  const target = pickTargetType({
-    contactName: candidate.contact?.name,
-    contactEmail: candidate.contact?.email,
-  });
-
-  /*
-   * A template picked by hand on the card beats choosing by role and language. That choice
-   * used to go nowhere: the owner set a template in the select, pressed "To outbox" and got a
-   * draft with a completely different text, because the code picked its own. Automatic
-   * choice stays what it was: the default.
-   */
-  const chosen = options.templateSlug
-    ? (await db.select().from(templates).where(eq(templates.slug, options.templateSlug)))[0]
-    : undefined;
-
-  if (options.templateSlug && !chosen) {
-    return { draft: null, id: null, reason: `no template ${options.templateSlug}` };
-  }
-
-  const template = chosen ?? matchTemplate(await outreachTemplates(), target, language, candidate.kind);
-  if (!template) {
-    return { draft: null, id: null, reason: `no ${target} template in ${language}` };
-  }
-
-  // The language follows the template: the person picked a text, and it is written in one specific language.
-  const letterLanguage = chosen ? ((chosen.language as Language) ?? language) : language;
+  const picked = await pickTemplate(candidate, options.templateSlug ?? null);
+  if ('reason' in picked) return { draft: null, id: null, reason: picked.reason };
+  const { template, language: letterLanguage } = picked;
 
   const built = buildDraft(candidate, template, letterLanguage, await readSignature());
   const [row] = await db

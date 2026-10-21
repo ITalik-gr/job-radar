@@ -127,5 +127,9 @@
       "adult": -20,
       "forex": -10
     }
+  },
+  "queue": {
+    "_": "The daily slice on the Leads page: how many companies, mixed across segments.",
+    "size": 10
   }
 }

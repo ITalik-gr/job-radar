@@ -24,4 +24,15 @@ describe('wrangler config merge', () => {
     expect(merged.vars).toEqual({ LLM_PROVIDER: 'anthropic', GMAIL_FROM_NAME: 'Someone' });
     expect(merged.name).toBe('job-radar');
   });
+
+  it('adds a KV namespace id by binding, keeping a local-only binding too', () => {
+    const merged = mergeConfig(
+      { kv_namespaces: [{ binding: 'OAUTH_KV' }] },
+      { kv_namespaces: [{ binding: 'OAUTH_KV', id: 'kv1' }, { binding: 'OTHER', id: 'kv2' }] },
+    );
+    expect(merged.kv_namespaces).toEqual([
+      { binding: 'OAUTH_KV', id: 'kv1' },
+      { binding: 'OTHER', id: 'kv2' },
+    ]);
+  });
 });

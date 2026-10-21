@@ -6,7 +6,9 @@ import {
   Anchor,
   Badge,
   Box,
+  Button,
   Card,
+  Checkbox,
   DataList,
   Divider,
   Drawer,
@@ -17,15 +19,17 @@ import {
   Skeleton,
   Stack,
   Table,
+  TagsInput,
   Text,
-  TextInput,
   Title,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { Building2, ExternalLink, Mail, Search } from 'lucide-react';
-import { api, formatDate, type CompanyRow } from '../lib/api';
+import { Building2, ExternalLink, Mail, Phone, UserRound } from 'lucide-react';
+import { api, cleanFilter, companyKey, formatDate, type CompanyFilter, type StudioCard } from '../lib/api';
+import { CompanyFilters } from '../components/CompanyFilters';
 import { Score } from '../components/Score';
 import { useSelection } from '../lib/useRoute';
 import { ContactRow } from '../components/ContactRow';
@@ -36,8 +40,6 @@ import {
   renderStatusOption,
   statusLabel,
 } from '../components/statuses';
-
-const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'html', 'rss', 'none', 'unknown'];
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -51,8 +53,8 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
  * Details open in a side drawer rather than a centred modal: the table stays in place,
  * and you can see which row is open. That makes it easier to go down the list.
  */
-function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
-  const id = row.id;
+function Detail({ row, onClose }: { row: StudioCard; onClose: () => void }) {
+  const id = row.companyId;
   const client = useQueryClient();
   const { data, error } = useQuery({ queryKey: ['company', id], queryFn: () => api.company(id) });
 
@@ -78,9 +80,15 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
         data && (
           <Box>
             <Title order={3}>{data.company.name}</Title>
-            <Anchor href={`https://${data.company.domain}`} target="_blank" rel="noreferrer" size="sm">
-              {data.company.domain}
-            </Anchor>
+            {data.company.domain ? (
+              <Anchor href={`https://${data.company.domain}`} target="_blank" rel="noreferrer" size="sm">
+                {data.company.domain}
+              </Anchor>
+            ) : (
+              <Text size="sm" c="dimmed">
+                no site{data.company.phone ? `, ${data.company.phone}` : ''}
+              </Text>
+            )}
           </Box>
         )
       }
@@ -287,9 +295,90 @@ function Detail({ row, onClose }: { row: CompanyRow; onClose: () => void }) {
   );
 }
 
+/** The status a bulk action can set. Snoozing many at once needs no end date picker: 30 days. */
+const BULK_STATUSES = STATUS_OPTIONS;
+
+function BulkBar({ ids, cards, onDone }: { ids: number[]; cards: StudioCard[]; onDone: () => void }) {
+  const client = useQueryClient();
+  const [addTags, setAddTags] = useState<string[]>([]);
+
+  // Tags the selected companies carry, the only ones worth offering for removal.
+  const present = useMemo(() => {
+    const chosen = new Set(ids);
+    return [...new Set(cards.filter((card) => chosen.has(card.companyId)).flatMap((card) => card.tags))].sort();
+  }, [ids, cards]);
+
+  const bulk = useMutation({
+    mutationFn: (body: { status?: string; addTags?: string[]; removeTags?: string[] }) => api.bulk({ ids, ...body }),
+    onSuccess: (result) => {
+      notifications.show({
+        color: result.kept.length > 0 ? 'yellow' : 'green',
+        title: `${result.changed} of ${ids.length} changed`,
+        message:
+          result.kept.length > 0
+            ? `${result.kept.length} kept their status: a contacted or replied company is never downgraded`
+            : 'saved',
+      });
+      setAddTags([]);
+      void client.invalidateQueries({ queryKey: ['companies'] });
+      void client.invalidateQueries({ queryKey: ['facets'] });
+      void client.invalidateQueries({ queryKey: ['studios'] });
+      void client.invalidateQueries({ queryKey: ['stats'] });
+      onDone();
+    },
+    onError: (error) => notifications.show({ color: 'red', title: 'Not changed', message: String(error) }),
+  });
+
+  return (
+    <Paper p="sm" bg="brand.0">
+      <Group gap="sm">
+        <Text size="sm" fw={500}>
+          {ids.length} selected
+        </Text>
+        <Select
+          size="xs"
+          placeholder="set status"
+          data={BULK_STATUSES}
+          value={null}
+          onChange={(status) => status && bulk.mutate({ status })}
+          renderOption={renderStatusOption}
+          comboboxProps={{ width: 320, position: 'bottom-start' }}
+          maxDropdownHeight={400}
+          w={160}
+        />
+        <TagsInput
+          size="xs"
+          placeholder="add tags, Enter"
+          value={addTags}
+          onChange={setAddTags}
+          w={220}
+        />
+        <Button size="xs" variant="light" disabled={addTags.length === 0} onClick={() => bulk.mutate({ addTags })}>
+          Add tags
+        </Button>
+        <Select
+          size="xs"
+          placeholder="remove a tag"
+          data={present}
+          value={null}
+          onChange={(tag) => tag && bulk.mutate({ removeTags: [tag] })}
+          searchable
+          disabled={present.length === 0}
+          w={180}
+        />
+        <Button size="xs" variant="subtle" color="gray" ml="auto" onClick={onDone}>
+          Clear selection
+        </Button>
+      </Group>
+    </Paper>
+  );
+}
+
 export function CompaniesPage() {
-  const [filters, setFilters] = useState({ q: '', status: '', ats: '', country: '' });
-  const [selected, setSelected] = useState<CompanyRow | null>(null);
+  const [filter, setFilter] = useState<CompanyFilter>({});
+  const [sort, setSort] = useState<'score' | 'name'>('score');
+  const [selected, setSelected] = useState<StudioCard | null>(null);
+  const [checked, setChecked] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /*
@@ -300,21 +389,22 @@ export function CompaniesPage() {
   const [domain, select] = useSelection('companies');
 
   // Search waits until typing stops: otherwise every letter is a query over the whole database.
-  const [search] = useDebouncedValue(filters.q, 300);
-  const query = useMemo(() => ({ ...filters, q: search }), [filters, search]);
+  const [search] = useDebouncedValue(filter.search, 300);
+  const query = useMemo(() => cleanFilter({ ...filter, search }), [filter, search]);
 
   const { data, error, isLoading } = useQuery({
-    queryKey: ['companies', query],
-    queryFn: () => api.companies(query),
+    queryKey: ['companies', query, sort],
+    queryFn: () => api.companies(query, sort),
   });
+  const cards = data?.cards;
+
+  // A selection belongs to the rows on screen: a new filter starts a new one.
+  useEffect(() => setChecked(new Set()), [query]);
 
   /*
-   * A company from the address is found through the list, not opened directly.
-   *
-   * The reason is technical: the details take the score from the list row, because the
-   * `GET /companies/:id` response has none, it is computed on the fly only for the list.
-   * So if the company is not in the current list, a search by its domain is switched on
-   * first. A useful side effect: the filter stays visible, and it is clear why the table
+   * A company from the address is found through the list, not opened directly: the details
+   * take the score from the list row. So if the company is not in the current list, a search
+   * by its domain is switched on first, and the filter stays visible to say why the table
    * has one row.
    */
   useEffect(() => {
@@ -322,35 +412,45 @@ export function CompaniesPage() {
       setSelected(null);
       return;
     }
-    if (selected?.domain === domain) return;
+    if (selected && companyKey(selected) === domain) return;
 
-    const found = data?.find((row) => row.domain === domain);
+    const found = cards?.find((row) => companyKey(row) === domain);
     if (found) {
       setSelected(found);
       return;
     }
-
-    // The search is switched on only when the company really is missing from the current list.
-    if (data && filters.q !== domain) setFilters({ q: domain, status: '', ats: '', country: '' });
-  }, [domain, data, selected, filters.q]);
+    // A company without a site has no domain to search by: clearing the filter is all that helps.
+    if (domain.startsWith('id-')) {
+      if (cards && Object.keys(filter).length > 0) setFilter({});
+      return;
+    }
+    if (cards && filter.search !== domain) setFilter({ search: domain });
+  }, [domain, cards, selected, filter.search]);
 
   /*
    * Rows have a fixed height, so nothing needs measuring: the virtualizer computes
-   * positions arithmetically. An overscan of 12 rows removes white gaps on fast scrolling,
-   * and that is cheaper than drawing the whole list.
+   * positions arithmetically. An overscan of 12 rows removes white gaps on fast scrolling.
    */
   const virtualizer = useVirtualizer({
-    count: data?.length ?? 0,
+    count: cards?.length ?? 0,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 45,
     overscan: 12,
   });
 
   const items = virtualizer.getVirtualItems();
-  const rows = items.map((item) => data![item.index]!);
+  const rows = items.map((item) => cards![item.index]!);
   const padTop = items.length > 0 ? items[0]!.start : 0;
-  const padBottom =
-    items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1]!.end : 0;
+  const padBottom = items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1]!.end : 0;
+
+  const allChecked = Boolean(cards?.length) && checked.size === cards!.length;
+  const toggle = (id: number) =>
+    setChecked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   if (error) {
     return (
@@ -363,87 +463,77 @@ export function CompaniesPage() {
   }
 
   return (
-    <Stack gap="md" p="lg">
+    <Stack gap="sm" p="lg">
       <Paper p="md">
-        <Group gap="md">
-          <TextInput
-            placeholder="name or domain"
-            leftSection={<Search size={14} />}
-            value={filters.q}
-            onChange={(event) => setFilters({ ...filters, q: event.currentTarget.value })}
-            w={280}
-          />
-          <Select
-            placeholder="any status"
-            data={STATUS_OPTIONS}
-            value={filters.status || null}
-            onChange={(status) => setFilters({ ...filters, status: status ?? '' })}
-            renderOption={renderStatusOption}
-            leftSection={filters.status ? <StatusIcon status={filters.status} /> : undefined}
-            maxDropdownHeight={400}
-            comboboxProps={{ width: 320, position: 'bottom-start' }}
-            clearable
-            w={200}
-          />
-          <Select
-            placeholder="any ats"
-            data={ATS_KINDS}
-            value={filters.ats || null}
-            onChange={(ats) => setFilters({ ...filters, ats: ats ?? '' })}
-            clearable
-            w={180}
-          />
-          {/*
-            The most common question about this page: is this where letters are written. No.
-            It is a directory of the whole database, the working lists are Queue and Studios.
-          */}
-          <Text size="sm" c="dimmed" maw={420} ml="auto">
-            Directory of the whole database: {data?.length ?? 0} companies. Letters are written from
-            Queue and Studios, this page is for search, statuses and each company's history.
-          </Text>
-        </Group>
+        <CompanyFilters
+          value={filter}
+          onChange={setFilter}
+          summary={data ? `${data.cards.length} of ${data.total} companies` : 'loading'}
+        />
       </Paper>
+
+      {checked.size > 0 && cards && (
+        <BulkBar ids={[...checked]} cards={cards} onDone={() => setChecked(new Set())} />
+      )}
 
       {selected && <Detail row={selected} onClose={() => select(null)} />}
 
       {isLoading && <Skeleton h={420} />}
 
-      {data?.length === 0 && (
+      {cards?.length === 0 && (
         <Card>
           <EmptyState
             icon={<Building2 size={28} />}
             withIndicatorBackground
             title="No companies match these filters"
-            description="Clear the search, or collect a catalog with the browser extension."
+            description="Clear a filter, or collect a catalog on the Sources page."
           />
         </Card>
       )}
 
-      {data && data.length > 0 && (
+      {cards && cards.length > 0 && (
         <Paper style={{ overflow: 'hidden' }}>
           {/*
             The scroll is native here, not ScrollArea: the virtualizer needs an element
-            it can ask for the scroll position. The database has thousands of companies,
-            and without virtualization the browser draws thousands of rows at once, after
-            which the page thinks for a second on every click.
+            it can ask for the scroll position. The database has thousands of companies.
           */}
-          <div ref={scrollRef} style={{ maxHeight: 'calc(100dvh - 224px)', overflowY: 'auto' }}>
-            {/* Fixed layout: otherwise the name column stretches and pushes the status
-                and counters past the right edge. */}
+          <div ref={scrollRef} style={{ maxHeight: 'calc(100dvh - 300px)', overflowY: 'auto' }}>
             <Table stickyHeader layout="fixed">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th w={90}>score</Table.Th>
-                  <Table.Th>company</Table.Th>
-                  <Table.Th w={110}>size</Table.Th>
-                  <Table.Th w={110}>rating</Table.Th>
-                  <Table.Th w={190}>location</Table.Th>
-                  <Table.Th w={130}>ats</Table.Th>
+                  <Table.Th w={40}>
+                    <Checkbox
+                      size="xs"
+                      aria-label="select all"
+                      checked={allChecked}
+                      indeterminate={checked.size > 0 && !allChecked}
+                      onChange={() =>
+                        setChecked(allChecked ? new Set() : new Set(cards.map((card) => card.companyId)))
+                      }
+                    />
+                  </Table.Th>
+                  <Table.Th w={80}>
+                    <UnstyledButton onClick={() => setSort('score')} fw={sort === 'score' ? 600 : undefined}>
+                      score
+                    </UnstyledButton>
+                  </Table.Th>
+                  <Table.Th>
+                    <UnstyledButton onClick={() => setSort('name')} fw={sort === 'name' ? 600 : undefined}>
+                      company
+                    </UnstyledButton>
+                  </Table.Th>
+                  <Table.Th w={110}>segment</Table.Th>
+                  <Table.Th w={110}>industry</Table.Th>
+                  <Table.Th w={160}>location</Table.Th>
+                  <Table.Th w={80}>reach</Table.Th>
+                  <Table.Th w={70} ta="right">
+                    issues
+                  </Table.Th>
                   <Table.Th w={150}>status</Table.Th>
-                  <Table.Th w={110} ta="right">
+                  <Table.Th w={70} ta="right">
                     hiring
                   </Table.Th>
-                  <Table.Th w={130} ta="right">
+                  <Table.Th w={100} ta="right">
                     checked
                   </Table.Th>
                 </Table.Tr>
@@ -451,84 +541,120 @@ export function CompaniesPage() {
               <Table.Tbody>
                 {padTop > 0 && (
                   <Table.Tr aria-hidden style={{ height: padTop }}>
-                    <Table.Td colSpan={9} p={0} />
+                    <Table.Td colSpan={11} p={0} />
                   </Table.Tr>
                 )}
-                {rows.map((row: CompanyRow) => (
-                  <Table.Tr
-                    key={row.id}
-                    onClick={() => select(row.domain)}
-                    style={{ cursor: 'pointer' }}
-                    bg={selected?.id === row.id ? 'brand.0' : undefined}
-                  >
-                    <Table.Td>
-                      <Score value={row.score} size="sm" />
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-                        <Text fw={500} truncate style={{ minWidth: 0 }}>
-                          {row.name}
-                        </Text>
-                        <Anchor
-                          href={`https://${row.domain}`}
-                          target="_blank"
-                          rel="noreferrer"
+                {rows.map((row) => {
+                  const email = row.contacts.some((contact) => contact.email && contact.emailValid);
+                  const named = row.contacts.some((contact) => contact.name);
+                  const issues = row.audit?.issues ?? [];
+                  return (
+                    <Table.Tr
+                      key={row.companyId}
+                      onClick={() => select(companyKey(row))}
+                      style={{ cursor: 'pointer' }}
+                      bg={selected?.companyId === row.companyId ? 'brand.0' : undefined}
+                    >
+                      <Table.Td onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
                           size="xs"
-                          c="dimmed"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Group gap={4} wrap="nowrap">
-                            {row.domain}
-                            <ExternalLink size={11} />
-                          </Group>
-                        </Anchor>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" c="dimmed">
-                        {row.sizeHint ?? ''}
-                      </Text>
-                    </Table.Td>
-                    {/* Catalog rating and reviews: the quickest sign of a living studio. */}
-                    <Table.Td>
-                      <Text size="sm" c="dimmed" className="tabular">
-                        {row.rating === null
-                          ? ''
-                          : `${row.rating.toFixed(1)}${row.reviewsCount ? ` · ${row.reviewsCount}` : ''}`}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" truncate>
-                        {[row.city, row.country].filter(Boolean).join(', ')}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {row.careersKind === 'unknown' || row.careersKind === 'none' ? (
-                        <Text size="sm" c="dimmed">
-                          {row.careersKind}
+                          aria-label={`select ${row.name}`}
+                          checked={checked.has(row.companyId)}
+                          onChange={() => toggle(row.companyId)}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <Score value={row.score} size="sm" />
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                          <Text fw={500} truncate style={{ minWidth: 0 }}>
+                            {row.name}
+                          </Text>
+                          {row.domain && (
+                            <Anchor
+                              href={`https://${row.domain}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              size="xs"
+                              c="dimmed"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Group gap={4} wrap="nowrap">
+                                {row.domain}
+                                <ExternalLink size={11} />
+                              </Group>
+                            </Anchor>
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c={row.kind === 'unknown' ? 'dimmed' : undefined}>
+                          {row.kind}
                         </Text>
-                      ) : (
-                        <Badge>{row.careersKind}</Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <StatusCell status={row.status} />
-                    </Table.Td>
-                    <Table.Td ta="right">
-                      <Text size="sm" c={row.hiring ? undefined : 'dimmed'} className="tabular">
-                        {row.hiring ? (row.hiringRoles ?? 'yes') : '-'}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td ta="right">
-                      <Text size="sm" c="dimmed" className="tabular">
-                        {formatDate(row.lastChecked) || 'never'}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed" truncate>
+                          {row.industry ?? ''}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" truncate>
+                          {[row.city, row.country].filter(Boolean).join(', ')}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {/* A named contact is worth more than info@, so it gets its own mark. */}
+                        <Group gap={6} wrap="nowrap">
+                          {named && (
+                            <Tooltip label="named contact">
+                              <UserRound size={14} />
+                            </Tooltip>
+                          )}
+                          {email && (
+                            <Tooltip label="email">
+                              <Mail size={14} />
+                            </Tooltip>
+                          )}
+                          {row.phone && (
+                            <Tooltip label={row.phone}>
+                              <Phone size={14} />
+                            </Tooltip>
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {issues.length > 0 ? (
+                          <Tooltip label={issues.join(', ')} multiline maw={320}>
+                            <Badge color="red" size="sm">
+                              {issues.length}
+                            </Badge>
+                          </Tooltip>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            {row.audit ? '0' : '-'}
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <StatusCell status={row.status} />
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        <Text size="sm" c={row.hiring ? undefined : 'dimmed'} className="tabular">
+                          {row.hiring ? (row.hiringRoles ?? 'yes') : '-'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        <Text size="sm" c="dimmed" className="tabular">
+                          {formatDate(row.lastChecked) || 'never'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
                 {padBottom > 0 && (
                   <Table.Tr aria-hidden style={{ height: padBottom }}>
-                    <Table.Td colSpan={9} p={0} />
+                    <Table.Td colSpan={11} p={0} />
                   </Table.Tr>
                 )}
               </Table.Tbody>

@@ -1,0 +1,16 @@
+{
+  "_": "Google Places searches: every niche in every city, a few pairs per run, rotated. The industry is what the companies get; the query is what Google is asked, in Ukrainian.",
+  "niches": [
+    { "industry": "dental", "query": "стоматологія" },
+    { "industry": "clinic", "query": "приватна клініка" },
+    { "industry": "beauty", "query": "салон краси" },
+    { "industry": "legal", "query": "юридична компанія" },
+    { "industry": "repair", "query": "ремонт квартир" },
+    { "industry": "restaurant", "query": "ресторан" },
+    { "industry": "retail", "query": "магазин меблів" },
+    { "industry": "education", "query": "мовна школа" },
+    { "industry": "fitness", "query": "фітнес клуб" },
+    { "industry": "realty", "query": "агентство нерухомості" }
+  ],
+  "cities": ["Київ", "Львів", "Одеса", "Дніпро", "Харків"]
+}

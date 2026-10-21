@@ -46,6 +46,7 @@ function contact(over: Partial<Contact> = {}): Contact {
     name: 'Anton Malyy',
     role: 'CTO',
     email: 'anton@acme.com',
+    phone: null,
     emailValid: true,
     telegram: null,
     xHandle: null,

@@ -45,6 +45,7 @@ export async function refreshCompany(companyId: number): Promise<RefreshReport> 
   const db = getDb();
   const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
   if (!company) throw new Error(`company ${companyId} does not exist`);
+  if (!company.domain) throw new Error(`${company.name} has no site to refresh from`);
 
   const techBefore = new Set(company.techHints);
 

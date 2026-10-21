@@ -52,6 +52,23 @@ export const config = {
       return str('LOG_LEVEL', 'info');
     },
   },
+  /**
+   * Google Places API (New), the UA business source. Empty key means the source is off: a run
+   * reports that instead of failing. The monthly cap keeps the radar inside the free usage of the
+   * Enterprise SKU (website and phone fields), see `src/sources/catalogs/places.ts`.
+   */
+  places: {
+    get apiKey() {
+      return str('GOOGLE_PLACES_API_KEY', '');
+    },
+    get monthlyLimit() {
+      return num('PLACES_MONTHLY_LIMIT', 900);
+    },
+    /** Search queries per run: niche by city pairs, rotated across runs. */
+    get queriesPerRun() {
+      return num('PLACES_QUERIES_PER_RUN', 6);
+    },
+  },
   http: {
     get userAgent() {
       return `JobRadar/0.1 (+mailto:${str('USER_AGENT_CONTACT', 'unknown')})`;

@@ -16,10 +16,15 @@
 		 * The SPA fallback serves index.html to any request with Accept: text/html,
 		 * so curl saw JSON while a browser at the same address saw the interface.
 		 * This silently broke the Google callback too: it arrives as navigation.
+		 * /mcp is the MCP server, /.well-known/* its OAuth discovery documents.
 		 */
-		"run_worker_first": ["/api/*"]
+		"run_worker_first": [
+			"/api/*",
+			"/mcp",
+			"/.well-known/*"
+		]
 	},
-	// Workers AI: company vectors and, with LLM_PROVIDER=workers-ai, vacancy classification.
+	// Workers AI: company vectors and, with LLM_PROVIDER=workers-ai, classification calls.
 	"ai": {
 		"binding": "AI"
 	},
@@ -38,6 +43,20 @@
 		{
 			"binding": "job_radar",
 			"database_name": "job-radar"
+		}
+	],
+	/*
+	 * Grants and tokens of the MCP OAuth flow (claude.ai, Claude Desktop). The id is personal
+	 * and lives in wrangler.local.jsonc, `pnpm cf:setup` creates the namespace and writes it.
+	 * Without the binding the worker still serves /mcp to Claude Code with RADAR_TOKEN.
+	 */
+	"kv_namespaces": [
+		{
+			"binding": "OAUTH_KV"
+		},
+		{
+			"binding": "KV",
+			"id": "fb92fcdae01c409dbebf8adc89e88da5"
 		}
 	],
 	"triggers": {
@@ -69,6 +88,7 @@
 	 *   ANTHROPIC_API_KEY    classification and the company verdict
 	 *   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   the twice-weekly summary
 	 *   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_FROM_EMAIL   mail
+	 *   GOOGLE_PLACES_API_KEY   the places source, off without it
 	 */
 	"observability": {
 		"enabled": true

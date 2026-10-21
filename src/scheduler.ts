@@ -5,7 +5,8 @@ import { log } from './lib/log.js';
 import { listSources } from './sources/registry.js';
 import './sources/index.js';
 import { syncSource } from './pipeline/sync.js';
-import { syncDou } from './pipeline/catalogs.js';
+import { syncCatalog, syncDou } from './pipeline/catalogs.js';
+import { syncAllLeads } from './pipeline/leads.js';
 import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
 import { notify } from './notify/telegram.js';
@@ -30,6 +31,8 @@ export const SCHEDULE = {
   replies: '5 * * * *',
   /** Follow-up drafts get prepared in the morning, so they are already in the list by 10:00. */
   followupDrafts: '30 9 * * *',
+  /** Tenders and funding news: a tender lives for a week or two, news for a day. */
+  leads: '45 9 * * *',
 } as const;
 
 async function safely(name: string, task: () => Promise<unknown>): Promise<void> {
@@ -48,6 +51,12 @@ async function runBoards(): Promise<void> {
   }
 }
 
+async function runCatalogs(): Promise<void> {
+  await safely('catalog:dou', () => syncDou({ limit: 60 }));
+  // Without a key the source is off on purpose, which is not worth a failed run every week.
+  if (config.places.apiKey) await safely('catalog:places', () => syncCatalog('places'));
+}
+
 /**
  * Task periods for catch-up. Must match `SCHEDULE` above: if the schedule changes
  * and this does not, catch-up will either stay silent or run unnecessary work.
@@ -62,6 +71,12 @@ const CATCH_UP: { name: string; source: string; periodMs: number; run: () => Pro
     source: 'dou',
     periodMs: 7 * 24 * 60 * 60 * 1000,
     run: () => syncDou({ limit: 60 }),
+  },
+  {
+    name: 'leads',
+    source: 'prozorro',
+    periodMs: 24 * 60 * 60 * 1000,
+    run: () => syncAllLeads(),
   },
   {
     name: 'discover',
@@ -107,7 +122,8 @@ export function startScheduler(): void {
 
   cron.schedule(SCHEDULE.ats, () => void runBoards(), { timezone });
   cron.schedule(SCHEDULE.enrich, () => void safely('enrich', () => enrich({ limit: 25 })), { timezone });
-  cron.schedule(SCHEDULE.catalogs, () => void safely('catalog:dou', () => syncDou({ limit: 60 })), { timezone });
+  cron.schedule(SCHEDULE.catalogs, () => void runCatalogs(), { timezone });
+  cron.schedule(SCHEDULE.leads, () => void safely('leads', () => syncAllLeads()), { timezone });
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });
   cron.schedule(SCHEDULE.summary, () => void safely('notify:summary', () => notify.summary()), { timezone });
 

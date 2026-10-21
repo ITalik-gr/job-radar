@@ -18,13 +18,16 @@ export interface CatalogStats {
   errors: string[];
 }
 
-/** A company without a domain can't be deduped, so it isn't saved, it goes into skipped. */
+/**
+ * A company with neither a domain nor a register code or place id can't be deduped, so it isn't
+ * saved, it goes into skipped.
+ */
 export async function saveCompanies(items: RawCompany[], source: string): Promise<CatalogStats> {
   const stats: CatalogStats = { itemsFound: items.length, itemsNew: 0, updated: 0, skipped: [], errors: [] };
 
   for (const item of items) {
     const domain = item.domain ? normalizeDomain(item.domain) : null;
-    if (!domain) {
+    if (!domain && !item.registryCode && !item.placeId) {
       stats.skipped.push({ name: item.name, reason: 'no domain' });
       continue;
     }
@@ -47,6 +50,12 @@ export async function saveCompanies(items: RawCompany[], source: string): Promis
         hourlyRate: item.hourlyRate ?? null,
         foundedYear: item.foundedYear ?? null,
         extra: item.extra ?? {},
+        registryCode: item.registryCode ?? null,
+        placeId: item.placeId ?? null,
+        phone: item.phone ?? null,
+        address: item.address ?? null,
+        industry: item.industry ?? null,
+        kind: item.kind ?? null,
       });
       if (created) stats.itemsNew += 1;
       else stats.updated += 1;

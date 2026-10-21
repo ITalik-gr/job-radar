@@ -42,7 +42,7 @@ anything is deployed on it. Pick any.
 | where | what | committed |
 | --- | --- | --- |
 | `wrangler.jsonc` | worker name, bindings, cron, model names | yes, same for everyone |
-| `wrangler.local.jsonc` | your database id and plain values that identify you | no, gitignored |
+| `wrangler.local.jsonc` | your database and KV ids and plain values that identify you | no, gitignored |
 | worker secrets | keys and tokens | no, only on Cloudflare |
 
 `pnpm deploy` merges the two config files into `wrangler.deploy.json` and deploys that
@@ -72,12 +72,13 @@ them can also be set by hand with `pnpm wrangler secret put NAME`.
 | secret | needed for |
 | --- | --- |
 | `RADAR_TOKEN` | the interface password. Without it the worker, and your contacts database, is open to anyone |
-| `ANTHROPIC_API_KEY` | vacancy classification. Not needed with `LLM_PROVIDER=workers-ai` |
+| `ANTHROPIC_API_KEY` | model calls (reply classification, the company verdict). Not needed with `LLM_PROVIDER=workers-ai` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | the twice-weekly summary |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GMAIL_FROM_EMAIL` | sending through Gmail |
 | `GMAIL_REFRESH_TOKEN` | Gmail, obtained after connecting the mailbox, see below |
 | `RESEND_API_KEY` | sending through Resend instead |
 | `ANTHROPIC_BASE_URL` | only for AI Gateway |
+| `GOOGLE_PLACES_API_KEY` | the `places` source (UA businesses). Without it the source is off and the Monday run skips it |
 
 ## Deploy on push with GitHub Actions
 
@@ -146,6 +147,38 @@ The bot cannot write first: open the chat with it and press Start once.
 In the extension popup set the radar address to `https://<your-worker>.workers.dev` and
 the token to your `RADAR_TOKEN`. Companies then go straight to the worker.
 
+## MCP
+
+The worker serves an MCP server at `/mcp` (streamable HTTP), so Claude can search
+companies, change statuses, edit templates and settings, preview letters and queue
+drafts. There is no send tool: letters still leave only by a click in the interface.
+The full tool list: [CLAUDE.md](CLAUDE.md), section 8.
+
+Claude Code, with the same `RADAR_TOKEN` as the interface:
+
+```bash
+claude mcp add --transport http radar https://<your-worker>.workers.dev/mcp \
+  --header "Authorization: Bearer <RADAR_TOKEN>"
+```
+
+Locally the address is `http://127.0.0.1:3000/mcp`. Unlike the API, the MCP endpoint
+answers 503 when `RADAR_TOKEN` is empty, on a laptop too: put a token into `.env` first.
+Only the `Authorization` header is accepted, not `?token=`.
+
+**claude.ai and Claude Desktop** connect through OAuth. Settings, Connectors, Add custom
+connector, URL `https://<your-worker>.workers.dev/mcp`, no client id or secret. The worker
+opens a page that asks for `RADAR_TOKEN`: that is the whole sign-in, there are no
+accounts. Desktop picks up connectors added on claude.ai.
+
+OAuth keeps its grants in a KV namespace bound as `OAUTH_KV`. `pnpm cf:setup` creates it
+and writes its id into `wrangler.local.jsonc`; on an existing deploy run it once more, it
+reuses everything else. Then update the `WRANGLER_LOCAL_JSONC` secret for CI. Without the
+namespace the worker still serves `/mcp` to Claude Code with the plain token.
+
+A connection lives as long as it is used: the access token is refreshed every hour, and a
+month without use asks for the token again. Changing `RADAR_TOKEN` does not end existing
+OAuth connections; delete the keys in the `OAUTH_KV` namespace for that.
+
 ## AI Gateway in front of Anthropic
 
 Optional and free: a cache, a hard spend limit, and a log of every model call.
@@ -159,8 +192,8 @@ An empty `ANTHROPIC_BASE_URL` means direct calls, so nothing breaks without a ga
 ## Workers AI
 
 The `AI` binding in `wrangler.jsonc` needs no setup on the worker. It computes company
-vectors for "find similar", and with `LLM_PROVIDER=workers-ai` it also classifies
-vacancies, paid from the plan's neuron quota instead of a per-token bill.
+vectors for "find similar", and with `LLM_PROVIDER=workers-ai` it also answers the
+classification calls, paid from the plan's neuron quota instead of a per-token bill.
 
 Locally there is no binding, so it needs a token in `.env`:
 
@@ -180,9 +213,8 @@ pnpm cli export:sql /tmp/data.sql --tables companies,company_state,contacts,outr
 pnpm wrangler d1 execute job-radar --remote --file=/tmp/data.sql
 ```
 
-Only data, no `CREATE TABLE`, so it does not collide with migrations. Vacancies and
-snapshots are left out on purpose: they are large, and the worker collects them again
-within a day.
+Only data, no `CREATE TABLE`, so it does not collide with migrations. The archive tables
+(`vacancies`, `snapshots`, `facts`) are left out on purpose: nothing reads them any more.
 
 ## When something breaks
 
@@ -204,7 +236,8 @@ see the Actions section.
 
 **`/api/...` shows the interface instead of JSON in the browser**: `run_worker_first`
 was removed from `assets` in `wrangler.jsonc`. Without it the static fallback answers
-every browser navigation, the Google callback included.
+every browser navigation, the Google callback and the MCP OAuth flow included
+(`/mcp` and `/.well-known/*` are in that list for the same reason).
 
 ## Useful commands
 

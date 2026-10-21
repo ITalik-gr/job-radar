@@ -87,3 +87,32 @@ export async function fullStats() {
     funnel: await funnel(),
   };
 }
+
+export interface Facets {
+  kind: Bucket[];
+  market: Bucket[];
+  country: Bucket[];
+  city: Bucket[];
+  industry: Bucket[];
+  source: Bucket[];
+  tags: Bucket[];
+}
+
+/** The values the filter selects offer, with counts. Known values only: unknown ones filter nothing. */
+export async function companyFacets(): Promise<Facets> {
+  const known = (rows: Bucket[]) => rows.filter((row) => row.key !== 'unknown');
+  const tags = await getDb().all<Bucket>(
+    sql`select lower(value) as key, count(*) as count
+      from companies, json_each(companies.tags)
+      group by 1 order by 2 desc limit 300`,
+  );
+  return {
+    kind: await buckets('kind', 50),
+    market: known(await buckets('market')),
+    country: known(await buckets('country', 200)),
+    city: known(await buckets('city', 300)),
+    industry: known(await buckets('lower(industry)', 200)),
+    source: await bySource(),
+    tags,
+  };
+}

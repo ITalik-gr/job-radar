@@ -24,6 +24,7 @@ import {
   Building2,
   Inbox,
   FileText,
+  Gavel,
   MailPlus,
   Play,
   Radar,
@@ -45,6 +46,7 @@ import { StartupsPage } from './pages/Startups';
 import { SourcesPage } from './pages/Sources';
 import { TemplatesPage } from './pages/Templates';
 import { RulesPage } from './pages/Rules';
+import { TendersPage } from './pages/Tenders';
 
 // Stats pulls in recharts, so it loads as a separate chunk only once opened.
 const StatsPage = lazy(() => import('./pages/Stats').then((module) => ({ default: module.StatsPage })));
@@ -53,6 +55,7 @@ const TABS = [
   { id: 'studios', label: 'Leads', icon: Inbox, hint: 'who to write to: every company above the score threshold, with filters' },
   { id: 'startups', label: 'Startups', icon: Rocket, hint: 'founders and small startups; the hiring badge shows who needs hands right now' },
   { id: 'companies', label: 'Companies', icon: Building2, hint: 'the whole database as a directory: search, statuses, history. Not the place to write from' },
+  { id: 'tenders', label: 'Tenders', icon: Gavel, hint: 'explicit demand: open Prozorro tenders by deadline and funding news' },
   { id: 'sending', label: 'Outbox', icon: MailPlus, hint: 'ready letter drafts, one click each' },
   { id: 'outreach', label: 'Contacts', icon: Send, hint: 'who was written to and who replied' },
   { id: 'stats', label: 'Stats', icon: BarChart3, hint: 'what is in the base: segments, markets, sources, reach' },
@@ -334,6 +337,7 @@ export function App() {
           {tab === 'studios' && <StudiosPage />}
           {tab === 'startups' && <StartupsPage />}
           {tab === 'companies' && <CompaniesPage />}
+          {tab === 'tenders' && <TendersPage />}
           {tab === 'sending' && <SendingPage />}
           {tab === 'outreach' && <OutreachPage />}
           {tab === 'sources' && <SourcesPage />}

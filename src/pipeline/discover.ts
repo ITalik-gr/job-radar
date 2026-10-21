@@ -317,6 +317,8 @@ export async function candidatesForDiscovery(options: DiscoverOptions = {}): Pro
       and(
         or(eq(companies.careersKind, 'unknown'), isNull(companies.careersUrl)),
         sql`${companies.careersKind} != 'none'`,
+        // A business without a site has nothing to crawl.
+        sql`${companies.domain} <> ''`,
         // A company with a known ATS and slug is not worth crawling, its vacancies come from the API.
         isNull(companies.careersSlug),
       ),

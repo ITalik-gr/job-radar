@@ -1,9 +1,15 @@
 import { Hono } from 'hono';
-import { and, desc, eq, like, or } from 'drizzle-orm';
-import { getDb } from '../db/client.js';
-import { companies, companyState, contacts, leads, outreach, siteAudits } from '../db/schema.js';
-import { scoreCompany } from '../pipeline/company-score.js';
-import { hiringNow } from '../pipeline/hiring.js';
+import {
+  bulkUpdateCompanies,
+  companyDetail,
+  COMPANY_STATUSES,
+  setCompanyStatus,
+  type BulkInput,
+  type CompanyStatus,
+} from '../pipeline/companies.js';
+import { filterFromQuery } from '../pipeline/filters.js';
+import { companyFacets } from '../pipeline/stats.js';
+import { studioPage, type StudioFilters } from '../pipeline/studios.js';
 import { normalizeEmail, rememberContact } from '../pipeline/outreach.js';
 import { refreshCompany } from '../pipeline/refresh.js';
 import { companyVerdict } from '../pipeline/verdict.js';
@@ -11,82 +17,48 @@ import { deleteContact, updateContact } from '../pipeline/contacts.js';
 
 export const companiesRoutes = new Hono();
 
-companiesRoutes.get('/', async (c) => {
-  const db = getDb();
-  const status = c.req.query('status');
-  const country = c.req.query('country');
-  const market = c.req.query('market');
-  const kind = c.req.query('kind');
-  const ats = c.req.query('ats');
-  const search = c.req.query('q');
-
-  const filters = [
-    status ? eq(companyState.status, status) : undefined,
-    country ? eq(companies.country, country) : undefined,
-    market ? eq(companies.market, market) : undefined,
-    kind ? eq(companies.kind, kind) : undefined,
-    ats ? eq(companies.careersKind, ats) : undefined,
-    search
-      ? or(like(companies.name, `%${search}%`), like(companies.domain, `%${search}%`))
-      : undefined,
-  ].filter(Boolean);
-
-  /*
-   * The whole row, not a column list: a hand-written list is what drifted away from the schema
-   * before, and the score here stopped matching the same score on Studios.
-   */
-  const rows = await db
-    .select({ company: companies, status: companyState.status, snoozedUntil: companyState.snoozedUntil })
-    .from(companies)
-    .leftJoin(companyState, eq(companyState.companyId, companies.id))
-    .where(filters.length > 0 ? and(...filters) : undefined)
-    .orderBy(companies.name);
-
-  const now = Date.now();
-  const scored = rows.map(({ company, status: state, snoozedUntil }) => {
-    // The embedding is a long vector nobody reads in a table.
-    const { embedding: _embedding, ...rest } = company;
+/**
+ * Pagination and sorting around the shared filter. Returns the error instead of throwing, so a
+ * route answers 400 with the reason: an unknown parameter must not silently widen the list.
+ */
+export function pageFilters(query: Record<string, string>): StudioFilters | { error: string } {
+  const { limit, sort, ...rest } = query;
+  try {
     return {
-      ...rest,
-      status: state,
-      snoozedUntil,
-      hiring: hiringNow(company, now),
-      score: scoreCompany({ company, status: state }).score,
+      ...filterFromQuery(rest),
+      limit: limit ? Number(limit) : undefined,
+      sort: sort === 'name' ? 'name' : 'score',
     };
-  });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
 
-  const sort = c.req.query('sort') ?? 'score';
-  scored.sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : b.score - a.score));
+/** The directory: every company the filter matches, with no threshold and nothing hidden. */
+companiesRoutes.get('/', async (c) => {
+  const filters = pageFilters(c.req.query());
+  if ('error' in filters) return c.json(filters, 400);
+  return c.json(await studioPage({ ...filters, limit: filters.limit ?? Number.MAX_SAFE_INTEGER, scope: 'all' }));
+});
 
-  return c.json(scored);
+/** The values the filter selects offer: segments, industries, sources and so on, with counts. */
+companiesRoutes.get('/facets', async (c) => c.json(await companyFacets()));
+
+companiesRoutes.post('/bulk', async (c) => {
+  const body = await c.req.json<BulkInput>().catch(() => null);
+  if (!body || !Array.isArray(body.ids)) return c.json({ error: 'ids are required' }, 400);
+  if (body.status && !COMPANY_STATUSES.includes(body.status)) return c.json({ error: `unknown status: ${body.status}` }, 400);
+  try {
+    return c.json(await bulkUpdateCompanies(body));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 });
 
 companiesRoutes.get('/:id', async (c) => {
-  const db = getDb();
-  const id = Number(c.req.param('id'));
-
-  const [company] = await db.select().from(companies).where(eq(companies.id, id));
-  if (!company) return c.json({ error: 'no such company' }, 404);
-
-  const [state] = await db.select().from(companyState).where(eq(companyState.companyId, id));
-
-  return c.json({
-    company,
-    state: state ?? null,
-    contacts: await db.select().from(contacts).where(eq(contacts.companyId, id)),
-    outreach: await db
-      .select()
-      .from(outreach)
-      .where(eq(outreach.companyId, id))
-      .orderBy(desc(outreach.sentAt)),
-    audits: await db
-      .select()
-      .from(siteAudits)
-      .where(eq(siteAudits.companyId, id))
-      .orderBy(desc(siteAudits.checkedAt))
-      .limit(5),
-    leads: await db.select().from(leads).where(eq(leads.companyId, id)).orderBy(desc(leads.firstSeen)),
-  });
+  const detail = await companyDetail(Number(c.req.param('id')));
+  if (!detail) return c.json({ error: 'no such company' }, 404);
+  return c.json(detail);
 });
 
 /**
@@ -156,23 +128,10 @@ companiesRoutes.delete('/:id/contacts/:contactId', async (c) =>
 );
 
 companiesRoutes.post('/:id/state', async (c) => {
-  const db = getDb();
-  const id = Number(c.req.param('id'));
-  const body = await c.req.json<{ status: string; reason?: string; days?: number }>();
-
-  const snoozedUntil = body.status === 'snoozed' ? Date.now() + (body.days ?? 30) * 86_400_000 : null;
-  const [existing] = await db.select().from(companyState).where(eq(companyState.companyId, id));
-
-  if (existing) {
-    await db
-      .update(companyState)
-      .set({ status: body.status, reason: body.reason ?? existing.reason, snoozedUntil, updatedAt: Date.now() })
-      .where(eq(companyState.companyId, id));
-  } else {
-    await db
-      .insert(companyState)
-      .values({ companyId: id, status: body.status, reason: body.reason ?? null, snoozedUntil });
+  const body = await c.req.json<{ status: CompanyStatus; reason?: string; days?: number }>();
+  try {
+    return c.json({ ok: true, ...(await setCompanyStatus(Number(c.req.param('id')), body)) });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
-
-  return c.json({ ok: true });
 });

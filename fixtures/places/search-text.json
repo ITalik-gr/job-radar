@@ -1,0 +1,56 @@
+{
+  "places": [
+    {
+      "id": "ChIJfixtureDental0001",
+      "displayName": { "text": "Стоматологія Посмішка", "languageCode": "uk" },
+      "formattedAddress": "вулиця Зелена, 10, Львів, Львівська область, Україна, 79000",
+      "addressComponents": [
+        { "longText": "10", "shortText": "10", "types": ["street_number"], "languageCode": "uk" },
+        { "longText": "вулиця Зелена", "shortText": "вул. Зелена", "types": ["route"], "languageCode": "uk" },
+        { "longText": "Львів", "shortText": "Львів", "types": ["locality", "political"], "languageCode": "uk" },
+        { "longText": "Україна", "shortText": "UA", "types": ["country", "political"], "languageCode": "uk" }
+      ],
+      "websiteUri": "https://www.posmishka-dental.example.ua/",
+      "internationalPhoneNumber": "+380 32 000 0001",
+      "rating": 4.8,
+      "userRatingCount": 214,
+      "businessStatus": "OPERATIONAL",
+      "googleMapsUri": "https://maps.google.com/?cid=1"
+    },
+    {
+      "id": "ChIJfixtureDental0002",
+      "displayName": { "text": "Дентал Студіо", "languageCode": "uk" },
+      "formattedAddress": "проспект Свободи, 5, Львів, Україна, 79000",
+      "addressComponents": [
+        { "longText": "Львів", "shortText": "Львів", "types": ["locality", "political"], "languageCode": "uk" },
+        { "longText": "Україна", "shortText": "UA", "types": ["country", "political"], "languageCode": "uk" }
+      ],
+      "websiteUri": "https://www.instagram.com/dental.studio.example/",
+      "internationalPhoneNumber": "+380 67 000 0002",
+      "rating": 4.9,
+      "userRatingCount": 37,
+      "businessStatus": "OPERATIONAL",
+      "googleMapsUri": "https://maps.google.com/?cid=2"
+    },
+    {
+      "id": "ChIJfixtureDental0003",
+      "displayName": { "text": "Клініка без сайту", "languageCode": "uk" },
+      "formattedAddress": "вулиця Городоцька, 1, Львів, Україна, 79000",
+      "addressComponents": [
+        { "longText": "Львів", "shortText": "Львів", "types": ["locality", "political"], "languageCode": "uk" },
+        { "longText": "Україна", "shortText": "UA", "types": ["country", "political"], "languageCode": "uk" }
+      ],
+      "internationalPhoneNumber": "+380 50 000 0003",
+      "businessStatus": "OPERATIONAL",
+      "googleMapsUri": "https://maps.google.com/?cid=3"
+    },
+    {
+      "id": "ChIJfixtureDental0004",
+      "displayName": { "text": "Закрита стоматологія", "languageCode": "uk" },
+      "formattedAddress": "вулиця Шевченка, 2, Львів, Україна, 79000",
+      "websiteUri": "https://closed-dental.example.ua/",
+      "businessStatus": "CLOSED_PERMANENTLY"
+    }
+  ],
+  "nextPageToken": "fixture-next-page"
+}

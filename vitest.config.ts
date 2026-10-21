@@ -1,7 +1,12 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: { 'cloudflare:workers': new URL('./tests/stubs/cloudflare-workers.ts', import.meta.url).pathname },
+  },
   test: {
+    // Inlined so the alias above reaches its `cloudflare:workers` import.
+    server: { deps: { inline: ['@cloudflare/workers-oauth-provider'] } },
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     hookTimeout: 20000,

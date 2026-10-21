@@ -1,0 +1,74 @@
+{
+ "id": "5d56fb75d9b0439baa9ecef5879483dc",
+ "tenderID": "UA-2026-10-16-009360-a",
+ "dateModified": "2026-10-16T14:47:39.801081+03:00",
+ "title": "ГІОЦ-26Т_142_ВО Доопрацювання програмного забезпечення мобільних додатків та автоматизованої системи з оформлення електронних проїзних/перевізних документів та супутніх послуг залізничного пасажирського сполучення АТ «Укрзалізниця»",
+ "title_en": "",
+ "description": "",
+ "status": "active.tendering",
+ "value": {
+  "amount": 9889200,
+  "currency": "UAH",
+  "valueAddedTaxIncluded": false
+ },
+ "funders": [],
+ "procurementMethodType": "aboveThreshold",
+ "procurementMethodRationale": "",
+ "auctionUrl": "",
+ "plans": [
+  {
+   "planID": "UA-P-2026-10-16-010613-a",
+   "id": "65aeaf434f0d40c9aee4b2497299ce02",
+   "additionalClassifications": []
+  }
+ ],
+ "competitiveDialogueFirstStageTenderID": "",
+ "competitiveDialogueSecondStageTenderID": "",
+ "closeFrameworkAgreementTenders": [],
+ "closeFrameworkAgreementSelectionTenderID": "",
+ "procuringEntity": {
+  "contactPoint": {
+   "name": "Петренко Олена Іванівна",
+   "name_en": "Petrenko Olena",
+   "email": "tenders@example.gov.ua",
+   "telephone": "+380440000000",
+   "faxNumber": "",
+   "url": "",
+   "availableLanguage": ""
+  },
+  "additionalContactPoints": [],
+  "name": "",
+  "name_en": "",
+  "identifier": null,
+  "address": null,
+  "kind": ""
+ },
+ "frameworkID": "",
+ "enquiryPeriod": {
+  "startDate": "2026-10-16T14:47:28.744656+03:00",
+  "endDate": "2026-10-30T00:00:00+02:00",
+  "clarificationsUntil": "",
+  "invalidationDate": ""
+ },
+ "tenderPeriod": {
+  "startDate": "2026-10-16T14:47:28.744656+03:00",
+  "endDate": "2026-11-02T00:00:00+02:00"
+ },
+ "qualificationPeriod": null,
+ "auctionPeriod": null,
+ "awardPeriod": null,
+ "complaintPeriod": null,
+ "date": "",
+ "config": {
+  "hasPrequalification": false,
+  "qualificationComplainDuration": 0,
+  "hasAuction": true,
+  "hasEnquiries": false
+ },
+ "tabCounters": {
+  "lots": 1,
+  "questions": 0,
+  "complaints": 0,
+  "monitorings": 0
+ }
+}

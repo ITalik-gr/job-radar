@@ -1,7 +1,7 @@
 /**
  * The registration point for adapters, CLAUDE.md section 4. Catalogs bring companies, boards
- * bring companies and the hiring signal. Each adapter is added here only together with a smoke
- * test on a fixture.
+ * bring companies and the hiring signal, lead sources bring explicit demand with its company.
+ * Each adapter is added here only together with a smoke test on a fixture.
  */
 import { registerSource } from './registry.js';
 import { greenhouse } from './boards/greenhouse.js';
@@ -14,9 +14,12 @@ import { djinni } from './boards/djinni.js';
 import { dou } from './catalogs/dou.js';
 import { awwwards } from './catalogs/awwwards.js';
 import { yc } from './catalogs/yc.js';
+import { places } from './catalogs/places.js';
+import { prozorro } from './leads/prozorro.js';
+import { ainFunding, devuaFunding } from './leads/funding.js';
 
-for (const source of [greenhouse, lever, ashby, getro, hnHiring, douBoard, djinni, dou, awwwards, yc]) {
+for (const source of [greenhouse, lever, ashby, getro, hnHiring, douBoard, djinni, dou, awwwards, yc, places, prozorro, ainFunding, devuaFunding]) {
   registerSource(source);
 }
 
-export { greenhouse, lever, ashby, getro, hnHiring, douBoard, djinni, dou, awwwards, yc };
+export { greenhouse, lever, ashby, getro, hnHiring, douBoard, djinni, dou, awwwards, yc, places, prozorro, ainFunding, devuaFunding };

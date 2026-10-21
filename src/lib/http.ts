@@ -28,11 +28,16 @@ const globalLimit = pLimit(config.http.concurrency);
  * Using the global fetch instead of undici directly: the same code must work both in
  * Node and on Cloudflare Workers. fetch follows redirects itself.
  */
-async function get(url: string, headers: Record<string, string>, timeoutMs: number) {
+async function get(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+  request: { method?: string; body?: string } = {},
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { headers, redirect: 'follow', signal: controller.signal });
+    return await fetch(url, { ...request, headers, redirect: 'follow', signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -91,6 +96,9 @@ export interface FetchOptions {
   ignoreRobots?: boolean;
   retries?: number;
   timeoutMs?: number;
+  /** GET by default. A POST is for search endpoints that take their query as a body. */
+  method?: 'GET' | 'POST';
+  body?: string;
 }
 
 export interface FetchResult {
@@ -118,6 +126,7 @@ export async function fetchText(url: string, options: FetchOptions = {}): Promis
         ...options.headers,
       },
       timeout,
+      { method: options.method, body: options.body },
     );
 
     if (!res.ok) {

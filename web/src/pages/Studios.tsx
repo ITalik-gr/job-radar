@@ -14,6 +14,7 @@ import {
   Kbd,
   NumberInput,
   ScrollArea,
+  SegmentedControl,
   Select,
   Skeleton,
   Stack,
@@ -39,7 +40,17 @@ import {
   Send,
   ThumbsDown,
 } from 'lucide-react';
-import { api, formatDate, type RefreshReport, type StudioCard, type VerdictReport } from '../lib/api';
+import {
+  api,
+  cleanFilter,
+  companyKey,
+  filterParams,
+  formatDate,
+  type CompanyFilter,
+  type RefreshReport,
+  type StudioCard,
+  type VerdictReport,
+} from '../lib/api';
 import { ContactRow } from '../components/ContactRow';
 import { useSelection } from '../lib/useRoute';
 import { useHotkeys } from '../lib/hotkeys';
@@ -49,6 +60,9 @@ import { Score } from '../components/Score';
 import { LetterBlock } from '../components/LetterBlock';
 import { SimilarBlock } from '../components/SimilarBlock';
 
+/** Where the Today or All leads choice is remembered, per browser. */
+const MODE_KEY = 'leads-mode';
+
 /** Company kind labels. The same list as in `src/pipeline/company-kind.ts`. */
 const KIND_LABELS: Record<string, string> = {
   studio: 'studio',
@@ -56,6 +70,9 @@ const KIND_LABELS: Record<string, string> = {
   startup: 'startup',
   product: 'product',
   outstaff: 'outstaffing',
+  smb: 'business',
+  ecommerce: 'store',
+  public: 'public body',
   unknown: 'unknown kind',
 };
 
@@ -65,6 +82,9 @@ const KIND_COLORS: Record<string, string> = {
   startup: 'green',
   product: 'gray',
   outstaff: 'yellow',
+  smb: 'teal',
+  ecommerce: 'orange',
+  public: 'indigo',
   unknown: 'gray',
 };
 
@@ -277,8 +297,13 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
         <Box p="lg" maw={860}>
           <Group gap="sm" mb="xs">
             <Text size="sm" c="dimmed">
-              {card.domain}
+              {card.domain || 'no site'}
             </Text>
+            {card.phone && (
+              <Anchor href={`tel:${card.phone}`} size="sm">
+                {card.phone}
+              </Anchor>
+            )}
             <Badge color={KIND_COLORS[card.kind] ?? 'gray'}>{KIND_LABELS[card.kind] ?? card.kind}</Badge>
             {card.sizeHint && <Badge color="gray">{card.sizeHint}</Badge>}
             {/*
@@ -337,16 +362,18 @@ function Detail({ card, onAct }: { card: StudioCard; onAct: (body: Record<string
           )}
 
           <Group mt="md" gap="sm">
-            <Button
-              component="a"
-              href={`https://${card.domain}`}
-              target="_blank"
-              rel="noreferrer"
-              variant="light"
-              leftSection={<ExternalLink size={14} />}
-            >
-              {card.kind === 'startup' ? 'Startup site' : 'Studio site'}
-            </Button>
+            {card.domain && (
+              <Button
+                component="a"
+                href={`https://${card.domain}`}
+                target="_blank"
+                rel="noreferrer"
+                variant="light"
+                leftSection={<ExternalLink size={14} />}
+              >
+                {card.kind === 'startup' ? 'Startup site' : 'Company site'}
+              </Button>
+            )}
             {card.careersUrl && (
               <Button component="a" href={card.careersUrl} target="_blank" rel="noreferrer" variant="subtle">
                 Careers page
@@ -767,15 +794,51 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
    * the word "design" would mean six full passes instead of one.
    */
   const [search] = useDebouncedValue(filters.q, 300);
-  const query = useMemo(
-    () => ({ ...filters, q: search, ...(kind ? { kind } : {}) }),
+  const query = useMemo<CompanyFilter>(
+    () =>
+      cleanFilter({
+        search,
+        country: filters.country || undefined,
+        minScore: filters.min === '' ? undefined : Number(filters.min),
+        minRating: filters.rating === '' ? undefined : Number(filters.rating),
+        includeContacted: filters.all === '1' || undefined,
+        hasNamedContact: filters.named === '1' || undefined,
+        kind: kind ? [kind] : undefined,
+      }),
     [filters, search, kind],
   );
 
-  const { data, error, isLoading } = useQuery({
+  /*
+   * Leads open on today's slice: a short fixed list across segments (section 6), so the day
+   * starts from ten companies, not from a thousand. Startups and other kind pages have no slice.
+   */
+  const [mode, setMode] = useState<'today' | 'all'>(() => {
+    if (kind) return 'all';
+    try {
+      return localStorage.getItem(MODE_KEY) === 'all' ? 'all' : 'today';
+    } catch {
+      return 'today';
+    }
+  });
+  const switchMode = (next: string) => {
+    setMode(next === 'all' ? 'all' : 'today');
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      // A blocked storage only means the choice is not remembered.
+    }
+  };
+  const today = mode === 'today' && !kind;
+
+  const list = useQuery({
     queryKey: ['studios', query],
     queryFn: () => api.studios(query),
+    enabled: !today,
   });
+  const queue = useQuery({ queryKey: ['queue'], queryFn: api.queue, enabled: today });
+  const data = list.data;
+  const error = today ? queue.error : list.error;
+  const isLoading = today ? queue.isLoading : list.isLoading;
 
   const act = useMutation({
     mutationFn: ({ id, body }: { id: number; body: Record<string, unknown>; name: string }) =>
@@ -783,30 +846,31 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
     onSuccess: (_result, { name }) => {
       notifications.show({ color: 'green', title: name, message: 'saved' });
       void client.invalidateQueries({ queryKey: ['studios'] });
+      void client.invalidateQueries({ queryKey: ['queue'] });
       void client.invalidateQueries({ queryKey: ['stats'] });
     },
     onError: (mutationError) =>
       notifications.show({ color: 'red', title: 'not saved', message: String(mutationError) }),
   });
 
-  const cards = data?.cards ?? [];
+  const cards: (StudioCard & { done?: boolean })[] = (today ? queue.data?.cards : data?.cards) ?? [];
 
   /*
    * The company from the address may be missing from the current slice: the owner came
    * from a link and a filter hides it, or they just pressed "not interesting" and it left
    * the list. Then the first one opens, and the address follows it.
    */
-  const index = Math.max(0, cards.findIndex((card) => card.domain === domain));
+  const index = Math.max(0, cards.findIndex((card) => companyKey(card) === domain));
   const current = cards[index];
 
   useEffect(() => {
     if (!current) return;
-    if (current.domain !== domain) select(current.domain);
+    if (companyKey(current) !== domain) select(companyKey(current));
   }, [current, domain, select]);
 
   const step = (delta: number) => {
     const next = cards[Math.min(Math.max(index + delta, 0), cards.length - 1)];
-    if (next) select(next.domain);
+    if (next) select(companyKey(next));
   };
 
   useHotkeys(
@@ -837,6 +901,37 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
       listWidth={368}
       list={
         <>
+          {!kind && (
+            <Box px="md" pt="sm">
+              <SegmentedControl
+                fullWidth
+                size="xs"
+                data={[
+                  { value: 'today', label: 'Today' },
+                  { value: 'all', label: 'All leads' },
+                ]}
+                value={mode}
+                onChange={switchMode}
+              />
+            </Box>
+          )}
+
+          {today ? (
+            <Group px="md" py={8} gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+              {/* The slice is fixed for the day: a card acted on stays in place, dimmed. */}
+              <Text size="xs" c="dimmed">
+                {queue.data
+                  ? `${queue.data.cards.filter((card) => card.done).length} of ${queue.data.cards.length} done` +
+                    (queue.data.carried > 0 ? ` · ${queue.data.carried} from earlier days` : '') +
+                    ` · ${queue.data.eligible} could be in a slice`
+                  : 'loading'}
+              </Text>
+              <Text size="xs" c="dimmed" ml="auto">
+                <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> navigate
+              </Text>
+            </Group>
+          ) : (
+          <>
           <PaneHeader>
             <TextInput
               placeholder="name, domain or tag"
@@ -915,7 +1010,7 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
               from the content-disposition header, with no blob juggling.
             */}
             <Anchor
-              href={`/api/export/studios${filters.named === '1' ? '?named=1' : ''}`}
+              href={`/api/export/studios?${new URLSearchParams(filterParams(query)).toString()}`}
               size="xs"
               ml="auto"
               download
@@ -926,17 +1021,16 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
               <Kbd size="xs">j</Kbd> <Kbd size="xs">k</Kbd> navigate
             </Text>
           </Group>
+          </>
+          )}
 
           <ScrollArea style={{ flex: 1, minHeight: 0 }}>
             {isLoading &&
               Array.from({ length: 8 }, (_, position) => <Skeleton key={position} h={72} m="md" />)}
             {cards.map((card, position) => (
-              <Row
-                key={card.companyId}
-                card={card}
-                active={position === index}
-                onSelect={() => select(card.domain)}
-              />
+              <Box key={card.companyId} style={card.done ? { opacity: 0.45 } : undefined}>
+                <Row card={card} active={position === index} onSelect={() => select(companyKey(card))} />
+              </Box>
             ))}
           </ScrollArea>
         </>
@@ -953,8 +1047,17 @@ export function StudiosPage({ kind, emptyTitle, emptyHint, section = 'studios' }
             <EmptyState
               icon={<Palette size={28} />}
               withIndicatorBackground
-              title={isLoading ? 'Loading the catalog' : (emptyTitle ?? 'Nothing matches these filters')}
+              title={
+                isLoading
+                  ? 'Loading the catalog'
+                  : today
+                    ? 'Nothing in today\'s slice'
+                    : (emptyTitle ?? 'Nothing matches these filters')
+              }
               description={
+                (today && !isLoading
+                  ? 'A company gets here above the score threshold and with an email or a phone. Switch to All leads to see the rest.'
+                  : undefined) ??
                 emptyHint ??
                 'Lower the minimum score or collect more catalog pages with the browser extension.'
               }

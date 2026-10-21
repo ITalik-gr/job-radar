@@ -112,7 +112,8 @@ The company is the lead. Everything hangs off it.
 
 ```ts
 companies
-  id, name, domain (unique; a business without a site needs a nullable domain, stage 4),
+  id, name, domain (unique when not empty; '' for a business without a site),
+  registry_code (ЄДРПОУ), place_id (Google), both unique when set,
   country, city,
   kind,           // the segment: studio | design | startup | product | outstaff | smb
                   // | ecommerce | public | unknown. Tags decide the first five; smb, ecommerce
@@ -185,6 +186,24 @@ Nothing is deleted, rejected records included. `vacancies`, `queue_items`, `snap
   agencies and studios for white-label work
 - Later: Product Hunt launches, BetaList, funding news RSS
 
+How each one works, and the traps:
+- **Prozorro** (`src/sources/leads/prozorro.ts`): the official API cannot filter by CPV, so the
+  prozorro.gov.ua search (POST, exact CPV codes) finds open tenders, a title filter drops
+  licences and support, then the site summary gives the internal id and the official API the
+  buyer's ЄДРПОУ and contact person. Daily
+- **Google Places** (`src/sources/catalogs/places.ts`): Text Search, niches and cities in
+  `config/places.json`, a few queries per run rotated, a monthly call cap. Weekly, off without
+  `GOOGLE_PLACES_API_KEY`. A social profile is not a site. The fixture is made up from the
+  documented shape, replace it with a recorded one once the key exists
+- **Funding news** (`src/sources/leads/funding.ts`): AIN.ua forbids its RSS in robots.txt, so
+  its investments section page is read; dev.ua RSS, Ukrainian news only. A news lead has no
+  company until the owner (or the model in stage 5) names it. Daily
+
+A company without a site has `domain = ''` and is identified by `registry_code` or `place_id`.
+`domain` stays NOT NULL on purpose: making it nullable rebuilds the table, and on D1 a rebuild
+cascades deletes into every child table. Anything that crawls must skip an empty domain:
+`enrich({ domain: '' })` would otherwise pick companies on its own.
+
 ### Signal, not a source
 ATS boards (Greenhouse, Lever, Ashby) and DOU vacancies only set `hiring_devs` on a known
 company. No vacancy queue, no vacancy classification.
@@ -226,9 +245,13 @@ segment, industry, source, tags, status, has email, has named contact, has site,
 issues, score range, hiring signal, text search. Any combination can be saved as a named
 filter.
 
-**Queue:** a short daily list (default 10) across segments, at most 2 per company. Do not
-show `contacted` (unless older than 90 days), `replied`, `rejected_*`, `blacklist`, active
-`snoozed_until`.
+**Queue:** a short daily list (`queue.size` in the rules, default 10), round robin across
+segments, one card per company, only companies with a valid email or a phone
+(`src/pipeline/daily-queue.ts`). Do not show `contacted` (unless older than 90 days),
+`replied`, `rejected_*`, `blacklist`, active `snoozed_until`.
+
+The filter shape lives in `src/pipeline/filters.ts` (Zod schema, URL form, SQL). The
+Companies page, Leads, CSV export, saved filters and `search_companies` all go through it.
 
 ---
 
@@ -274,8 +297,15 @@ claude.ai and Claude Desktop.
   `search_companies` (the filter shape from section 6), `get_company`, `set_status`,
   `add_note`, `add_contact`, `list_templates`, `get_template`, `upsert_template`,
   `preview_letter`, `create_draft`, `list_outreach`, `get_settings`, `update_settings`,
-  `list_saved_filters`, `run_source`, `stats`
+  `list_saved_filters`, `save_filter`, `daily_queue`, `list_leads`, `set_lead_status`,
+  `run_source`, `stats`
 - **No `send` tool.** Sending stays a human click in the web app (rule 10)
+- Stateless: a fresh server per request, JSON answers, no sessions (`src/mcp/route.ts`).
+  Notes from `add_note` are dated lines appended to `company_state.reason`.
+  OAuth (`src/mcp/oauth.ts`, worker only, grants in `OAUTH_KV`): the consent page asks for
+  `RADAR_TOKEN`, which is the only sign-in; Claude Code sends `RADAR_TOKEN` as the bearer.
+  Locally `/mcp` takes only the bearer, and stays closed without a token.
+  `search_companies` takes the section 6 filter plus `savedFilter`, `scope` (leads | all), `limit`
 - Every write tool returns what changed, so the chat shows the diff
 
 ---
@@ -286,7 +316,7 @@ Local `localhost:5173` or the worker URL with `RADAR_TOKEN`.
 
 Pages: **Leads** (scored list with filters, route `studios` for now), **Startups**,
 **Companies** (table, filters, saved filters, bulk status and tags, company card with audit,
-contacts, leads, letter history), **Tenders** (open leads by deadline, stage 4), **Sending** (drafts, daily counter, timer), **Outreach** (history,
+contacts, leads, letter history), **Tenders** (open leads by deadline, funding news), **Sending** (drafts, daily counter, timer), **Outreach** (history,
 replies, follow-ups), **Templates**, **Rules**, **Sources** (adapter health, run now),
 **Operations**.
 
@@ -304,10 +334,13 @@ owner's confirmation.
    feed companies and `hiring_devs`; AI paragraph and facts removed, placeholders with
    fallbacks; migration 0018 adds `market`, `industry`, `phone`, `address`, the hiring
    columns, `site_audits`, `leads`, `saved_filters`, `outreach.lead_id`
-2. **MCP** on the worker, Claude Code first, then OAuth for claude.ai and Desktop
-3. **Filters and the Companies page**, saved filters, queue across segments
-4. **Ukrainian sources:** Prozorro, Google Places, funding news (AIN.ua, dev.ua), each with
-   a fixture test
+2. ~~**MCP**~~ Done 2026-10-21: 15 tools on the worker, bearer `RADAR_TOKEN` for Claude
+   Code, OAuth for claude.ai and Desktop
+3. ~~**Filters and the Companies page**~~ Done 2026-10-21: one filter shape for UI, export
+   and MCP, saved filters, facets, bulk status and tags, daily slice on Leads (Today)
+4. ~~**Ukrainian sources**~~ Done 2026-10-22: `prozorro`, `places`, `ain`, `devua` with
+   fixture tests, a `lead` source kind, companies without a site (migration 0019: `registry_code`,
+   `place_id`, `contacts.phone`, countries as ISO codes), Tenders page
 5. **Site audit and lead scoring**, Clef for segment, industry and lead fit
 6. **Design pass**
 7. Later: Product Hunt, Brave1 and USF catalogs, state register, renaming the project
@@ -328,8 +361,9 @@ never audited in a browser on empty data.
 - **Daily slice is fixed.** The queue does not reshuffle under the owner's hands; unreviewed
   cards roll over to the next day first
 - **A card action never downgrades** a contacted or replied company back to interesting
-- **`run_worker_first: ["/api/*"]`** in `wrangler.jsonc` is required, otherwise browser
-  navigation to `/api/*` (the Gmail callback, the MCP OAuth flow) gets the SPA instead
+- **`run_worker_first: ["/api/*", "/mcp", "/.well-known/*"]`** in `wrangler.jsonc` is
+  required, otherwise browser navigation there (the Gmail callback, the MCP OAuth flow and
+  its discovery documents) gets the SPA instead
 - **`CLOUDFLARE_API_TOKEN` in `.env` hijacks wrangler.** The radar's own variables are
   `CF_AI_ACCOUNT_ID` and `CF_AI_API_TOKEN` for that reason
 - **CI installs with `--ignore-scripts`**, the worker does not need `better-sqlite3`

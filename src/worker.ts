@@ -7,7 +7,8 @@ import { log } from './lib/log.js';
 import { listSources } from './sources/registry.js';
 import './sources/index.js';
 import { syncSource } from './pipeline/sync.js';
-import { syncDou } from './pipeline/catalogs.js';
+import { syncCatalog, syncDou } from './pipeline/catalogs.js';
+import { syncAllLeads } from './pipeline/leads.js';
 import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
 import { notify } from './notify/telegram.js';
@@ -15,6 +16,7 @@ import { refreshRulesFromDb } from './pipeline/rules.js';
 import { setAiBinding } from './lib/workers-ai.js';
 import { checkReplies } from './pipeline/replies.js';
 import { prepareFollowups } from './pipeline/followups.js';
+import { oauthProvider } from './mcp/oauth.js';
 // The Gmail token on Workers arrives as a secret, there is no file system here.
 import './lib/gmail-store.env.js';
 
@@ -34,6 +36,8 @@ export interface Env {
    */
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
   RADAR_TOKEN?: string;
+  /** Grants and tokens of the MCP OAuth flow, see src/mcp/oauth.ts. */
+  OAUTH_KV?: KVNamespace;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
   LLM_PROVIDER?: string;
@@ -79,7 +83,12 @@ async function runSchedule(cron: string): Promise<void> {
     return;
   }
 
-  if (cron === '0 4 * * 1') return safely('catalog:dou', () => syncDou({ limit: 60 }));
+  if (cron === '0 4 * * 1') {
+    await safely('catalog:dou', () => syncDou({ limit: 60 }));
+    // Without a key the source is off on purpose, which is not worth a failed run every week.
+    if (config.places.apiKey) await safely('catalog:places', () => syncCatalog('places'));
+    return;
+  }
   if (cron === '0 5 * * 2') return safely('discover', () => discover({ limit: 40 }));
   // The only Telegram message: Monday and Thursday, 07:00 UTC is 10:00 in Kyiv (summer time).
   if (cron === '0 7 * * MON,THU') return safely('notify:summary', () => notify.summary());
@@ -91,30 +100,22 @@ async function runSchedule(cron: string): Promise<void> {
   if (cron === '5 * * * *') {
     return safely('outreach:replies', () => checkReplies({ ownEmail: config.gmail.fromEmail }));
   }
-  if (cron === '30 6 * * *') return safely('outreach:followups', () => prepareFollowups());
+  if (cron === '30 6 * * *') {
+    await safely('outreach:followups', () => prepareFollowups());
+    // Tenders and funding news once a day: a tender lives for a week or two, news for a day.
+    await safely('leads', () => syncAllLeads());
+    return;
+  }
 
   log.warn({ cron }, 'unknown schedule');
 }
 
-export default {
+/** The site and the API: everything except the MCP endpoint and the OAuth protocol routes. */
+const site = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    prepare(env);
-
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/') && env.ASSETS) {
       return env.ASSETS.fetch(request);
-    }
-
-    /*
-     * Locally an empty token means "no password", and that is fine on loopback. On a worker it
-     * meant the contacts, the letters and the send button were open to the internet, for
-     * example after a plain `pnpm deploy` without `cf:setup`. So the worker fails closed.
-     */
-    if (!config.token && url.pathname !== '/api/health') {
-      return Response.json(
-        { error: 'RADAR_TOKEN is not set on this worker: pnpm wrangler secret put RADAR_TOKEN' },
-        { status: 503 },
-      );
     }
 
     // Rules changed from the interface live in the database. The isolate between
@@ -123,6 +124,44 @@ export default {
     await refreshRulesFromDb();
 
     return app.fetch(request, env, ctx);
+  },
+};
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    prepare(env);
+
+    const url = new URL(request.url);
+
+    /*
+     * Locally an empty token means "no password", and that is fine on loopback. On a worker it
+     * meant the contacts, the letters and the send button were open to the internet, for
+     * example after a plain `pnpm deploy` without `cf:setup`. So the worker fails closed, the
+     * OAuth flow included: its consent page checks this very token.
+     */
+    if (!config.token && url.pathname !== '/api/health') {
+      return Response.json(
+        { error: 'RADAR_TOKEN is not set on this worker: pnpm wrangler secret put RADAR_TOKEN' },
+        { status: 503 },
+      );
+    }
+
+    /*
+     * Without the KV namespace there is no OAuth, and /mcp falls back to the plain bearer check
+     * in the Hono app, so Claude Code keeps working on a fork that never created the namespace.
+     */
+    if (!env.OAUTH_KV) {
+      if (url.pathname === '/mcp') return app.fetch(request, env, ctx);
+      return site.fetch(request, env, ctx);
+    }
+
+    const provider = oauthProvider(url.origin, {
+      prepare: async () => {
+        await refreshRulesFromDb();
+      },
+      site: site as never,
+    });
+    return provider.fetch(request, env, ctx);
   },
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {

@@ -72,3 +72,20 @@ export async function companyByDomain(domain: string): Promise<Company | undefin
   const [row] = await getDb().select().from(companies).where(eq(companies.domain, domain));
   return row;
 }
+
+/**
+ * Runs any registered source by its kind: boards record the hiring signal, catalogs add
+ * companies, lead sources add demand. The Sources page, the CLI and `run_source` over MCP all
+ * come through here, so a new kind of source is runnable everywhere at once.
+ */
+export async function runSource(id: string, options: SyncOptions = {}) {
+  const source = getSource(id);
+  if (!source) throw new Error(`unknown source: ${id}`);
+  if (source.kind === 'board') return syncSource(id, options);
+  if (source.kind === 'lead') {
+    const { syncLeads } = await import('./leads.js');
+    return syncLeads(id);
+  }
+  const { syncCatalog, syncDou } = await import('./catalogs.js');
+  return id === 'dou' ? syncDou({ limit: options.limit ?? 60 }) : syncCatalog(id);
+}

@@ -3,7 +3,7 @@
  * Builds the config wrangler actually deploys with.
  *
  *   wrangler.jsonc        committed, generic, the same for every fork
- *   wrangler.local.jsonc  yours, gitignored: database id, From name, gateway, worker URL
+ *   wrangler.local.jsonc  yours, gitignored: database and KV ids, From name, gateway, worker URL
  *   wrangler.deploy.json  generated here, gitignored, passed to wrangler with --config
  *
  * Why not leave database_id out and let wrangler find the database by name: that lookup
@@ -53,18 +53,24 @@ export function parseJsonc(text) {
 }
 
 /**
- * vars merge key by key, D1 bindings merge by binding name (so the local file can add just a
- * database_id), anything else in the local file replaces the committed value.
+ * vars merge key by key, D1 and KV bindings merge by binding name (so the local file can add
+ * just a database_id or a namespace id), anything else in the local file replaces the
+ * committed value.
  */
 export function mergeConfig(base, local) {
   const merged = { ...base, ...local };
   if (base.vars || local.vars) merged.vars = { ...base.vars, ...local.vars };
-  if (local.d1_databases) {
-    const overrides = new Map(local.d1_databases.map((db) => [db.binding, db]));
-    merged.d1_databases = (base.d1_databases ?? []).map((db) => ({ ...db, ...overrides.get(db.binding) }));
-    for (const db of local.d1_databases) {
-      if (!merged.d1_databases.some((item) => item.binding === db.binding)) merged.d1_databases.push(db);
-    }
+  for (const key of ['d1_databases', 'kv_namespaces']) {
+    if (local[key]) merged[key] = mergeBindings(base[key] ?? [], local[key]);
+  }
+  return merged;
+}
+
+function mergeBindings(base, local) {
+  const overrides = new Map(local.map((item) => [item.binding, item]));
+  const merged = base.map((item) => ({ ...item, ...overrides.get(item.binding) }));
+  for (const item of local) {
+    if (!merged.some((existing) => existing.binding === item.binding)) merged.push(item);
   }
   return merged;
 }

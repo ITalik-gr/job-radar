@@ -11,6 +11,8 @@
 		{ "binding": "DB", "database_id": "" },
 		{ "binding": "job_radar", "database_id": "" }
 	],
+	// From `pnpm wrangler kv namespace create job-radar-oauth`: grants of the MCP OAuth flow.
+	"kv_namespaces": [{ "binding": "OAUTH_KV", "id": "" }],
 	// Plain vars, merged key by key over the ones in wrangler.jsonc. Real secrets
 	// (API keys, tokens) still go through `wrangler secret put`.
 	"vars": {

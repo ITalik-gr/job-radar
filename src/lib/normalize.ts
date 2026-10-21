@@ -66,3 +66,39 @@ export function isoWeek(date: Date): string {
   const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
+
+/**
+ * Country names as catalogs write them, mapped to ISO 3166 alpha-2. Keys are lower case.
+ * Migration 0019 applied the same map to the rows already stored, keep the two in step.
+ */
+export const COUNTRY_CODES: Record<string, string> = {
+  usa: 'US', 'united states': 'US', 'united states of america': 'US', us: 'US',
+  'united kingdom': 'GB', uk: 'GB', 'great britain': 'GB', england: 'GB', gb: 'GB',
+  ukraine: 'UA', україна: 'UA', украина: 'UA', ua: 'UA',
+  india: 'IN', canada: 'CA', germany: 'DE', poland: 'PL', france: 'FR', singapore: 'SG',
+  mexico: 'MX', 'united arab emirates': 'AE', uae: 'AE', sweden: 'SE', switzerland: 'CH',
+  brazil: 'BR', australia: 'AU', vietnam: 'VN', spain: 'ES', israel: 'IL', denmark: 'DK',
+  colombia: 'CO', norway: 'NO', nigeria: 'NG', netherlands: 'NL', 'the netherlands': 'NL',
+  malaysia: 'MY', indonesia: 'ID', 'hong kong': 'HK', belgium: 'BE', uruguay: 'UY',
+  tanzania: 'TZ', 'south korea': 'KR', 'south africa': 'ZA', 'saudi arabia': 'SA',
+  romania: 'RO', portugal: 'PT', lithuania: 'LT', jordan: 'JO', estonia: 'EE', latvia: 'LV',
+  cyprus: 'CY', bulgaria: 'BG', italy: 'IT', ireland: 'IE', austria: 'AT', finland: 'FI',
+  'czech republic': 'CZ', czechia: 'CZ', slovenia: 'SI', slovakia: 'SK', hungary: 'HU',
+  moldova: 'MD', armenia: 'AM', japan: 'JP', china: 'CN', turkey: 'TR',
+  türkiye: 'TR', argentina: 'AR', chile: 'CL', 'new zealand': 'NZ', pakistan: 'PK',
+  philippines: 'PH', egypt: 'EG', kenya: 'KE', serbia: 'RS', croatia: 'HR', greece: 'GR',
+};
+
+/**
+ * A country as an ISO alpha-2 code. "Remote" and the like are not a country and become null.
+ * An unknown name is kept as written: losing it would be worse than an unmerged facet value.
+ */
+export function normalizeCountry(input: string | null | undefined): string | null {
+  const value = (input ?? '').trim();
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  if (['remote', 'worldwide', 'global', 'anywhere'].includes(lower)) return null;
+  if (COUNTRY_CODES[lower]) return COUNTRY_CODES[lower];
+  if (/^[a-z]{2}$/i.test(value)) return value.toUpperCase();
+  return value;
+}

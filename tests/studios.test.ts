@@ -159,7 +159,7 @@ describe('named contact filter', () => {
 
     // There is no named contact yet, so the filter must return nothing.
     expect(
-      await studioQueue({ includeContacted: true, minScore: -100, withNamedContact: true }),
+      await studioQueue({ includeContacted: true, minScore: -100, hasNamedContact: true }),
     ).toHaveLength(0);
 
     await getDb().insert(contacts).values({
@@ -172,7 +172,7 @@ describe('named contact filter', () => {
     const named = await studioQueue({
       includeContacted: true,
       minScore: -100,
-      withNamedContact: true,
+      hasNamedContact: true,
     });
     expect(named).toHaveLength(1);
     expect(named[0]!.companyId).toBe(all[0]!.companyId);
@@ -194,7 +194,7 @@ describe('named contact filter', () => {
     const named = await studioQueue({
       includeContacted: true,
       minScore: -100,
-      withNamedContact: true,
+      hasNamedContact: true,
     });
     expect(named.some((card) => card.companyId === target.companyId)).toBe(false);
   });
@@ -208,7 +208,7 @@ describe('company kind in the list', () => {
   });
 
   it('the kind filter returns exactly that kind', async () => {
-    const cards = await studioQueue({ kind: 'startup', includeContacted: true, minScore: -100 });
+    const cards = await studioQueue({ kind: ["startup"], includeContacted: true, minScore: -100 });
     expect(cards.every((card) => card.kind === 'startup')).toBe(true);
   });
 });

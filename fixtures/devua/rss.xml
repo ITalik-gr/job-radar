@@ -1,0 +1,491 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>dev.ua: IT в Україні</title>
+    <description>dev.ua: Ми — медіа про технології, інновації, винаходи в Україні та за її межами. Про те, як вони впливають на життя людей.</description>
+    <link>https://dev.ua/rss</link>
+    <atom:link href="https://dev.ua/rss" rel="self"/>
+    <pubDate>Wed, 21 Oct 2026 20:58:36 GMT</pubDate>
+    <generator>Dev.ua RSS Generator</generator>
+    <item>
+      <title>Рекламу в ChatGPT тепер можна запускати в Україні</title>
+      <id>tag:dev.ua,2026-10-21:18168181</id>
+      <pubDate>Wed, 21 Oct 2026 15:08:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 15:08:54 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Компанія OpenAI оголосила про розширення рекламної мережі ChatGPT на 26 нових країн, серед яких й Україна. Загальна кількість ринків, де демонструється реклама, зросла до 89, оскільки ШІ-стартап активно нарощує рекламні доходи на тлі підготовки до потенційного виходу на біржу.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/reklamu-v-chatgpt-teper-mozhna-zapuskaty-v-ukraini-1792594874</link>
+      <guid>https://dev.ua/news/reklamu-v-chatgpt-teper-mozhna-zapuskaty-v-ukraini-1792594874</guid>
+      <enclosure url="https://dev.ua/storage/images/27/21/44/47/derived/753f7e3ed9ee412e5c1b55cc693a7686.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Хакери влаштували собі мега-шопінг: створили понад 15 000 подарункових карток на $5 млн</title>
+      <id>tag:dev.ua,2026-10-21:23496747</id>
+      <pubDate>Wed, 21 Oct 2026 14:54:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 14:56:29 GMT</lastBuildUpdate>
+      <category>Гаряченьке</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Хакери захопили сесії служби підтримки американського ритейлера Staples та використали їх для випуску понад 15 000 подарункових карток загальною вартістю понад $5 млн. Слідчі пов’язують цей злам із діяльністю китайських злочинних угруповань: значну частину придбаних товарів вони відправили до Китаю.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/khakery-vlashtuvaly-sobi-meha-shopinh-1792593484</link>
+      <guid>https://dev.ua/news/khakery-vlashtuvaly-sobi-meha-shopinh-1792593484</guid>
+      <enclosure url="https://dev.ua/storage/images/64/89/78/87/derived/f8f286cc4967094acf34efd47208cf2e.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Ентузіаст перетворив оперативну пам'ять для ноутбука за $120 на комплект для настільного комп'ютера, який може коштувати близько $1000. Як йому це вдалося?</title>
+      <id>tag:dev.ua,2026-10-21:83412512</id>
+      <pubDate>Wed, 21 Oct 2026 14:43:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 14:44:06 GMT</lastBuildUpdate>
+      <category>Гаряченьке</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Ентузіаст під ніком Blighted Agent знайшов спосіб заощадити на дорогій оперативній пам’яті. Він купив уживану пам’ять для ноутбука за $120 і переробив її на значно швидший комплект для настільного комп’ютера. Схожі швидкісні комплекти оцінюють приблизно в $1000.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/modyfikatsiia-operatyvnoi-pamiati-1792592204</link>
+      <guid>https://dev.ua/news/modyfikatsiia-operatyvnoi-pamiati-1792592204</guid>
+      <enclosure url="https://dev.ua/storage/images/37/48/96/83/derived/ca208872173356c7e82fbd30c9234444.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Як створювати відео за допомогою ШІ безпосередньо на комп’ютері: покрокова інструкція</title>
+      <id>tag:dev.ua,2026-10-21:11010590</id>
+      <pubDate>Wed, 21 Oct 2026 14:29:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 14:29:21 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>long</format>
+      <language>uk</language>
+      <description>
+Локальна генерація відео за допомогою штучного інтелекту — це процес створення динамічного відеоряду з текстового опису або статичної картинки безпосередньо на вашому ПК.
+</description>
+      <author>Стас Юрасов</author>
+      <link>https://dev.ua/news/aivideonvidia-1792577930</link>
+      <guid>https://dev.ua/news/aivideonvidia-1792577930</guid>
+      <enclosure url="https://dev.ua/storage/images/35/98/39/42/derived/21a97f3f4591aec475e6b449ab885505.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Вакансія автора текстів в Anthropic із зарплатою $345 000 свідчить про те, чому люди й досі залишаються незамінними</title>
+      <id>tag:dev.ua,2026-10-21:26201174</id>
+      <pubDate>Wed, 21 Oct 2026 14:15:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 14:15:29 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+ШІ-бот від Anthropic може скласти промову за лічені секунди, проте компанія все одно наймає автора-людину — із зарплатою від $295 000 до $345 000 на рік.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/vakansiia-avtora-tekstiv-v-anthropic-iz-zarplatoiu-345-000-1792591153</link>
+      <guid>https://dev.ua/news/vakansiia-avtora-tekstiv-v-anthropic-iz-zarplatoiu-345-000-1792591153</guid>
+      <enclosure url="https://dev.ua/storage/images/17/40/96/43/derived/b3c0ba8d9bdcab4a677dda4f216c50d9.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>IT-компанія пів року не могла закрити вакансію, тому тімлід подався на неї під вигаданим ім'ям і отримав відмову за 6 хвилин. В чому причина</title>
+      <id>tag:dev.ua,2026-10-21:11383375</id>
+      <pubDate>Wed, 21 Oct 2026 13:35:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 13:31:21 GMT</lastBuildUpdate>
+      <category>Навколо IT</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Керівник команди в IT-компанії з квітня не міг знайти фахівця на відкриту позицію, оскільки HR-відділ скаржився на брак відповідних кандидатів. Аби перевірити, в чому проблема, він відгукнувся на власну вакансію під вигаданим ім’ям із фактично своїм резюме й отримав автоматичну відмову вже за шість хвилин.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/instant-vy-nam-ne-pidkhodyte</link>
+      <guid>https://dev.ua/news/instant-vy-nam-ne-pidkhodyte</guid>
+      <enclosure url="https://dev.ua/storage/images/71/25/29/85/derived/63c235e91e68749179eab36d0b320bf8.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>OpenAI розмістить свої передові моделі на Google Cloud</title>
+      <id>tag:dev.ua,2026-10-21:33726195</id>
+      <pubDate>Wed, 21 Oct 2026 13:32:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 13:32:29 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Компанії OpenAI та Google оголосили про партнерство, у межах якого найближчими тижнями передові моделі штучного інтелекту від OpenAI та агент програмування Codex стануть доступними через Google Cloud. Це поглиблює зв’язки між двома конкурентами та підкреслює перетворення великих хмарних провайдерів на ключових дистриб’юторів топових ШІ-моделей.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/openai-rozmistyt-svoi-peredovi-modeli-na-google-cloud-1792588969</link>
+      <guid>https://dev.ua/news/openai-rozmistyt-svoi-peredovi-modeli-na-google-cloud-1792588969</guid>
+      <enclosure url="https://dev.ua/storage/images/88/82/64/01/derived/f68f9e07cd1b85ae13a66b74975f706a.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>OpenAI інвестувала в стартап, який планує навчити мозковий імплант виявляти рак і стримувати ріст пухлин за допомогою електричних імпульсів</title>
+      <id>tag:dev.ua,2026-10-21:22391002</id>
+      <pubDate>Wed, 21 Oct 2026 13:31:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 13:31:53 GMT</lastBuildUpdate>
+      <category>Гаряченьке</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+OpenAI інвестувала в стартап Coherence Neuro, який розробляє мозковий імплант для боротьби з раком. Пристрій має за допомогою штучного інтелекту помічати, коли пухлина починає рости, і реагувати на це електричними імпульсами. Перші випробування на людях уже відбулися.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/coherence-neuro-1792588186</link>
+      <guid>https://dev.ua/news/coherence-neuro-1792588186</guid>
+      <enclosure url="https://dev.ua/storage/images/80/64/45/50/derived/6a99e9d0fb173b43613dc11a8f1573fc.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Quantum Systems збільшила швидкість свого експериментального дрона Apex Recordhunter до 777 км/год</title>
+      <id>tag:dev.ua,2026-10-21:32096317</id>
+      <pubDate>Wed, 21 Oct 2026 12:53:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 12:53:50 GMT</lastBuildUpdate>
+      <category>Зброя</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Експериментальний безпілотник Apex Recordhunter з акумуляторною батареєю, розроблений підрозділом N3XT німецької компанії Quantum Systems, розігнався до 777 км/год під час випробувального польоту. Апарат за пів секунди долає відстань, що дорівнює довжині футбольного поля.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/quantum-systems-rozihnala-svii-eksperymentalnyi-dron-do-777-kmhod-1792586743</link>
+      <guid>https://dev.ua/news/quantum-systems-rozihnala-svii-eksperymentalnyi-dron-do-777-kmhod-1792586743</guid>
+      <enclosure url="https://dev.ua/storage/images/33/48/67/73/derived/e1dcdfcae910e705b5053423a41f2261.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Google DeepMind почав таємно наймати ядерних фізиків: навіщо ШІ-лабораторії потрібні такі фахівці</title>
+      <id>tag:dev.ua,2026-10-21:33205584</id>
+      <pubDate>Wed, 21 Oct 2026 12:43:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 12:43:28 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>Провідні лабораторії штучного інтелекту вже роками наймають вузькопрофільних експертів з різних академічних дисциплін, часто залучаючи їх до ролі фактчекерів, чия праця використовується для тренування майбутніх моделей ШІ. Проте остання вакансія від Google виглядає незвично навіть за такими мірками й може пролити світло на те, яке майбутнє техногіганти готують для людства.</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/google-deepmind-pochav-taiemno-naimaty-iadernykh-fizykiv-1792585552</link>
+      <guid>https://dev.ua/news/google-deepmind-pochav-taiemno-naimaty-iadernykh-fizykiv-1792585552</guid>
+      <enclosure url="https://dev.ua/storage/images/29/63/70/04/derived/741a25ebe3d576bab336df733e67b23c.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Ви створили бізнес разом. Як не посваритися, коли він почне приносити гроші?</title>
+      <id>tag:dev.ua,2026-10-21:57894550</id>
+      <pubDate>Wed, 21 Oct 2026 12:30:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 12:30:37 GMT</lastBuildUpdate>
+      <category>Корисні інструкції</category>
+      <format>long</format>
+      <language>uk</language>
+      <description>
+На старті бізнесу довіра часто здається цілком достатньою: ви разом працюєте, у вас спільна мета, компанія ще нічого не коштує і ділити насправді нічого. Більшість енергії спрямована лише на те, щоб бізнес узагалі з’явився на світ. Проблеми починаються пізніше — коли з’являється те, що має реальну цінність: гроші, клієнти, команда, технології, бренд та інтелектуальна власність. І особливо тоді, коли змінюється внесок самих партнерів.
+</description>
+      <author>Дмитро Феліксов</author>
+      <link>https://dev.ua/news/vy-stvoryly-biznes-razom-yak-ne-posvarytysia-koly-vin-pochne-prynosyty-hroshi-1792585736</link>
+      <guid>https://dev.ua/news/vy-stvoryly-biznes-razom-yak-ne-posvarytysia-koly-vin-pochne-prynosyty-hroshi-1792585736</guid>
+      <enclosure url="https://dev.ua/storage/images/40/68/11/03/derived/39809790f00cd9ff4d230e05dd7e88e5.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Фотобанк Getty Images банкрутує через розвиток ШІ і трансформується в приватну компанію
+
+</title>
+      <id>tag:dev.ua,2026-10-21:83015776</id>
+      <pubDate>Wed, 21 Oct 2026 12:10:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 12:11:38 GMT</lastBuildUpdate>
+      <category>Таке життя</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Американський фотобанк Getty Images Holdings Inc. розпочав процедуру «заздалегідь узгодженого банкрутства» після укладення угоди про реструктуризацію. Процес дозволить залучити нове фінансування, виплатити борги та перетворити сервіс візуального контенту на приватну компанію.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/fotobank-getty-images-bankrutuie-potykhenku-1792583845</link>
+      <guid>https://dev.ua/news/fotobank-getty-images-bankrutuie-potykhenku-1792583845</guid>
+      <enclosure url="https://dev.ua/storage/images/41/26/33/50/derived/85a867e322d122bc2d58013452a85877.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Google Chrome отримав захист на основі Gemini AI для виявлення шахрайств та атак ClickFix</title>
+      <id>tag:dev.ua,2026-10-21:81701133</id>
+      <pubDate>Wed, 21 Oct 2026 12:09:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 12:09:48 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Google додає до браузера Chrome нові інструменти безпеки, які за допомогою штучного інтелекту виявляють онлайн-шахрайства, розпізнають підозрілі сайти та попереджають користувачів про небезпеку виконання шкідливих команд.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/google-chrome-1792584086</link>
+      <guid>https://dev.ua/news/google-chrome-1792584086</guid>
+      <enclosure url="https://dev.ua/storage/images/22/27/01/01/derived/1d1015b0af8af88da3bf7f170fed9218.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>«Що ви робите з тим, що ваші чипи знайшли в російських дронах?». Протестувальники перервали виступ CEO NVIDIA у Берліні</title>
+      <id>tag:dev.ua,2026-10-21:92525352</id>
+      <pubDate>Wed, 21 Oct 2026 12:03:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 12:03:41 GMT</lastBuildUpdate>
+      <category>Таке життя</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Протестувальники перервали виступ генерального директора NVIDIA Дженсена Хуанга на конференції GTC у Берліні. Вони вимагали пояснити, як чипи компанії потрапляють до російських безпілотників, які атакують Україну. Хуанг попросив охорону не застосовувати силу до активістів, але відповідати на їхні запитання не став.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/protestuvalnyky-perervaly-vystup-ceo-nvidia-1792582180</link>
+      <guid>https://dev.ua/news/protestuvalnyky-perervaly-vystup-ceo-nvidia-1792582180</guid>
+      <enclosure url="https://dev.ua/storage/images/17/17/38/57/derived/20911e87f29eb93490de0d89733c6249.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Українець втратив майже $70 000 через уразливість у  смартфоні: деталі схеми та застереження</title>
+      <id>tag:dev.ua,2026-10-21:37724539</id>
+      <pubDate>Wed, 21 Oct 2026 11:19:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 11:22:27 GMT</lastBuildUpdate>
+      <category>Криптобізнес</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Майже $70 000 у криптовалюті втратив українець через уразливість у  застарілій iOS. Постраждалий вирішив публічно розповісти про деталі інциденту, щоб застерегти інших власників цифрових активів від подібних загроз.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/ukrainets-vtratyv-maizhe-70-000-cherez-urazlyvist-u-zastarilii-ios-1792580296</link>
+      <guid>https://dev.ua/news/ukrainets-vtratyv-maizhe-70-000-cherez-urazlyvist-u-zastarilii-ios-1792580296</guid>
+      <enclosure url="https://dev.ua/storage/images/16/25/72/41/derived/b9c20d2c5a1e5a8753855422f59a1ae9.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Дрон «Аюдаг-6» евакуював пораненого з передової. Що про нього відомо та які ще незвичні завдання виконували дрони Heavy Shot?</title>
+      <id>tag:dev.ua,2026-10-21:20883669</id>
+      <pubDate>Wed, 21 Oct 2026 11:02:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 11:03:09 GMT</lastBuildUpdate>
+      <category>Зброя</category>
+      <format>long</format>
+      <language>uk</language>
+      <description>
+Український гексакоптер «Аюдаг-6» від компанії Gurzuf Defence допоміг евакуювати пораненого військового з передової. Дрон, який спочатку створювали для перевезення важких вантажів, спеціально пристосували для порятунку людини. Розповідаємо, що відомо про «Аюдаг-6», скільки він може підняти та які ще незвичайні завдання виконували дрони його «родини» Heavy Shot.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/aiudah-6-1792578131</link>
+      <guid>https://dev.ua/news/aiudah-6-1792578131</guid>
+      <enclosure url="https://dev.ua/storage/images/76/36/88/39/derived/e93ef25c212ba1613065f19eae14d3d1.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>GTA 6 вже заробила понад $600 млн за місяць до свого релізу</title>
+      <id>tag:dev.ua,2026-10-21:78736971</id>
+      <pubDate>Wed, 21 Oct 2026 10:59:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 11:56:34 GMT</lastBuildUpdate>
+      <category>GameDev</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Аналітична компанія Sensor Tower оприлюднила оцінку кількості попередніх замовлень на гру Grand Theft Auto VI. Переважну частину з 6,45 млн вже придбаних копій зробили гравці з PlayStation 5.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/gta-6-vzhe-zarobyla-horu-hroshei-1792579864</link>
+      <guid>https://dev.ua/news/gta-6-vzhe-zarobyla-horu-hroshei-1792579864</guid>
+      <enclosure url="https://dev.ua/storage/images/46/68/60/38/derived/3cc3d8ed68a97f5ebca9e2792e56cd31.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Українська компанія Zibra AI запустила ZibraXYZ: технологія для Physics AI, що стискає дані у 30 разів без потреби у розпакуванні</title>
+      <id>tag:dev.ua,2026-10-21:76707668</id>
+      <pubDate>Wed, 21 Oct 2026 10:26:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 10:27:06 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Український технологічний стартап Zibra AI анонсував ZibraXYZ — високопродуктивний шар даних для великих інженерних датасетів. Нова технологія дозволяє стискати інженерні 3D- та 4D-дані до 30 разів і працювати з ними напряму, навіть якщо їхній обсяг перевищує пам’ять робочої станції або відеокарти.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/ukrainska-kompaniia-zibra-ai-zapustyla-zibraxyz-1792577480</link>
+      <guid>https://dev.ua/news/ukrainska-kompaniia-zibra-ai-zapustyla-zibraxyz-1792577480</guid>
+      <enclosure url="https://dev.ua/storage/images/20/66/59/92/derived/0ece7b87cd590d6936255a0fe95fa05f.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>BlueBird Tech змінює підхід до створення R&amp;D-осередків за кордоном і шукає українських інженерів</title>
+      <id>tag:dev.ua,2026-10-21:10676437</id>
+      <pubDate>Wed, 21 Oct 2026 10:06:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 10:07:14 GMT</lastBuildUpdate>
+      <category>Стартап</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Український розробник оборонних технологій BlueBird Tech змінив плани щодо відкриття R&amp;amp;D-офісу в Польщі. Компанія трансформувала підхід до розширення і зараз фокусується на пошуку фахівців для віддаленої роботи з подальшим об'єднанням їх у локальні команди.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/bluebird-tech-shukaie-ukrainskykh-inzheneriv-za-kordonom-1792576214</link>
+      <guid>https://dev.ua/news/bluebird-tech-shukaie-ukrainskykh-inzheneriv-za-kordonom-1792576214</guid>
+      <enclosure url="https://dev.ua/storage/images/31/96/45/74/derived/fb6c7eefadc798b60008e8750678c6f9.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Хакери майже два роки ховалися в мережі російської медичної організації. російські дослідники підозрюють білоруських «Кіберпартизанів»</title>
+      <id>tag:dev.ua,2026-10-21:61869664</id>
+      <pubDate>Wed, 21 Oct 2026 10:02:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 10:02:12 GMT</lastBuildUpdate>
+      <category>Гаряченьке</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+російські дослідники кібербезпеки з компанії Solar заявили, що білоруські «Кіберпартизани» майже два роки непомітно діяли в комп’ютерній мережі російської медичної організації.  Вони замаскували вірус під звичайну програму й отримали можливість дистанційно керувати комп’ютерами.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/vasilek-1792575441</link>
+      <guid>https://dev.ua/news/vasilek-1792575441</guid>
+      <enclosure url="https://dev.ua/storage/images/46/44/40/43/derived/ce80c6a1695fd7fefd86935a9d104156.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Приховані слова-тригери можуть зробити роботів із ШІ небезпечними для людей: як це працює</title>
+      <id>tag:dev.ua,2026-10-21:70582644</id>
+      <pubDate>Wed, 21 Oct 2026 10:00:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 10:00:37 GMT</lastBuildUpdate>
+      <category>Роботи</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Науковці з Університету Бінгемтона (США) продемонстрували, що зловмисники можуть непомітно перепрограмувати роботів на базі великих мовних моделей. Додавши в інструкцію лише одне слово-тригер, вони змусили робота-помічника замість яблука «порізати» макет людської руки.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/prykhovani-slova-tryhery-mozhut-zrobyty-robotiv-iz-shi-nebezpechnymy-dlia-liudei-1792575741</link>
+      <guid>https://dev.ua/news/prykhovani-slova-tryhery-mozhut-zrobyty-robotiv-iz-shi-nebezpechnymy-dlia-liudei-1792575741</guid>
+      <enclosure url="https://dev.ua/storage/images/93/25/50/37/derived/b90d2e4577eb822e4eb74d576f35e967.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Український розробник створив Folders — файловий менеджер для macOS у стилі Windows Explorer</title>
+      <id>tag:dev.ua,2026-10-21:24791249</id>
+      <pubDate>Wed, 21 Oct 2026 09:15:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 09:15:50 GMT</lastBuildUpdate>
+      <category>Стартап</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Український інді-розробник Андрій Константинов випустив застосунок Folders — файловий менеджер для macOS, створений спеціально для тих, хто сумує за класичним деревом папок у стилі Windows Explorer або прагне легшої адаптації після переходу з PC. Повнофункціональну App Store-версію програми зробив повністю безплатною для власників українських Apple Account.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/folders-failovyi-menedzher-dlia-macos-1792572448</link>
+      <guid>https://dev.ua/news/folders-failovyi-menedzher-dlia-macos-1792572448</guid>
+      <enclosure url="https://dev.ua/storage/images/74/79/25/49/derived/37e442efae8b56af7807e49bc23694c5.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Колишня маркетологиня з Nvidia вважає, що робототехніка поки переживає свою «епоху LEGO»</title>
+      <id>tag:dev.ua,2026-10-21:15373465</id>
+      <pubDate>Wed, 21 Oct 2026 09:02:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 09:05:45 GMT</lastBuildUpdate>
+      <category>Роботи</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Амуля Вішванат, засновниця та керуюча партнерка венчурної компанії Techable Ventures, яка спеціалізується на фізичному штучному інтелекті, розповіла, що робототехніка зараз перебуває скоріше в «епосі LEGO», ніж у «моменті ChatGPT», оскільки розробники лише створюють базові будівельні блоки для майбутніх технологічних проривів.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/robototekhnika-perezhyvaie-svoiu-epokhu-lego-1792572752</link>
+      <guid>https://dev.ua/news/robototekhnika-perezhyvaie-svoiu-epokhu-lego-1792572752</guid>
+      <enclosure url="https://dev.ua/storage/images/80/45/88/26/derived/839a0e30ae698fb85344281c2728e49c.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>У ЄС попередили про дві критичні вразливості PHP, через які хакери можуть захопити сайти. Коли їх виправлять?</title>
+      <id>tag:dev.ua,2026-10-21:34227965</id>
+      <pubDate>Wed, 21 Oct 2026 08:42:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 08:42:49 GMT</lastBuildUpdate>
+      <category/>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Дві критичні вразливості в PHP можуть дозволити хакерам викрадати дані, змінювати вміст сайтів і навіть захоплювати сервери. Цю мову програмування використовують мільйони сайтів, зокрема ті, що створені на WordPress, Drupal і Joomla. У ЄС радять тимчасово відключати від інтернету ресурси, які не вдасться швидко захистити.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/php-vrazlyvist-1792571349</link>
+      <guid>https://dev.ua/news/php-vrazlyvist-1792571349</guid>
+      <enclosure url="https://dev.ua/storage/images/19/42/41/03/derived/66e168ce5f04256995db5264c8f7acf0.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Meta вимкнула можливість ділитися чатами в Muse AI через витік конфіденційних документів</title>
+      <id>tag:dev.ua,2026-10-21:16317421</id>
+      <pubDate>Wed, 21 Oct 2026 08:28:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 08:29:05 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Компанія Meta тимчасово призупинила функцію обміну розмовами в штучному інтелекті Muse AI після того, як дослідники виявили, що публічні посилання відкривали доступ до чутливих персональних даних та внутрішніх корпоративних документів.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/meta-vymknula-mozhlyvist-dilytysia-chatamy-v-muse-ai-1792570201</link>
+      <guid>https://dev.ua/news/meta-vymknula-mozhlyvist-dilytysia-chatamy-v-muse-ai-1792570201</guid>
+      <enclosure url="https://dev.ua/storage/images/57/85/50/64/derived/1124336e41adeb663c01cfb45f71003a.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Гравці скаржаться, що Steam Next Fest заполонив ігровий ШІ-слоп</title>
+      <id>tag:dev.ua,2026-10-21:41634465</id>
+      <pubDate>Wed, 21 Oct 2026 08:04:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 08:05:58 GMT</lastBuildUpdate>
+      <category>GameDev</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Понад третина інді-ігор, представлених на жовтневому фестивалі Steam Next Fest, створювалася із застосуванням інструментів генеративного штучного інтелекту. Порівняно з червневим заходом, частка таких проєктів зросла майже вдвічі.
+</description>
+      <author>Олександр Кузьменко</author>
+      <link>https://dev.ua/news/steam-zapolonyv-ai-slop-1792568516</link>
+      <guid>https://dev.ua/news/steam-zapolonyv-ai-slop-1792568516</guid>
+      <enclosure url="https://dev.ua/storage/images/52/02/97/31/derived/ddd94aa62b11318b8ae880701578e1d1.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>російські хакери зламали оборонне суднобудівне підприємство країни НАТО</title>
+      <id>tag:dev.ua,2026-10-21:74524386</id>
+      <pubDate>Wed, 21 Oct 2026 07:59:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 07:59:35 GMT</lastBuildUpdate>
+      <category>Гаряченьке</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Угруповання російських хакерів APT28 (також відоме як Fancy Bear, Forest Blizzard або Swallowtail) здійснило успішну кібератаку на військово-морську суднобудівну компанію в одній із країн-членів НАТО. За даними дослідників з безпеки, зловмисники залишалися непоміченими всередині мережі щонайменше протягом двох місяців. 
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/rosiiski-khakery-zlamaly-oboronne-sudnobudivne-pidpryiemstvo-krainy-nato-1792569010</link>
+      <guid>https://dev.ua/news/rosiiski-khakery-zlamaly-oboronne-sudnobudivne-pidpryiemstvo-krainy-nato-1792569010</guid>
+      <enclosure url="https://dev.ua/storage/images/33/67/31/08/derived/1179e0a6d6d01d591e7e9181e2fa7d3c.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>«Укрпошта» разом із Kasta запустила власний маркетплейс із безплатною доставкою: як скористатися</title>
+      <id>tag:dev.ua,2026-10-21:19206434</id>
+      <pubDate>Wed, 21 Oct 2026 07:23:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 07:23:32 GMT</lastBuildUpdate>
+      <category>Гаряченьке</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Національний поштовий оператор «Укрпошта» оголосив про запуск нового масштабного проєкту — «Укрпошта Маркет». Це спільний маркетплейс із платформою Kasta, який пропонує понад 10 млн товарів та абсолютно безплатною доставку в будь-яке відділення країни.
+</description>
+      <author>Наталя Хандусенко</author>
+      <link>https://dev.ua/news/ukrposhta-zapuskaie-vlasnyi-marketpleis-1792566621</link>
+      <guid>https://dev.ua/news/ukrposhta-zapuskaie-vlasnyi-marketpleis-1792566621</guid>
+      <enclosure url="https://dev.ua/storage/images/40/13/53/22/derived/6d7d0c322845f27cb41b240327393d88.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>У Луганську атакували будівлю оператора «Лугаком». Напередодні під удар потрапив «Углетелеком» у Донецьку</title>
+      <id>tag:dev.ua,2026-10-21:19058093</id>
+      <pubDate>Wed, 21 Oct 2026 07:08:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 07:10:20 GMT</lastBuildUpdate>
+      <category>Війна</category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+У ніч на 21 жовтня в тимчасово окупованому Луганську атакували будівлю колишнього «Укртелекому», де тепер розташований «Лугаком» — оператор, який забезпечує місцевих жителів мобільним зв’язком та інтернетом.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/luhakom-atakuvaly-1792566097</link>
+      <guid>https://dev.ua/news/luhakom-atakuvaly-1792566097</guid>
+      <enclosure url="https://dev.ua/storage/images/25/66/96/45/derived/d48d2bdfa0aa00bfc129c7a48b94af06.webp" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Google запустила персонального ШІ-помічника для автомобілів. Gemini зможе шукати інформацію в Gmail, календарі водія та інших сервісах Google</title>
+      <id>tag:dev.ua,2026-10-21:61873055</id>
+      <pubDate>Wed, 21 Oct 2026 06:55:00 GMT</pubDate>
+      <lastBuildUpdate>Wed, 21 Oct 2026 06:55:54 GMT</lastBuildUpdate>
+      <category>ШІ </category>
+      <format>news</format>
+      <language>uk</language>
+      <description>
+Google почала впроваджувати в автомобілі нову функцію Gemini під назвою Personal Intelligence. Завдяки їй ШІ-помічник зможе використовувати інформацію з Gmail, Google Calendar, Maps чи інших сервісів компанії, щоб краще розуміти потреби водія та допомагати йому під час поїздок.
+</description>
+      <author>Оксана Степура</author>
+      <link>https://dev.ua/news/gemini-v-mashynakh-1792564483</link>
+      <guid>https://dev.ua/news/gemini-v-mashynakh-1792564483</guid>
+      <enclosure url="https://dev.ua/storage/images/21/40/56/54/derived/66414e9ba3001cab3ae728156129473b.webp" type="image/jpeg"/>
+    </item>
+  </channel>
+</rss>

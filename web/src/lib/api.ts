@@ -1,37 +1,7 @@
-export interface CompanyRow {
-  id: number;
-  name: string;
-  domain: string;
-  country: string | null;
-  city: string | null;
-  sizeHint: string | null;
-  kind: string;
-  market: string | null;
-  industry: string | null;
-  phone: string | null;
-  tags: string[];
-  sourceUrl: string | null;
-  score: number;
-  /** Catalog reputation. null means the catalog did not show it. */
-  rating: number | null;
-  reviewsCount: number | null;
-  careersKind: string;
-  careersUrl: string | null;
-  techHints: string[];
-  sources: string[];
-  lastChecked: number | null;
-  status: string | null;
-  snoozedUntil: number | null;
-  /** Hiring developers right now. */
-  hiring: boolean;
-  hiringRoles: number | null;
-}
-
 /**
- * Company details. The type describes exactly what GET /companies/:id returns and
- * deliberately does not extend CompanyRow: this response has no score, it is computed
- * on the fly only for the list. The type used to promise a score field, and the
- * interface showed a zero.
+ * Company details. The type describes exactly what GET /companies/:id returns: this
+ * response has no score, it is computed on the fly only for the list. The type used to
+ * promise a score field, and the interface showed a zero.
  */
 export interface CompanyDetail {
   company: {
@@ -145,17 +115,139 @@ export interface StudioCard {
   extra: Record<string, string>;
   description: string | null;
   careersUrl: string | null;
+  careersKind: string;
   sourceUrl: string | null;
   sources: string[];
   firstSeen: number;
+  lastChecked: number | null;
   status: string;
+  snoozedUntil: number | null;
   /** Hiring developers right now, and how many roles were seen. */
   hiring: boolean;
   hiringRoles: number | null;
   score: number;
   why: { reason: string; weight: number }[];
   contacts: CompanyContact[];
+  /** The latest site audit, null when the site was never audited. */
+  audit: { checkedAt: number; perfScore: number | null; issues: string[] } | null;
   lastContactedAt: number | null;
+}
+
+/**
+ * The one filter shape, the same as `src/pipeline/filters.ts`: the Companies page, the
+ * Leads page, saved filters and `search_companies` over MCP all speak it.
+ */
+export interface CompanyFilter {
+  search?: string;
+  market?: 'ua' | 'intl';
+  country?: string;
+  city?: string;
+  kind?: string[];
+  industry?: string[];
+  source?: string;
+  tags?: string[];
+  status?: string[];
+  hasEmail?: boolean;
+  hasNamedContact?: boolean;
+  hasSite?: boolean;
+  hasAuditIssues?: boolean;
+  hiring?: boolean;
+  minScore?: number;
+  maxScore?: number;
+  minRating?: number;
+  includeContacted?: boolean;
+}
+
+/** URL parameters for a filter: lists comma separated, booleans 1 or 0, empty values dropped. */
+export function filterParams(filter: CompanyFilter): Record<string, string> {
+  const params: Record<string, string> = {};
+  for (const [key, value] of Object.entries(filter)) {
+    if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) continue;
+    if (Array.isArray(value)) params[key] = value.join(',');
+    else if (typeof value === 'boolean') params[key] = value ? '1' : '0';
+    else params[key] = String(value);
+  }
+  return params;
+}
+
+/** A filter without empty fields, the form a saved filter is stored in. */
+export function cleanFilter(filter: CompanyFilter): CompanyFilter {
+  return Object.fromEntries(
+    Object.entries(filter).filter(
+      ([, value]) => value !== undefined && value !== '' && !(Array.isArray(value) && value.length === 0),
+    ),
+  ) as CompanyFilter;
+}
+
+export interface CompanyPage {
+  cards: StudioCard[];
+  total: number;
+  aboveThreshold: number;
+  threshold: number | null;
+}
+
+export interface Facets {
+  kind: Bucket[];
+  market: Bucket[];
+  country: Bucket[];
+  city: Bucket[];
+  industry: Bucket[];
+  source: Bucket[];
+  tags: Bucket[];
+}
+
+export interface SavedFilter {
+  id: number;
+  name: string;
+  query: CompanyFilter;
+  updatedAt: number;
+}
+
+export interface BulkResult {
+  changed: number;
+  kept: { companyId: number; reason: string }[];
+  missing: number[];
+}
+
+/** Explicit demand: a tender or a funding news item. */
+export interface LeadRow {
+  id: number;
+  companyId: number | null;
+  companyName: string | null;
+  companyDomain: string | null;
+  source: string;
+  externalId: string;
+  url: string;
+  title: string;
+  text: string | null;
+  budget: number | null;
+  currency: string | null;
+  deadlineAt: number | null;
+  firstSeen: number;
+  closedAt: number | null;
+  fit: number | null;
+  status: string;
+}
+
+export interface QueueCard extends StudioCard {
+  /** Acted on since the slice was made. */
+  done: boolean;
+}
+
+export interface DailyQueue {
+  day: string;
+  size: number;
+  cards: QueueCard[];
+  carried: number;
+  eligible: number;
+}
+
+/**
+ * The key a company is opened by in the address: its domain, readable in a link, or `id-42` for a
+ * business without a site (a clinic from Google Places, a tender buyer).
+ */
+export function companyKey(card: { domain: string; companyId: number }): string {
+  return card.domain || `id-${card.companyId}`;
 }
 
 /** A company contact. `id` is there so it can be edited right from the card. */
@@ -164,6 +256,7 @@ export interface CompanyContact {
   name: string | null;
   role: string | null;
   email: string | null;
+  phone?: string | null;
   /** false means a hard bounce: the address stays in the database but must not be written to. */
   emailValid: boolean;
 }
@@ -437,10 +530,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  companies: (params: Record<string, string>) => {
-    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
-    return request<CompanyRow[]>(`/companies${query ? `?${query}` : ''}`);
+  companies: (filter: CompanyFilter, sort: 'score' | 'name' = 'score') => {
+    const query = new URLSearchParams({ ...filterParams(filter), sort }).toString();
+    return request<CompanyPage>(`/companies?${query}`);
   },
+  facets: () => request<Facets>('/companies/facets'),
+  bulk: (body: { ids: number[]; status?: string; addTags?: string[]; removeTags?: string[] }) =>
+    request<BulkResult>('/companies/bulk', { method: 'POST', body: JSON.stringify(body) }),
+  savedFilters: () => request<SavedFilter[]>('/filters'),
+  saveFilter: (name: string, query: CompanyFilter) =>
+    request<{ before: SavedFilter | null; after: SavedFilter }>('/filters', {
+      method: 'PUT',
+      body: JSON.stringify({ name, query: cleanFilter(query) }),
+    }),
+  deleteFilter: (id: number) => request<{ deleted: SavedFilter | null }>(`/filters/${id}`, { method: 'DELETE' }),
+  queue: () => request<DailyQueue>('/queue'),
+  leads: (params: { source?: string; status?: string; all?: boolean }) => {
+    const query = new URLSearchParams(
+      Object.entries({ source: params.source ?? '', status: params.status ?? '', all: params.all ? '1' : '' }).filter(
+        ([, value]) => value,
+      ),
+    ).toString();
+    return request<LeadRow[]>(`/leads${query ? `?${query}` : ''}`);
+  },
+  setLeadStatus: (id: number, status: string) =>
+    request<{ id: number; before: string; after: string }>(`/leads/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    }),
   company: (id: number) => request<CompanyDetail>(`/companies/${id}`),
   setCompanyState: (id: number, body: Record<string, unknown>) =>
     request<{ ok: true }>(`/companies/${id}/state`, { method: 'POST', body: JSON.stringify(body) }),
@@ -450,14 +567,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ replyType, note }),
     }),
-  studios: (params: Record<string, string>) => {
-    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value)).toString();
-    return request<{
-      cards: StudioCard[];
-      total: number;
-      aboveThreshold: number;
-      threshold: number;
-    }>(`/studios${query ? `?${query}` : ''}`);
+  studios: (filter: CompanyFilter) => {
+    const query = new URLSearchParams(filterParams(filter)).toString();
+    return request<CompanyPage>(`/studios${query ? `?${query}` : ''}`);
   },
   companyAction: (id: number, body: Record<string, unknown>) =>
     request<{ status: string }>(`/companies/${id}/action`, { method: 'POST', body: JSON.stringify(body) }),

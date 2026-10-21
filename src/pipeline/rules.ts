@@ -63,6 +63,12 @@ export const rulesSchema = z.object({
       })
       .default({}),
   }),
+  /** The daily slice, see `daily-queue.ts`. Optional with a default, like kindWeights. */
+  queue: z
+    .object({
+      size: z.number().int().min(1).max(50).default(10),
+    })
+    .default({}),
 });
 
 export type Rules = z.infer<typeof rulesSchema>;

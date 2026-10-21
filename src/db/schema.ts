@@ -17,7 +17,18 @@ export const companies = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     name: text('name').notNull(),
+    /**
+     * The site, and the main identity of a company. An empty string means no site: a clinic
+     * from Google Places or a tender buyer is a lead without one (section 5), and then
+     * `registry_code` or `place_id` identifies it. Not nullable on purpose: making it nullable
+     * means rebuilding the table, and on D1 that cascades into every child table.
+     */
     domain: text('domain').notNull(),
+    /** ЄДРПОУ, the Ukrainian state register code. Prozorro buyers carry it. */
+    registryCode: text('registry_code'),
+    /** Google Places id. A business without a site is identified by it. */
+    placeId: text('place_id'),
+    /** ISO 3166 alpha-2, upper case, see `normalizeCountry`. */
     country: text('country'),
     city: text('city'),
     sizeHint: text('size_hint'),
@@ -104,7 +115,9 @@ export const companies = sqliteTable(
     lastChangeAt: integer('last_change_at'),
   },
   (t) => [
-    uniqueIndex('companies_domain_uq').on(t.domain),
+    uniqueIndex('companies_domain_uq').on(t.domain).where(sql`domain <> ''`),
+    uniqueIndex('companies_registry_code_uq').on(t.registryCode).where(sql`registry_code is not null`),
+    uniqueIndex('companies_place_id_uq').on(t.placeId).where(sql`place_id is not null`),
     index('companies_last_checked_idx').on(t.lastChecked),
     index('companies_kind_idx').on(t.kind),
     index('companies_market_idx').on(t.market),
@@ -141,6 +154,7 @@ export const contacts = sqliteTable(
     name: text('name'),
     role: text('role'),
     email: text('email'),
+    phone: text('phone'),
     /**
      * An address that hard bounced stays in the database but is marked dead: it cannot be
      * deleted, because enrichment would find it again and a letter would go to the same

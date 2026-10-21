@@ -5,10 +5,11 @@
  *   1. checks that wrangler is logged in
  *   2. finds the D1 database by name, or creates it
  *   3. writes its id into wrangler.local.jsonc (gitignored)
- *   4. applies migrations
- *   5. builds the frontend and deploys, uploading missing secrets in the same step
+ *   4. the same for the OAUTH_KV namespace, where the MCP OAuth flow keeps its grants
+ *   5. applies migrations
+ *   6. builds the frontend and deploys, uploading missing secrets in the same step
  *
- * Safe to run again: an existing database, id and secret are reused, never replaced.
+ * Safe to run again: an existing database, namespace, id and secret are reused, never replaced.
  * `--dry-run` checks everything and runs `wrangler deploy --dry-run`, changing nothing.
  *
  * Secrets go up with the deploy itself (`--secrets-file`) rather than after it, so the
@@ -35,6 +36,7 @@ const SECRETS_FROM_ENV = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
   'GMAIL_FROM_EMAIL',
+  'GOOGLE_PLACES_API_KEY',
 ];
 
 function step(text) {
@@ -87,7 +89,19 @@ const base = parseJsonc(readFileSync('wrangler.jsonc', 'utf8'));
 const dbName = base.d1_databases?.[0]?.database_name;
 if (!dbName) fail('wrangler.jsonc has no d1_databases entry.');
 
-const local = existsSync(LOCAL) ? parseJsonc(readFileSync(LOCAL, 'utf8')) : {};
+let local = existsSync(LOCAL) ? parseJsonc(readFileSync(LOCAL, 'utf8')) : {};
+
+/** Rewrites the local file, keeping whatever else it already holds. */
+function saveLocal(next) {
+  local = next;
+  writeFileSync(
+    LOCAL,
+    `// Personal deploy settings. Gitignored, never commit this file.\n` +
+      `// See wrangler.local.example.jsonc for what else can go here.\n` +
+      `${JSON.stringify(next, null, '\t')}\n`,
+  );
+  console.log(`saved to ${LOCAL}`);
+}
 let databaseId = local.d1_databases?.find((db) => db.binding === 'DB')?.database_id || '';
 
 if (databaseId) {
@@ -113,20 +127,47 @@ if (databaseId) {
   // 3. Remember the id, keeping whatever else the local file already holds
   if (databaseId && !DRY) {
     const bindings = (base.d1_databases ?? []).map((db) => ({ binding: db.binding, database_id: databaseId }));
-    const next = { ...local, d1_databases: bindings };
-    writeFileSync(
-      LOCAL,
-      `// Personal deploy settings. Gitignored, never commit this file.\n` +
-        `// See wrangler.local.example.jsonc for what else can go here.\n` +
-        `${JSON.stringify(next, null, '\t')}\n`,
-    );
-    console.log(`saved to ${LOCAL}`);
+    saveLocal({ ...local, d1_databases: bindings });
+  }
+}
+
+// 4. KV namespace for MCP OAuth grants
+const KV_BINDING = 'OAUTH_KV';
+const kvTitle = `${base.name}-oauth`;
+let kvId = local.kv_namespaces?.find((kv) => kv.binding === KV_BINDING)?.id || '';
+
+/** Older wrangler versions prefix the title with the worker name, so either spelling counts. */
+function findNamespace() {
+  const list = wrangler(['kv', 'namespace', 'list'], { capture: true });
+  if (!list.ok) fail(`wrangler kv namespace list failed:\n${list.err}`);
+  return (json(list.out) ?? []).find((ns) => ns.title === kvTitle || ns.title.endsWith(`-${kvTitle}`))?.id ?? '';
+}
+
+if (kvId) {
+  step(`KV namespace id already in ${LOCAL}`);
+} else {
+  step(`Looking for the KV namespace "${kvTitle}"`);
+  kvId = findNamespace();
+  if (kvId) {
+    console.log(`found, ${kvId}`);
+  } else if (DRY) {
+    console.log('not found, would be created (dry run)');
+  } else {
+    console.log('not found, creating it');
+    if (!wrangler(['kv', 'namespace', 'create', kvTitle]).ok) fail('wrangler kv namespace create failed.');
+    kvId = findNamespace();
+    if (!kvId) fail('Created the namespace but could not find its id.');
+  }
+
+  if (kvId && !DRY) {
+    const others = (local.kv_namespaces ?? []).filter((kv) => kv.binding !== KV_BINDING);
+    saveLocal({ ...local, kv_namespaces: [...others, { binding: KV_BINDING, id: kvId }] });
   }
 }
 
 run('node', ['scripts/wrangler-config.mjs']);
 
-// 4. Migrations
+// 5. Migrations
 if (DRY) {
   step('Pending migrations (dry run, nothing applied)');
   if (databaseId) wrangler(['d1', 'migrations', 'list', dbName, '--remote', '--config', DEPLOY_CONFIG]);
@@ -137,7 +178,7 @@ if (DRY) {
   }
 }
 
-// 5. Secrets that the worker does not have yet
+// 6. Secrets that the worker does not have yet
 step('Checking secrets');
 const listed = wrangler(['secret', 'list', '--format', 'json', '--config', DEPLOY_CONFIG], { capture: true });
 // A worker that was never deployed has no secret list, which simply means nothing is set.
@@ -159,7 +200,7 @@ console.log(names.length > 0 ? `will upload: ${names.join(', ')}` : 'nothing mis
 const skipped = SECRETS_FROM_ENV.filter((key) => !existing.has(key) && !env[key]);
 if (skipped.length > 0) console.log(`not in .env, left unset: ${skipped.join(', ')}`);
 
-// 6. Build and deploy
+// 7. Build and deploy
 step('Building the frontend');
 run('pnpm', ['build:web']);
 

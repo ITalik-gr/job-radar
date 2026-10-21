@@ -40,12 +40,16 @@ import '../sources/index.js';
 import { followUps, funnel, listOutreach, markReply, REPLY_TYPES, type ReplyType } from '../pipeline/actions.js';
 import { toCsv } from '../lib/csv.js';
 import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
-import { syncSource } from '../pipeline/sync.js';
+import { runSource } from '../pipeline/sync.js';
 import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
 import { browserQueue, enrich, saveBrowserFindings, type BrowserFindings } from '../pipeline/enrich.js';
 import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
-import { companiesRoutes } from './companies.js';
+import { companiesRoutes, pageFilters } from './companies.js';
+import { dailyQueue } from '../pipeline/daily-queue.js';
+import { LEAD_STATUSES, listLeads, setLeadStatus, type LeadStatus } from '../pipeline/leads.js';
+import { deleteSavedFilter, listSavedFilters, saveFilter } from '../pipeline/saved-filters.js';
+import { mcpRoutes } from '../mcp/route.js';
 import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
 import { resetRules, rules, rulesSource, saveRules } from '../pipeline/rules.js';
 import {
@@ -238,12 +242,14 @@ app.get('/api/health', async (c) => {
  */
 app.get('/api/export/:what', async (c) => {
   const what = c.req.param('what');
-  const named = c.req.query('named') === '1';
 
   let rows: Record<string, unknown>[] = [];
 
   if (what === 'studios') {
-    const page = await studioPage({ limit: 1000, withNamedContact: named });
+    // The export takes the same filter as the list, so the file holds what the screen shows.
+    const filters = pageFilters(c.req.query());
+    if ('error' in filters) return c.json(filters, 400);
+    const page = await studioPage({ ...filters, scope: 'leads' });
     rows = page.cards.map((card) => ({
       company: card.name,
       domain: card.domain,
@@ -287,24 +293,53 @@ app.post('/api/import/catalog', async (c) => {
   return c.json(result);
 });
 
+/**
+ * The lead list. The limit is deliberately high: it is the owner's main working tool, and 25
+ * records out of 300 companies looked as if collection was broken.
+ */
 app.get('/api/studios', async (c) => {
-  // The limit is deliberately high: the studio list is the owner's main working tool, and
-  // 25 records out of 300 companies in the database looked as if collection was broken.
-  // The whole response weighs about 300 KB, which is nothing for a local tool.
-  const page = await studioPage({
-    limit: c.req.query('limit') ? Number(c.req.query('limit')) : 1000,
-    minScore: c.req.query('min') ? Number(c.req.query('min')) : undefined,
-    country: c.req.query('country'),
-    market: c.req.query('market'),
-    industry: c.req.query('industry'),
-    search: c.req.query('q'),
-    kind: c.req.query('kind'),
-    withNamedContact: c.req.query('named') === '1',
-    minRating: c.req.query('rating') ? Number(c.req.query('rating')) : undefined,
-    includeContacted: c.req.query('all') === '1',
-  });
-  return c.json(page);
+  const filters = pageFilters(c.req.query());
+  if ('error' in filters) return c.json(filters, 400);
+  return c.json(await studioPage({ ...filters, scope: 'leads' }));
 });
+
+/** Open leads (tenders, funding news) by deadline. `all=1` includes closed and expired ones. */
+app.get('/api/leads', async (c) => {
+  const status = c.req.query('status');
+  if (status && !LEAD_STATUSES.includes(status as LeadStatus)) return c.json({ error: `unknown status: ${status}` }, 400);
+  return c.json(
+    await listLeads({
+      source: c.req.query('source') || undefined,
+      status: (status as LeadStatus) || undefined,
+      open: c.req.query('all') !== '1',
+    }),
+  );
+});
+
+app.post('/api/leads/:id/status', async (c) => {
+  const body = await c.req.json<{ status?: string }>().catch(() => ({}) as { status?: string });
+  try {
+    return c.json(await setLeadStatus(Number(c.req.param('id')), body.status as LeadStatus));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+/** Today's slice across segments, fixed for the day. */
+app.get('/api/queue', async (c) => c.json(await dailyQueue()));
+
+app.get('/api/filters', async (c) => c.json(await listSavedFilters()));
+
+app.put('/api/filters', async (c) => {
+  const body = await c.req.json<{ name?: string; query?: unknown }>().catch(() => ({}) as { name?: string; query?: unknown });
+  try {
+    return c.json(await saveFilter(body.name ?? '', body.query ?? {}));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+app.delete('/api/filters/:id', async (c) => c.json(await deleteSavedFilter(Number(c.req.param('id')))));
 
 app.post('/api/companies/:id/action', async (c) => {
   const body = await c.req.json<{
@@ -452,6 +487,9 @@ app.post('/api/templates/:id/duplicate', async (c) =>
 app.delete('/api/templates/:id', async (c) => c.json(await deleteTemplate(Number(c.req.param('id')))));
 
 app.route('/api/companies', companiesRoutes);
+
+/** The MCP server, section 8 of CLAUDE.md. Outside /api/* on purpose: it has its own bearer check. */
+app.route('/mcp', mcpRoutes);
 
 /*
  * Sending. Drafts live in the same table as the history, so the routes use their own prefix:
@@ -659,7 +697,7 @@ app.post('/api/sources/:id/run', async (c) => {
     .json<{ limit?: number; slug?: string }>()
     .catch(() => ({}));
 
-  const result = await syncSource(id, { limit: body.limit, slug: body.slug });
+  const result = await runSource(id, { limit: body.limit, slug: body.slug });
 
   /*
    * Getro goes through networks one at a time, because the worker cannot finish all twelve

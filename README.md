@@ -31,7 +31,8 @@ mail tokens and running a cold email platform, which is a different product.
 - **Outreach**: your own templates with placeholders, drafts, sending through Gmail or Resend
   with daily limits, warmup and one follow-up, reply detection. Every letter is sent by your
   click, never automatically, and the model never writes letter text.
-- **MCP** (planned): search, statuses, templates and settings from Claude.
+- **MCP**: search, statuses, notes, templates, settings and drafts from Claude Code,
+  claude.ai and Claude Desktop ([DEPLOY.md](DEPLOY.md#mcp)). No send tool.
 - **Telegram**: a short digest and alerts, nothing in between.
 
 ## Quick start, local

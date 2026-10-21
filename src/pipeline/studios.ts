@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
-import { companies, companyState, contacts, outreach, type Company } from '../db/schema.js';
+import { companies, companyState, contacts, outreach, siteAudits, type Company } from '../db/schema.js';
 import { scoreCompany, type CompanyBreakdown } from './company-score.js';
+import { filterConditions, type CompanyFilter } from './filters.js';
 import { hiringNow } from './hiring.js';
 import { rules } from './rules.js';
 
@@ -42,11 +43,15 @@ export interface StudioCard {
   extra: Record<string, string>;
   description: string | null;
   careersUrl: string | null;
+  careersKind: string;
   /** The company page in the catalog it came from. */
   sourceUrl: string | null;
   sources: string[];
   firstSeen: number;
+  /** The last enrichment pass over the site. */
+  lastChecked: number | null;
   status: string;
+  snoozedUntil: number | null;
   /** Hiring developers right now, and how many roles were seen. */
   hiring: boolean;
   hiringRoles: number | null;
@@ -58,97 +63,82 @@ export interface StudioCard {
     name: string | null;
     role: string | null;
     email: string | null;
+    phone: string | null;
     /** false means a hard bounce: the address stays but must not be written to. */
     emailValid: boolean;
   }[];
+  /** The latest site audit, null when the site was never audited. */
+  audit: { checkedAt: number; perfScore: number | null; issues: string[] } | null;
   lastContactedAt: number | null;
 }
 
-export interface StudioFilters {
+/**
+ * The lead list and the directory share one query. `leads` (the default) is the working list: it
+ * applies the score threshold and hides companies already handled, product companies and active
+ * snoozes unless the filter asks for them. `all` is the directory: the filter and nothing else.
+ */
+export interface StudioFilters extends CompanyFilter {
   limit?: number;
-  minScore?: number;
-  /** Show everyone, including those already contacted. */
-  includeContacted?: boolean;
-  country?: string;
-  /** ua | intl. */
-  market?: string;
-  industry?: string;
-  search?: string;
-  /** A segment from `companies.kind`. Empty means everything except product companies. */
-  kind?: string;
-  /** Only those with a named contact. A letter to hello@ is read by a manager, not a tech lead. */
-  withNamedContact?: boolean;
-  /** Minimum catalog rating. Companies without a rating count as not passing. */
-  minRating?: number;
+  scope?: 'leads' | 'all';
+  sort?: 'score' | 'name';
 }
 
 export interface StudioPage {
   cards: StudioCard[];
-  /** How many companies got a score after the search and country filters. */
+  /** How many companies matched the filter before score and hiring were applied. */
   total: number;
-  /** How many of them cleared the threshold. The difference from total is what the threshold hid. */
+  /** How many of them passed score and hiring. The difference from total is what the threshold hid. */
   aboveThreshold: number;
-  threshold: number;
+  /** The minimum score applied, null in the directory without one. */
+  threshold: number | null;
 }
 
 /**
- * Score every company that passes the filters, with no threshold and no limit. The split between
- * this function and `studioPage` lets the interface say not only how many studios are shown but
- * also how many the threshold hid: without that an empty list looks like broken collection,
- * although the database has companies.
+ * Score every company that passes the SQL half of the filter, with no threshold and no limit. The
+ * split from `studioPage` lets the interface say how many the threshold hid: without that an empty
+ * list looks like broken collection, although the database has companies.
  */
 async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
   const db = getDb();
   const now = Date.now();
+  const leads = (filters.scope ?? 'leads') === 'leads';
 
   /*
-   * Selection is done by SQL, not JavaScript.
-   *
-   * The whole companies table and the whole contacts table used to be read here, with the filters
-   * applied in memory. At two thousand companies that still worked, but the cost did not depend on
-   * the query: a search for "design" that leaves fifty rows cost exactly as much as an empty list.
-   * And since the search field sent a request per letter, one word cost six such passes.
-   *
-   * Now JavaScript receives already filtered rows, and the cost of a query finally depends on how
-   * many rows it actually asks for.
+   * Selection is done by SQL, not JavaScript, so the cost of a query depends on how many rows it
+   * asks for rather than on the size of the database.
    */
-  const conditions = [
-    // A company without a domain leads nowhere: no letter, no site, no crawl.
-    ne(companies.domain, ''),
-    filters.country ? eq(companies.country, filters.country) : undefined,
-    filters.market ? eq(companies.market, filters.market) : undefined,
-    filters.industry ? eq(companies.industry, filters.industry.toLowerCase()) : undefined,
+  const conditions = filterConditions(filters);
+  if (leads) {
+    /*
+     * A business without a site is a lead too ("you have no site", section 5), but only when it
+     * can be reached: without a site there is nothing to crawl an address from later.
+     */
+    if (filters.hasSite === undefined) {
+      conditions.push(
+        sql`(${companies.domain} <> '' or ${companies.phone} is not null or exists (
+          select 1 from ${contacts} where ${contacts.companyId} = ${companies.id}
+          and (${contacts.email} is not null or ${contacts.phone} is not null)))`,
+      );
+    }
     /*
      * Without an explicit kind, product companies are removed from the list: a cold "I can help
      * with your project" letter rarely works on a company with its own engineering department.
      */
-    filters.kind ? eq(companies.kind, filters.kind) : ne(companies.kind, 'product'),
-    filters.minRating === undefined
-      ? undefined
-      : sql`coalesce(${companies.rating}, 0) >= ${filters.minRating}`,
-    // A snoozed company is not shown until the snooze ends.
-    sql`(${companyState.snoozedUntil} is null or ${companyState.snoozedUntil} <= ${now})`,
-    filters.includeContacted
-      ? sql`coalesce(${companyState.status}, 'new') <> 'blacklist'`
-      : notInArray(sql`coalesce(${companyState.status}, 'new')`, HIDDEN_STATUSES),
-  ];
-
-  if (filters.search) {
-    /*
-     * Tags sit in the column as a JSON array, and the search runs over it as a string. That is a bit
-     * broader than matching elements in memory: a match can fall across the boundary of two tags.
-     * The price of that imprecision is one extra company in the list, and the gain is that the rest
-     * of the database is not loaded into memory for one word.
-     */
-    const needle = `%${filters.search.toLowerCase()}%`;
-    conditions.push(
-      sql`(lower(${companies.name}) like ${needle}
-        or lower(${companies.domain}) like ${needle}
-        or lower(${companies.tags}) like ${needle})`,
-    );
+    if (!filters.kind) conditions.push(ne(companies.kind, 'product'));
+    if (!filters.status) {
+      conditions.push(
+        filters.includeContacted
+          ? sql`coalesce(${companyState.status}, 'new') <> 'blacklist'`
+          : notInArray(sql`coalesce(${companyState.status}, 'new')`, HIDDEN_STATUSES),
+      );
+    }
+    // A snoozed company is not shown until the snooze ends, unless snoozed ones are asked for.
+    if (!filters.status?.includes('snoozed')) {
+      conditions.push(sql`(${companyState.snoozedUntil} is null or ${companyState.snoozedUntil} <= ${now})`);
+    }
   }
 
-  const where = and(...conditions.filter(Boolean));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const rows = await db
     .select({
@@ -164,14 +154,11 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     .where(where);
 
   /*
-   * Contacts come through the same selection, as a subquery rather than a list of ids.
+   * Contacts and audits come through the same selection, as a subquery rather than a list of ids:
+   * two thousand ids is two thousand parameters, past what D1 takes in one query.
    *
-   * A list of ids for two thousand companies is two thousand parameters in one query, and sooner or
-   * later it hits the driver's ceiling. A subquery has no such ceiling and behaves on D1 the same
-   * way as locally.
-   *
-   * SQL sets the order: named contacts before generic mailboxes, because a letter to hello@ is read
-   * by a manager, section 5 of CLAUDE.md.
+   * SQL sets the contact order: named contacts before generic mailboxes, because a letter to
+   * hello@ is read by a manager, section 5 of CLAUDE.md.
    */
   const chosen = db
     .select({ id: companies.id })
@@ -187,12 +174,24 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
 
   const byCompany = new Map<number, typeof contactRows>();
   for (const row of contactRows) {
-    // push rather than a new array: a copy per contact is wasted work exactly where there is the
-    // most of it, at companies with a long list of people.
     const list = byCompany.get(row.companyId);
     if (list) list.push(row);
     else byCompany.set(row.companyId, [row]);
   }
+
+  const auditRows = await db
+    .select({
+      companyId: siteAudits.companyId,
+      checkedAt: siteAudits.checkedAt,
+      perfScore: siteAudits.perfScore,
+      issues: siteAudits.issues,
+    })
+    .from(siteAudits)
+    .where(sql`${siteAudits.companyId} in ${chosen}`)
+    .orderBy(desc(siteAudits.checkedAt));
+
+  const latestAudit = new Map<number, (typeof auditRows)[number]>();
+  for (const row of auditRows) if (!latestAudit.has(row.companyId)) latestAudit.set(row.companyId, row);
 
   const cards = rows
     .map((row) => {
@@ -200,6 +199,7 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         company: row.company,
         status: row.status,
       });
+      const audit = latestAudit.get(row.company.id);
 
       return {
         companyId: row.company.id,
@@ -224,10 +224,13 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         extra: row.company.extra ?? {},
         description: row.company.description,
         careersUrl: row.company.careersUrl,
+        careersKind: row.company.careersKind,
         sourceUrl: row.company.sourceUrl,
         sources: row.company.sources,
         firstSeen: row.company.firstSeen,
+        lastChecked: row.company.lastChecked,
         status: row.status ?? 'new',
+        snoozedUntil: row.snoozedUntil,
         hiring: hiringNow(row.company, now),
         hiringRoles: row.company.hiringRoles,
         score: breakdown.score,
@@ -237,23 +240,29 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
           name: contact.name,
           role: contact.role,
           email: contact.email,
+          phone: contact.phone,
           emailValid: contact.emailValid,
         })),
+        audit: audit ? { checkedAt: audit.checkedAt, perfScore: audit.perfScore, issues: audit.issues } : null,
         lastContactedAt: row.lastContactedAt,
       } satisfies StudioCard;
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => (filters.sort === 'name' ? a.name.localeCompare(b.name) : b.score - a.score));
 
   return cards;
 }
 
-/** A page of the studio list together with counters for the interface. */
+/** A page of the list together with counters for the interface. */
 export async function studioPage(filters: StudioFilters = {}): Promise<StudioPage> {
-  const threshold = filters.minScore ?? rules().companies.threshold;
+  const leads = (filters.scope ?? 'leads') === 'leads';
+  const threshold = filters.minScore ?? (leads ? rules().companies.threshold : null);
   const all = await scoreAll(filters);
-  const passing = all
-    .filter((card) => card.score >= threshold)
-    .filter((card) => !filters.withNamedContact || card.contacts.some((contact) => contact.name));
+  const passing = all.filter(
+    (card) =>
+      (threshold === null || card.score >= threshold) &&
+      (filters.maxScore === undefined || card.score <= filters.maxScore) &&
+      (filters.hiring === undefined || card.hiring === filters.hiring),
+  );
 
   return {
     cards: passing.slice(0, filters.limit ?? 1000),
@@ -342,7 +351,9 @@ export async function studiosToEnrich(limit = 25): Promise<Company[]> {
   const rows = await db
     .select()
     .from(companies)
-    .where(and(isNull(companies.lastChecked), notInArray(companies.careersKind, ['none'])))
+    .where(
+      and(isNull(companies.lastChecked), notInArray(companies.careersKind, ['none']), ne(companies.domain, '')),
+    )
     .orderBy(desc(companies.firstSeen))
     .limit(limit);
   return rows;

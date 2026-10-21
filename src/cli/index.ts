@@ -24,6 +24,7 @@ import { embedCompanies, similarCompanies } from '../pipeline/similar.js';
 import { studioPage } from '../pipeline/studios.js';
 import { fullStats } from '../pipeline/stats.js';
 import { studioQueue } from '../pipeline/studios.js';
+import { filterFromQuery } from '../pipeline/filters.js';
 import { scoreCompany } from '../pipeline/company-score.js';
 import { companies as companiesTable } from '../db/schema.js';
 import { notify, isConfigured, probe, HELP_TEXT, statusText } from '../notify/telegram.js';
@@ -84,7 +85,7 @@ program
       console.log('no sources registered yet');
       return;
     }
-    console.table(all.map((s) => ({ id: s.id, kind: s.kind, browser: Boolean(s.needsBrowser) })));
+    console.table(all.map((s) => ({ id: s.id, kind: s.kind, browser: 'needsBrowser' in s && Boolean(s.needsBrowser) })));
   });
 
 program
@@ -297,13 +298,15 @@ program
   .option('--all', 'include those already contacted')
   .action(async (opts: { limit: string; min?: string; country?: string; market?: string; kind?: string; search?: string; all?: boolean }) => {
     const cards = await studioQueue({
+      ...filterFromQuery({
+        minScore: opts.min,
+        country: opts.country,
+        market: opts.market,
+        kind: opts.kind,
+        search: opts.search,
+        includeContacted: opts.all ? '1' : undefined,
+      }),
       limit: Number(opts.limit),
-      minScore: opts.min ? Number(opts.min) : undefined,
-      country: opts.country,
-      market: opts.market,
-      kind: opts.kind,
-      search: opts.search,
-      includeContacted: opts.all,
     });
 
     if (cards.length === 0) {
@@ -392,7 +395,7 @@ program
     let csv = '';
 
     if (what === 'studios') {
-      const page = await studioPage({ limit: 1000, withNamedContact: opts.named });
+      const page = await studioPage({ limit: 1000, hasNamedContact: opts.named || undefined });
       csv = toCsv(
         page.cards.map((card) => ({
           company: card.name,
