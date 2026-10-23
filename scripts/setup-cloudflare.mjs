@@ -37,6 +37,7 @@ const SECRETS_FROM_ENV = [
   'GOOGLE_CLIENT_SECRET',
   'GMAIL_FROM_EMAIL',
   'GOOGLE_PLACES_API_KEY',
+  'PAGESPEED_API_KEY',
 ];
 
 function step(text) {

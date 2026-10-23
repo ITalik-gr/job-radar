@@ -9,6 +9,7 @@ import { syncCatalog, syncDou } from './pipeline/catalogs.js';
 import { syncAllLeads } from './pipeline/leads.js';
 import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
+import { audit } from './pipeline/audit.js';
 import { notify } from './notify/telegram.js';
 import { isOverdue, lastSuccessAt } from './lib/runs.js';
 import { checkReplies } from './pipeline/replies.js';
@@ -20,6 +21,8 @@ export const SCHEDULE = {
   ats: '0 */6 * * *',
   /** Site crawl for contacts, stack and signs of life, a batch at a time. */
   enrich: '30 */6 * * *',
+  /** PageSpeed audit of company sites: half a minute per site, so a small batch. */
+  audit: '15 */6 * * *',
   catalogs: '0 4 * * 1',
   discovery: '0 5 * * 2',
   /**
@@ -122,6 +125,12 @@ export function startScheduler(): void {
 
   cron.schedule(SCHEDULE.ats, () => void runBoards(), { timezone });
   cron.schedule(SCHEDULE.enrich, () => void safely('enrich', () => enrich({ limit: 25 })), { timezone });
+  // Without a key the audit is off on purpose, same as Places.
+  cron.schedule(
+    SCHEDULE.audit,
+    () => void (config.pagespeed.apiKey && safely('audit', () => audit({ limit: 10 }))),
+    { timezone },
+  );
   cron.schedule(SCHEDULE.catalogs, () => void runCatalogs(), { timezone });
   cron.schedule(SCHEDULE.leads, () => void safely('leads', () => syncAllLeads()), { timezone });
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });

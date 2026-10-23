@@ -69,6 +69,15 @@ export const config = {
       return num('PLACES_QUERIES_PER_RUN', 6);
     },
   },
+  /**
+   * PageSpeed Insights API for the site audit. Required: the keyless quota is zero per project.
+   * The free keyed quota (25 000 calls a day) is far above what the radar needs.
+   */
+  pagespeed: {
+    get apiKey() {
+      return str('PAGESPEED_API_KEY', '');
+    },
+  },
   http: {
     get userAgent() {
       return `JobRadar/0.1 (+mailto:${str('USER_AGENT_CONTACT', 'unknown')})`;

@@ -17,6 +17,7 @@ import { importFiles, syncCatalog, syncDou } from '../pipeline/catalogs.js';
 import { BUSINESS_TYPES, DOMAINS } from '../sources/catalogs/dou.js';
 import { discover } from '../pipeline/discover.js';
 import { enrich } from '../pipeline/enrich.js';
+import { audit } from '../pipeline/audit.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
 import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
 import { toCsv } from '../lib/csv.js';
@@ -380,6 +381,22 @@ program
       'with named contacts': stats.withPeople,
       'with any email': stats.withEmail,
       'contacts added': stats.contactsAdded,
+      errors: stats.errors.length,
+    });
+    for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('audit')
+  .description('PageSpeed audit of company sites: speed, mobile layout, https, letter-ready issues')
+  .option('-n, --limit <number>', 'how many sites to audit', '10')
+  .option('--domain <domain>', 'a specific company')
+  .action(async (opts: { limit: string; domain?: string }) => {
+    const stats = await audit({ limit: Number(opts.limit), domain: opts.domain });
+    console.table({
+      audited: stats.audited,
+      'with issues': stats.withIssues,
+      'still to audit': stats.remaining,
       errors: stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);

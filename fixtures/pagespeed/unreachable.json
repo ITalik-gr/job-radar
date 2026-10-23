@@ -1,0 +1,20 @@
+{
+  "kind": "pagespeedonline#result",
+  "id": "http://down.example.ua/",
+  "lighthouseResult": {
+    "requestedUrl": "http://down.example.ua/",
+    "finalDisplayedUrl": "http://down.example.ua/",
+    "lighthouseVersion": "12.8.2",
+    "runtimeError": {
+      "code": "FAILED_DOCUMENT_REQUEST",
+      "message": "Lighthouse was unable to reliably load the page you requested. (Details: net::ERR_NAME_NOT_RESOLVED)"
+    },
+    "audits": {},
+    "categories": {
+      "performance": {
+        "id": "performance",
+        "score": null
+      }
+    }
+  }
+}

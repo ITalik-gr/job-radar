@@ -11,6 +11,7 @@ import { syncCatalog, syncDou } from './pipeline/catalogs.js';
 import { syncAllLeads } from './pipeline/leads.js';
 import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
+import { audit } from './pipeline/audit.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
 import { setAiBinding } from './lib/workers-ai.js';
@@ -80,6 +81,8 @@ async function runSchedule(cron: string): Promise<void> {
     }
     // A few sites per run: each is several pages, all subrequests under the same ceiling.
     await safely('enrich', () => enrich({ limit: 10 }));
+    // One subrequest per site, but each takes half a minute of wall time inside Google.
+    if (config.pagespeed.apiKey) await safely('audit', () => audit({ limit: 5 }));
     return;
   }
 

@@ -222,6 +222,15 @@ For every company with a domain:
   small list of concrete issues ("no mobile version", "loads 9 s on a phone", "copyright
   2019"). Issues feed the `{{finding}}` placeholder of a letter and the lead score
 
+How the audit works (`src/pipeline/audit.ts`, `pnpm cli audit`, every 6 hours in a small batch):
+one PageSpeed call per site, mobile, on `http://domain` so the final URL shows the https
+redirect. Copyright year and platform come from enrichment, not a second crawl. Issues are
+letter-ready phrases in the company's letter language, most convincing first, and only from
+measured fields. Traps: the keyless PageSpeed quota is zero, so no key means the audit is off;
+the key goes in the `x-goog-api-key` header, a failed URL lands in `runs`; a page Lighthouse
+could not load gets an empty audit row so it waits 90 days instead of heading every batch;
+a 429 or 403 stops the run. The success fixtures are made up, replace them with recorded ones.
+
 A business with no site at all is also a lead ("you have no site"), as long as it has a
 phone or an email.
 

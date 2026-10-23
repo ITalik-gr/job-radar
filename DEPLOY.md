@@ -79,6 +79,7 @@ them can also be set by hand with `pnpm wrangler secret put NAME`.
 | `RESEND_API_KEY` | sending through Resend instead |
 | `ANTHROPIC_BASE_URL` | only for AI Gateway |
 | `GOOGLE_PLACES_API_KEY` | the `places` source (UA businesses). Without it the source is off and the Monday run skips it |
+| `PAGESPEED_API_KEY` | the site audit. Without it the audit is off: the keyless PageSpeed quota is zero |
 
 ## Deploy on push with GitHub Actions
 

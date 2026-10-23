@@ -117,6 +117,15 @@ const GROUPS: OperationGroup[] = [
         batch: { field: 'limit', size: 5 },
         fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 25 }],
       },
+      {
+        id: 'audit',
+        label: 'Audit sites',
+        hint: 'PageSpeed on a phone: speed, mobile layout, https. Needs PAGESPEED_API_KEY',
+        path: '/audit',
+        slow: true,
+        batch: { field: 'limit', size: 2 },
+        fields: [{ name: 'limit', label: 'sites', kind: 'number', def: 10 }],
+      },
     ],
   },
   {

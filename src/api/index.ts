@@ -44,6 +44,7 @@ import { runSource } from '../pipeline/sync.js';
 import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
 import { browserQueue, enrich, saveBrowserFindings, type BrowserFindings } from '../pipeline/enrich.js';
+import { audit } from '../pipeline/audit.js';
 import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes, pageFilters } from './companies.js';
 import { dailyQueue } from '../pipeline/daily-queue.js';
@@ -760,6 +761,11 @@ app.post('/api/import/browser/site', async (c) => {
 app.post('/api/enrich', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { limit?: number; domain?: string };
   return c.json(await enrich({ limit: body.limit ?? 25, domain: body.domain }));
+});
+
+app.post('/api/audit', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number; domain?: string };
+  return c.json(await audit({ limit: body.limit ?? 10, domain: body.domain }));
 });
 
 app.post('/api/catalogs/dou/run', async (c) => {

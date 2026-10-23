@@ -38,6 +38,8 @@ export const TECH_MARKERS: [RegExp, string][] = [
   [/shopify|cdn\.shopify/i, 'shopify'],
   [/webflow/i, 'webflow'],
   [/tilda|tildacdn/i, 'tilda'],
+  [/images\.prom\.ua|\.prom\.st\//i, 'prom'],
+  [/horoshop/i, 'horoshop'],
   [/gatsby/i, 'gatsby'],
   [/__remixContext|remix-run/i, 'remix'],
   [/__sveltekit|kit\.start\(/i, 'sveltekit'],
