@@ -12,7 +12,7 @@ import { COMPANY_STATUSES } from './companies.js';
  */
 export const companyFilterSchema = z
   .object({
-    search: z.string().trim().min(1).optional().describe('Substring of name, domain or tags'),
+    search: z.string().trim().min(1).optional().describe('Substring of name, domain, tags or description'),
     market: z.enum(['ua', 'intl']).optional(),
     country: z.string().trim().min(1).optional().describe('Country code as stored, UA, PL, US'),
     city: z.string().trim().min(1).optional(),
@@ -33,6 +33,18 @@ export const companyFilterSchema = z
     minScore: z.number().optional(),
     maxScore: z.number().optional(),
     minRating: z.number().optional().describe('Minimum catalog rating; a company without a rating does not pass'),
+    minFit: z
+      .number()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe('Minimum model fit, 0 to 100: 100 likely buyer, 67 possible, 33 unlikely. Unrated companies do not pass'),
+    fitService: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe('Service the model picked, any of: website, mvp, ai, automation, optimization, white_label'),
+    fitStage: z.array(z.string()).min(1).optional().describe('Company stage the model picked, any of: idea, early, growth, established'),
     includeContacted: z
       .boolean()
       .optional()
@@ -42,9 +54,9 @@ export const companyFilterSchema = z
 
 export type CompanyFilter = z.infer<typeof companyFilterSchema>;
 
-const LIST_FIELDS = ['kind', 'industry', 'tags', 'status'] as const;
+const LIST_FIELDS = ['kind', 'industry', 'tags', 'status', 'fitService', 'fitStage'] as const;
 const BOOLEAN_FIELDS = ['hasEmail', 'hasNamedContact', 'hasSite', 'hasAuditIssues', 'hiring', 'includeContacted'] as const;
-const NUMBER_FIELDS = ['minScore', 'maxScore', 'minRating'] as const;
+const NUMBER_FIELDS = ['minScore', 'maxScore', 'minRating', 'minFit'] as const;
 
 /**
  * A filter from URL parameters: lists are comma separated, booleans are 1 or 0. Empty values are
@@ -120,6 +132,9 @@ export function filterConditions(filter: CompanyFilter): SQL[] {
     ),
     filter.status ? inArray(status, filter.status) : undefined,
     filter.minRating === undefined ? undefined : sql`coalesce(${companies.rating}, 0) >= ${filter.minRating}`,
+    filter.minFit === undefined ? undefined : sql`coalesce(${companies.fit}, -1) >= ${filter.minFit}`,
+    filter.fitService ? inArray(companies.fitService, filter.fitService) : undefined,
+    filter.fitStage ? inArray(companies.fitStage, filter.fitStage) : undefined,
     flag(
       filter.hasEmail,
       sql`exists (select 1 from ${contacts} where ${contacts.companyId} = ${companies.id}
@@ -145,7 +160,8 @@ export function filterConditions(filter: CompanyFilter): SQL[] {
     conditions.push(
       sql`(lower(${companies.name}) like ${needle}
         or lower(${companies.domain}) like ${needle}
-        or lower(${companies.tags}) like ${needle})`,
+        or lower(${companies.tags}) like ${needle}
+        or lower(coalesce(${companies.description}, '')) like ${needle})`,
     );
   }
 

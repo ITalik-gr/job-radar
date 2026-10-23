@@ -9,8 +9,13 @@ export function Score({ value, size = 'md' }: { value: number | null; size?: 'sm
   const color = score >= 12 ? 'green' : score >= 6 ? 'brand' : score <= -50 ? 'red' : 'gray';
 
   return (
-    <Tooltip label="sum of the scoring weights plus the model's opinion divided by 20">
-      <Badge color={color} size={size} radius="sm" className="tabular" style={{ minWidth: 44 }}>
+    <Tooltip label="sum of the scoring weights, the breakdown is on the company page">
+      <Badge
+        color={color}
+        size={size}
+        className="mono"
+        style={{ minWidth: 48, fontWeight: 500, flexShrink: 0 }}
+      >
         {score.toFixed(1)}
       </Badge>
     </Tooltip>

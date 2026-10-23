@@ -138,4 +138,31 @@ describe('saving leads', () => {
     expect(await setLeadStatus(open[0]!.id, 'interesting')).toMatchObject({ before: 'new', after: 'interesting' });
     await expect(setLeadStatus(open[0]!.id, 'maybe' as never)).rejects.toThrow('unknown');
   });
+
+  it('filters by budget, fit, text and deadline; a lead without a budget or fit fails those bounds', async () => {
+    const now = Date.parse('2026-10-21T12:00:00Z');
+    const base = parseTender(tender);
+    const deadline = now + 5 * 86_400_000;
+    await saveLeads([
+      { ...base, externalId: 'UA-BUDGET-SMALL', title: 'Розробка веб-сайту бібліотеки', budget: 40_000, deadlineAt: deadline },
+      { ...base, externalId: 'UA-BUDGET-BIG', title: 'Розробка порталу', budget: 900_000, deadlineAt: now + 40 * 86_400_000 },
+      { ...base, externalId: 'UA-BUDGET-NONE', title: 'Сайт без бюджету', budget: null, deadlineAt: deadline },
+    ]);
+    const [small] = await getDb().select().from(leads).where(eq(leads.externalId, 'UA-BUDGET-SMALL'));
+    await getDb().update(leads).set({ fit: 100 }).where(eq(leads.id, small!.id));
+
+    const ids = async (query: Parameters<typeof listLeads>[0]) =>
+      // Only the rows made here: the fixture tender above has a large budget of its own.
+      (await listLeads({ source: 'prozorro', ...query }, now))
+        .map((row) => row.externalId)
+        .filter((id) => id.startsWith('UA-BUDGET'));
+
+    expect(await ids({ maxBudget: 50_000 })).toEqual(['UA-BUDGET-SMALL']);
+    expect(await ids({ minBudget: 500_000 })).toEqual(['UA-BUDGET-BIG']);
+    expect(await ids({ minFit: 67 })).toEqual(['UA-BUDGET-SMALL']);
+    expect(await ids({ search: 'бібліотеки' })).toEqual(['UA-BUDGET-SMALL']);
+    expect(await ids({ deadlineDays: 7 })).toEqual(expect.arrayContaining(['UA-BUDGET-SMALL', 'UA-BUDGET-NONE']));
+    expect(await ids({ deadlineDays: 7 })).not.toContain('UA-BUDGET-BIG');
+    expect((await ids({ sort: 'budget' }))[0]).toBe('UA-BUDGET-BIG');
+  });
 });

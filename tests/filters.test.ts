@@ -193,6 +193,19 @@ describe('API', () => {
     expect(body.source).toEqual(expect.arrayContaining([{ key: 'places', count: 2 }]));
     expect(body.tags).toEqual(expect.arrayContaining([{ key: 'clinic', count: 1 }]));
   });
+
+  it('GET /api/companies/card/:key finds a company by domain or by id, with its score', async () => {
+    const byDomain = (await (await get('/api/companies/card/pixel.studio')).json()) as StudioCard;
+    expect(byDomain.companyId).toBe(studio.id);
+    expect(byDomain.why.length).toBeGreaterThan(0);
+
+    const byId = (await (await get(`/api/companies/card/id-${clinic.id}`)).json()) as StudioCard;
+    expect(byId.name).toBe('Smile Dental');
+
+    // A product company is hidden from Leads, but its own page still opens.
+    expect((await get('/api/companies/card/bigproduct.com')).status).toBe(200);
+    expect((await get('/api/companies/card/nobody.example')).status).toBe(404);
+  });
 });
 
 describe('saved filters', () => {

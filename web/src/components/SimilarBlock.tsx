@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Anchor, Badge, Box, Group, Text } from '@mantine/core';
+import { Badge, Box, Group, Text } from '@mantine/core';
 import { api } from '../lib/api';
 
 /**

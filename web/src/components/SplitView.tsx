@@ -16,7 +16,7 @@ export function SplitView({
   listWidth?: number;
 }) {
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex min-h-0 flex-1">
       <div
         className="flex min-h-0 shrink-0 flex-col"
         style={{ width: listWidth, borderRight: '1px solid var(--mantine-color-gray-2)' }}

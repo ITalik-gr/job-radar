@@ -111,14 +111,14 @@ export interface ClassifyStats {
   remaining: number;
 }
 
-interface Target<T> {
+export interface Target<T> {
   row: T;
   state: unknown;
   questions: Record<string, Question>;
 }
 
 /** Targets split into those never asked and those with an answer already cached. */
-async function splitByCache<T>(targets: Target<T>[]) {
+export async function splitByCache<T>(targets: Target<T>[]) {
   const model = activeDecisionModel();
   const keys = targets.map((target) => decisionKey(model, target.state, target.questions));
   const answers = await cachedAnswers(keys);

@@ -46,13 +46,14 @@ import { discover } from '../pipeline/discover.js';
 import { browserQueue, enrich, saveBrowserFindings, type BrowserFindings } from '../pipeline/enrich.js';
 import { audit } from '../pipeline/audit.js';
 import { classifyCompanies, classifyLeads } from '../pipeline/classify.js';
+import { fitCompanies } from '../pipeline/fit.js';
 import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes, pageFilters } from './companies.js';
 import { dailyQueue } from '../pipeline/daily-queue.js';
 import { LEAD_STATUSES, listLeads, setLeadStatus, type LeadStatus } from '../pipeline/leads.js';
 import { deleteSavedFilter, listSavedFilters, saveFilter } from '../pipeline/saved-filters.js';
 import { mcpRoutes } from '../mcp/route.js';
-import { applyStudioAction, studioPage, type StudioActionInput } from '../pipeline/studios.js';
+import { applyStudioAction, slimCard, studioPage, type StudioActionInput } from '../pipeline/studios.js';
 import { resetRules, rules, rulesSource, saveRules } from '../pipeline/rules.js';
 import {
   TEMPLATE_KINDS,
@@ -302,7 +303,8 @@ app.post('/api/import/catalog', async (c) => {
 app.get('/api/studios', async (c) => {
   const filters = pageFilters(c.req.query());
   if ('error' in filters) return c.json(filters, 400);
-  return c.json(await studioPage({ ...filters, scope: 'leads' }));
+  const page = await studioPage({ ...filters, scope: 'leads' });
+  return c.json({ ...page, cards: page.cards.map(slimCard) });
 });
 
 /** Open leads (tenders, funding news) by deadline. `all=1` includes closed and expired ones. */
@@ -314,9 +316,22 @@ app.get('/api/leads', async (c) => {
       source: c.req.query('source') || undefined,
       status: (status as LeadStatus) || undefined,
       open: c.req.query('all') !== '1',
+      search: c.req.query('q')?.trim() || undefined,
+      minBudget: numberParam(c.req.query('minBudget')),
+      maxBudget: numberParam(c.req.query('maxBudget')),
+      minFit: numberParam(c.req.query('minFit')),
+      deadlineDays: numberParam(c.req.query('deadlineDays')),
+      sort: (['deadline', 'budget', 'fit', 'new'] as const).find((value) => value === c.req.query('sort')),
     }),
   );
 });
+
+/** A number from a query parameter. Empty or not a number is no bound, never a zero. */
+function numberParam(value: string | undefined): number | undefined {
+  if (!value?.trim()) return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
 
 app.post('/api/leads/:id/status', async (c) => {
   const body = await c.req.json<{ status?: string }>().catch(() => ({}) as { status?: string });
@@ -772,6 +787,11 @@ app.post('/api/audit', async (c) => {
 app.post('/api/classify', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
   return c.json(await classifyCompanies({ limit: body.limit ?? 50 }));
+});
+
+app.post('/api/fit', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  return c.json(await fitCompanies({ limit: body.limit ?? 50 }));
 });
 
 app.post('/api/classify/leads', async (c) => {

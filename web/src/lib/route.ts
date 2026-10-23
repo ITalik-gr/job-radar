@@ -25,6 +25,7 @@
 export function parse(hash: string): string[] {
   return hash
     .replace(/^#\/?/, '')
+    .replace(/\?.*$/, '')
     .split('/')
     .filter(Boolean)
     .map((part) => {
@@ -39,6 +40,24 @@ export function parse(hash: string): string[] {
 
 export function href(...segments: string[]): string {
   return `#/${segments.map(encodeURIComponent).join('/')}`;
+}
+
+/**
+ * The list state after the path: `#/studios?country=UA&mode=all`. Filters, tab and page live
+ * here rather than in component state, so going back to a list finds it as it was left.
+ */
+export function parseQuery(hash: string): Record<string, string> {
+  const at = hash.indexOf('?');
+  if (at < 0) return {};
+  return Object.fromEntries(new URLSearchParams(hash.slice(at + 1)));
+}
+
+/** A path with list state. Empty values are dropped, so a cleared filter leaves no `?q=`. */
+export function hrefWith(segments: string[], query: Record<string, string | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+  const tail = params.toString();
+  return `${href(...segments)}${tail ? `?${tail}` : ''}`;
 }
 
 /**

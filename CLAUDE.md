@@ -273,9 +273,19 @@ reaches old answers; a changed list changes the key and re-asks everyone; Clef c
 things, so funding news still need a human to name the company; the REST body names the model
 short (`clef-flash`), the URL by full id.
 
+**Lead fit** (`src/pipeline/fit.ts`, `config/fit.json`, `pnpm cli fit`, hourly in batches of 8):
+three Clef picks per company from fixed lists: how likely it is to pay an outside developer
+(`companies.fit`, 0 to 100 by level: no, unlikely, possible, likely), which service
+(`fit_service`), what stage (`fit_stage`). Service and stage are stored only when decisive. The
+score weighs the level (`modelFit` in the rules, 0 turns it off). Never asked: no text,
+blacklisted, rejected, product companies. A company with no description gets one from its site's
+meta description during enrichment (`extractSiteDescription`), never from the model.
+
 **Filters** on the Companies page and in MCP use one query shape: market, country, city,
 segment, industry, source, tags, status, has email, has named contact, has site, audit
-issues, score range, hiring signal, text search. Any combination can be saved as a named
+issues, score range, hiring signal, model fit (minimum, service, stage), text search (name,
+domain, tags, description). Tenders have their own: text, budget from and to (a lead without a
+budget fails a bound), fit, deadline within N days, sort. Any combination can be saved as a named
 filter.
 
 **Queue:** a short daily list (`queue.size` in the rules, default 10), round robin across
@@ -347,9 +357,9 @@ claude.ai and Claude Desktop.
 
 Local `localhost:5173` or the worker URL with `RADAR_TOKEN`.
 
-Pages: **Leads** (scored list with filters, route `studios` for now), **Startups**,
-**Companies** (table, filters, saved filters, bulk status and tags, company card with audit,
-contacts, leads, letter history), **Tenders** (open leads by deadline, funding news), **Sending** (drafts, daily counter, timer), **Outreach** (history,
+Pages: **Today** (the daily slice, the start page), **Leads** (scored list with filters, route `studios` for now), **Startups**,
+**Companies** (table, filters, saved filters, bulk status and tags), the **company page**
+`#/companies/:key` every list opens (audit, contacts, leads, letter history, letter drawer), **Tenders** (open leads by deadline, funding news), **Sending** (drafts, daily counter, timer), **Outreach** (history,
 replies, follow-ups), **Templates**, **Rules**, **Sources** (adapter health, run now),
 **Operations**.
 
@@ -377,8 +387,12 @@ owner's confirmation.
 5. ~~**Site audit and lead scoring**~~ Done 2026-10-23: PageSpeed audit with real-user LCP
    first (migration 0020: `site_audits.field_lcp_ms`), letter-ready issues, site-buyer scoring,
    open tender and named contact weights, Clef-flash for industry, segment and tender fit
-6. **Design pass**: direction in `docs/DESIGN.md` (Dub and ClickUp references, icons
-   everywhere), waiting for the owner's approval of the example boards
+6. **Design pass** (in progress since 2026-10-23): direction in `docs/DESIGN.md`. Done: theme
+   and tokens, sidebar, Today, Leads, Startups, Companies, Tenders, the one company page with the
+   letter drawer, back to the exact place, trimmed list payloads; lead fit (migration 0021:
+   `companies.fit`, `fit_service`, `fit_stage`, `fit_at`); Outbox, Outreach, Templates, Rules
+   (model fit weights and the daily slice size now editable), Sources, Operations, Stats.
+   Left: the owner's review
 7. Later: Product Hunt, Brave1 and USF catalogs, state register, renaming the project.
    Ideas to discuss first: `docs/IDEAS.md` (problem collector from Reddit, X, Threads)
 
@@ -410,6 +424,9 @@ never audited in a browser on empty data.
   `AI_GATEWAY_TOKEN` is set. `pnpm cli llm:ping` checks it
 - **D1 parameter limit:** big `in (...)` lists go through `src/lib/chunk.ts`
 - **Worker subrequest limit:** heavy runs are split across cron invocations and rotated
+- **List payloads are trimmed** (`slimCard`): the worker directory is thousands of companies and
+  full cards were about 7 MB per page open. Lists get a line of description and the positive
+  reasons; the company page fetches `GET /api/companies/card/:key` for the whole card
 
 ---
 

@@ -70,6 +70,18 @@ export const rulesSchema = z.object({
     minLeadFit: z.number().default(50),
     namedContact: z.number().default(2),
     /*
+     * The model's fit read (`fit.ts`), by level. A classification the score weighs, not a verdict:
+     * the owner tunes how much it counts, and 0 turns it off.
+     */
+    modelFit: z
+      .object({
+        likely: z.number().default(4),
+        possible: z.number().default(0),
+        unlikely: z.number().default(-3),
+        no: z.number().default(-8),
+      })
+      .default({}),
+    /*
      * Catalog reputation. Optional with defaults, like kindWeights and stale: a config saved from the
      * interface before the field existed must stay valid.
      */

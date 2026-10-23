@@ -1,6 +1,12 @@
 # DESIGN.md: Lead Radar visual direction
 
-Status: draft for stage 6, nothing is implemented yet. Written 2026-10-23.
+Status: stage 6 in progress. Written 2026-10-23. First pass done the same day: tokens and theme
+(`web/src/theme.ts`, `web/src/index.css`), the sidebar with icons, Today as one column, the one
+company page `#/companies/:key` with the letter drawer `#/companies/:key/letter`, list state in the
+address and back to the exact place (`web/src/lib/listMemory.ts`). Second pass the same day: every
+page draws its own `PageHeader` with its main action, Outbox, Outreach, Templates, Rules, Sources,
+Operations and Stats in the direction below; no skeletons (a quiet "loading" line or the block's
+own frame), no scroll box inside the page scroll.
 
 The first mockup (canvas "Lead Radar redesign") kept the current look: warm grays, blue
 buttons, uppercase gray labels, almost no icons. The owner's feedback: it looks too much like

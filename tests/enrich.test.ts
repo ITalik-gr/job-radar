@@ -194,6 +194,17 @@ describe('profiles and signs of life', () => {
     expect(extractSignals('<footer>Copyright 2026 Acme</footer>').copyrightYear).toBe(2026);
   });
 
+  it('takes what the site says it does from its meta description', () => {
+    const html = '<head><meta name="description" content="  Dental clinic in Lviv:  implants, whitening and checkups for the whole family. "></head>';
+    expect(extractSignals(html).siteDescription).toBe('Dental clinic in Lviv: implants, whitening and checkups for the whole family.');
+    expect(extractSignals('<meta property="og:description" content="We build logistics software for small carriers.">').siteDescription).toBe(
+      'We build logistics software for small carriers.',
+    );
+    // Too short or a theme placeholder says nothing about the company.
+    expect(extractSignals('<meta name="description" content="Home">').siteDescription).toBeNull();
+    expect(extractSignals('<meta name="description" content="Just another WordPress site for you">').siteDescription).toBeNull();
+  });
+
   it('notices a blog', () => {
     expect(extractSignals('<a href="/blog/hello">post</a>').hasBlog).toBe(true);
     expect(extractSignals('<a href="/pricing">pricing</a>').hasBlog).toBe(false);
@@ -463,6 +474,34 @@ describe('a site that did not open for the server', () => {
     // The timestamp is always set now, otherwise the company is forever first in line.
     expect(row!.lastChecked).not.toBeNull();
     expect((await browserQueue()).map((item) => item.domain)).toContain('closed-site.com');
+  });
+
+  it('a site description fills an empty description, never a catalog one', async () => {
+    const db = getDb();
+    const signals = {
+      copyrightYear: null,
+      hasBlog: false,
+      lastPostAt: null,
+      techHints: [],
+      siteDescription: 'Family dental clinic with three offices in Kyiv.',
+    };
+    const save = (companyId: number, domain: string) =>
+      saveEnrichment({ companyId, domain, contacts: [], signals, pagesFetched: 1, clientRendered: false, reachable: true });
+
+    const { company: empty } = await upsertCompany({ name: 'Empty', domain: 'empty-desc.com', source: 'test' });
+    await save(empty.id, 'empty-desc.com');
+    const [filled] = await db.select().from(companies).where(eq(companies.id, empty.id));
+    expect(filled!.description).toBe('Family dental clinic with three offices in Kyiv.');
+
+    const { company: written } = await upsertCompany({
+      name: 'Written',
+      domain: 'written-desc.com',
+      source: 'test',
+      description: 'A catalog description written about the company.',
+    });
+    await save(written.id, 'written-desc.com');
+    const [kept] = await db.select().from(companies).where(eq(companies.id, written.id));
+    expect(kept!.description).toBe('A catalog description written about the company.');
   });
 
   it('a found address removes the need for a browser', async () => {

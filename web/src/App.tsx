@@ -6,13 +6,11 @@ import {
   Badge,
   Box,
   Button,
-  Divider,
   Group,
   Kbd,
   NavLink,
   PasswordInput,
   Paper,
-  Skeleton,
   Stack,
   Text,
   ThemeIcon,
@@ -20,24 +18,30 @@ import {
   Tooltip,
 } from '@mantine/core';
 import {
-  BarChart3,
   Building2,
-  Inbox,
+  ChartColumn,
+  Database,
   FileText,
-  Gavel,
-  MailPlus,
-  Play,
+  Landmark,
+  ListChecks,
+  Mails,
   Radar,
   Rocket,
-  Radio,
   Send,
   SlidersHorizontal,
+  Sun,
+  Wrench,
+  type LucideIcon,
 } from 'lucide-react';
 import { api, setToken } from './lib/api';
 import { useRoute } from './lib/useRoute';
+import { parse } from './lib/route';
+import { entryState } from './lib/listMemory';
 import { useHotkeys } from './lib/hotkeys';
 import { RunMenu } from './components/RunMenu';
+import { MonoLabel } from './components/ui';
 import { CompaniesPage } from './pages/Companies';
+import { CompanyPage } from './pages/Company';
 import { OutreachPage } from './pages/Outreach';
 import { SendingPage } from './pages/Sending';
 import { OperationsPage } from './pages/Operations';
@@ -47,28 +51,44 @@ import { SourcesPage } from './pages/Sources';
 import { TemplatesPage } from './pages/Templates';
 import { RulesPage } from './pages/Rules';
 import { TendersPage } from './pages/Tenders';
+import { TodayPage } from './pages/Today';
 
 // Stats pulls in recharts, so it loads as a separate chunk only once opened.
 const StatsPage = lazy(() => import('./pages/Stats').then((module) => ({ default: module.StatsPage })));
 
+interface Tab {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  hint: string;
+  group: 'work' | 'base' | 'setup';
+}
+
 const TABS = [
-  { id: 'studios', label: 'Leads', icon: Inbox, hint: 'who to write to: every company above the score threshold, with filters' },
-  { id: 'startups', label: 'Startups', icon: Rocket, hint: 'founders and small startups; the hiring badge shows who needs hands right now' },
-  { id: 'companies', label: 'Companies', icon: Building2, hint: 'the whole database as a directory: search, statuses, history. Not the place to write from' },
-  { id: 'tenders', label: 'Tenders', icon: Gavel, hint: 'explicit demand: open Prozorro tenders by deadline and funding news' },
-  { id: 'sending', label: 'Outbox', icon: MailPlus, hint: 'ready letter drafts, one click each' },
-  { id: 'outreach', label: 'Contacts', icon: Send, hint: 'who was written to and who replied' },
-  { id: 'stats', label: 'Stats', icon: BarChart3, hint: 'what is in the base: segments, markets, sources, reach' },
-  { id: 'sources', label: 'Sources', icon: Radio, hint: 'adapter status and manual runs' },
-  { id: 'templates', label: 'Templates', icon: FileText, hint: 'your letter texts and resumes' },
-  { id: 'rules', label: 'Rules', icon: SlidersHorizontal, hint: 'lead scoring: threshold and weights' },
-  { id: 'operations', label: 'Operations', icon: Play, hint: 'everything that used to live in the CLI: collection, processing, checks' },
-] as const;
+  { id: 'today', label: 'Today', icon: Sun, group: 'work', hint: 'the fixed daily slice: a short list across segments, one company at a time' },
+  { id: 'studios', label: 'Leads', icon: ListChecks, group: 'work', hint: 'every company above the score threshold, with filters' },
+  { id: 'startups', label: 'Startups', icon: Rocket, group: 'work', hint: 'founders and small startups; the hiring chip shows who needs hands right now' },
+  { id: 'tenders', label: 'Tenders', icon: Landmark, group: 'work', hint: 'explicit demand: open Prozorro tenders by deadline and funding news' },
+  { id: 'sending', label: 'Outbox', icon: Send, group: 'work', hint: 'ready letter drafts, one click each' },
+  { id: 'outreach', label: 'Outreach', icon: Mails, group: 'work', hint: 'who was written to, who replied, follow-ups' },
+  { id: 'companies', label: 'Companies', icon: Building2, group: 'base', hint: 'the whole database as a directory: search, statuses, history' },
+  { id: 'stats', label: 'Stats', icon: ChartColumn, group: 'base', hint: 'what is in the base: segments, markets, sources, reach' },
+  { id: 'templates', label: 'Templates', icon: FileText, group: 'setup', hint: 'your letter texts' },
+  { id: 'rules', label: 'Rules', icon: SlidersHorizontal, group: 'setup', hint: 'lead scoring: threshold and weights' },
+  { id: 'sources', label: 'Sources', icon: Database, group: 'setup', hint: 'adapter health and manual runs' },
+  { id: 'operations', label: 'Operations', icon: Wrench, group: 'setup', hint: 'everything that used to live in the CLI: collection, processing, checks' },
+] as const satisfies readonly Tab[];
 
 type TabId = (typeof TABS)[number]['id'];
 
-/** Two-pane pages manage their own scrolling, the rest scroll as a whole. */
-const FULL_HEIGHT: TabId[] = ['studios', 'startups', 'templates'];
+const GROUPS: { id: Tab['group']; label: string }[] = [
+  { id: 'work', label: 'work' },
+  { id: 'base', label: 'base' },
+  { id: 'setup', label: 'setup' },
+];
+
+/** Pages that manage their own scrolling: lists restore their scroll on return. */
+const FULL_HEIGHT: TabId[] = ['today', 'studios', 'startups', 'templates', 'companies'];
 
 function TokenGate() {
   const [value, setValue] = useState('');
@@ -78,13 +98,13 @@ function TokenGate() {
   };
 
   return (
-    <div className="flex h-full items-center justify-center p-6">
-      <Paper p="xl" w={400} shadow="sm">
+    <div className="dotted flex h-full items-center justify-center p-6">
+      <Paper p="xl" w={400}>
         <Group gap="xs" mb="lg">
-          <ThemeIcon variant="light" size="md">
+          <ThemeIcon color="ink" variant="filled" size={30}>
             <Radar size={16} />
           </ThemeIcon>
-          <Title order={4}>Lead Radar</Title>
+          <Title order={3}>Lead Radar</Title>
         </Group>
 
         <PasswordInput
@@ -97,7 +117,7 @@ function TokenGate() {
           onKeyDown={(event) => event.key === 'Enter' && value.trim() && save()}
         />
 
-        <Button fullWidth mt="lg" disabled={!value.trim()} onClick={save}>
+        <Button fullWidth mt="lg" variant="filled" disabled={!value.trim()} onClick={save}>
           Sign in
         </Button>
       </Paper>
@@ -134,17 +154,15 @@ function StatusRow({
             h={6}
             style={{
               borderRadius: 999,
-              background: `var(--mantine-color-${tone === 'ok' ? 'teal' : 'yellow'}-6)`,
+              background: `var(--mantine-color-${tone === 'ok' ? 'green' : 'yellow'}-6)`,
               flexShrink: 0,
             }}
           />
         )}
-        <Text size="xs" c="dimmed">
-          {label}
-        </Text>
+        <MonoLabel>{label}</MonoLabel>
       </Group>
       <Tooltip label={hint ?? value ?? label} multiline maw={260} withArrow>
-        <Text size="xs" className="tabular" c={color} truncate maw={130} ta="right">
+        <Text size="xs" className="mono" c={color} truncate maw={130} ta="right">
           {action ? <Anchor href={action.href} size="xs" c={color}>{action.label}</Anchor> : value}
         </Text>
       </Tooltip>
@@ -159,8 +177,11 @@ export function App() {
    * through the whole tree, and the back button works as it should.
    */
   const { segments, go } = useRoute();
-  const tab: TabId = (TABS.find((item) => item.id === segments[0])?.id ?? 'studios') as TabId;
+  const tab: TabId = (TABS.find((item) => item.id === segments[0])?.id ?? 'today') as TabId;
   const setTab = (id: TabId) => go([id]);
+
+  // `#/companies/acme.com` is the company page, the one company view every list opens.
+  const companyKey = segments[0] === 'companies' ? (segments[1] ?? null) : null;
 
   const { data: stats, error: statsError } = useQuery({
     queryKey: ['stats'],
@@ -186,7 +207,7 @@ export function App() {
 
   // Digits switch sections: hands stay on the keyboard while working the list.
   useHotkeys(
-    useMemo(() => Object.fromEntries(TABS.map((item, index) => [String(index + 1), () => setTab(item.id)])), []),
+    useMemo(() => Object.fromEntries(TABS.slice(0, 9).map((item, index) => [String(index + 1), () => setTab(item.id)])), []),
   );
 
   // A deployed instance shows nothing without a token, so ask for it straight away.
@@ -198,173 +219,155 @@ export function App() {
   const broken =
     sources?.filter((row) => row.lastRun?.status === 'warn' || row.lastRun?.status === 'error').length ?? 0;
 
-  const counters: Partial<Record<TabId, { value: number; color: string }>> = {
-    outreach: overdue > 0 ? { value: overdue, color: 'yellow' } : undefined,
-    sources: broken > 0 ? { value: broken, color: 'red' } : undefined,
+  const counters: Partial<Record<TabId, { value: number; color: string; hint: string }>> = {
+    outreach: overdue > 0 ? { value: overdue, color: 'yellow', hint: 'no reply for 7+ days' } : undefined,
+    sources: broken > 0 ? { value: broken, color: 'red', hint: 'sources with a warning or an error' } : undefined,
   };
 
-  const active = TABS.find((item) => item.id === tab)!;
-  const fullHeight = FULL_HEIGHT.includes(tab);
+  // On a company page the navigation keeps showing the list it was opened from.
+  const origin = companyKey !== null ? parse(entryState().from ?? '')[0] : undefined;
+  const current: TabId = (TABS.find((item) => item.id === origin)?.id ?? tab) as TabId;
+  const fullHeight = companyKey !== null || FULL_HEIGHT.includes(tab);
 
   return (
     <AppShell
-      header={{ height: 60 }}
       navbar={{ width: 232, breakpoint: 0 }}
       padding={0}
       styles={{ main: { height: '100dvh', display: 'flex', flexDirection: 'column' } }}
     >
-      {/* The logo sits in the header above the navigation, otherwise the top left
-          corner shows the page name instead of the application name. */}
-      <AppShell.Header>
-        <Group h="100%" gap={0} wrap="nowrap">
-          <Group
-            w={232}
-            h="100%"
-            px="lg"
-            gap="xs"
-            wrap="nowrap"
-            style={{ borderRight: '1px solid var(--mantine-color-gray-2)' }}
-          >
-            <ThemeIcon variant="light" size="md">
-              <Radar size={16} />
-            </ThemeIcon>
-            <Text fw={600}>Lead Radar</Text>
-          </Group>
-
-          <Group h="100%" px="lg" gap="lg" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-            <Tooltip label={active.hint} position="bottom-start">
-              <Title order={3} style={{ whiteSpace: 'nowrap' }}>
-                {active.label}
-              </Title>
-            </Tooltip>
-
-            <Group gap="xl" ml="auto" wrap="nowrap" visibleFrom="md">
-              {stats && (
-                <>
-                  <HeaderStat label="companies" value={stats.funnel.companies ?? 0} />
-                  <HeaderStat label="contacted" value={stats.funnel.contacted ?? 0} />
-                  <HeaderStat label="replied" value={stats.funnel.replied ?? 0} />
-                  {overdue > 0 && <HeaderStat label="no reply 7+ days" value={overdue} color="yellow.8" />}
-                </>
-              )}
-            </Group>
-
-            <RunMenu />
-          </Group>
+      <AppShell.Navbar style={{ borderRight: '1px solid var(--mantine-color-gray-2)' }}>
+        <Group h={64} px="md" gap={10} wrap="nowrap" style={{ flexShrink: 0 }}>
+          <ThemeIcon color="ink" variant="filled" size={30}>
+            <Radar size={16} />
+          </ThemeIcon>
+          <Text className="display" fz={16}>
+            Lead Radar
+          </Text>
         </Group>
-      </AppShell.Header>
 
-      <AppShell.Navbar>
-        <Stack gap={2} p="xs" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-          {TABS.map((item) => {
-            const counter = counters[item.id];
-            return (
-              <NavLink
-                key={item.id}
-                active={tab === item.id}
-                label={item.label}
-                variant="light"
-                onClick={() => setTab(item.id)}
-                leftSection={<item.icon size={16} />}
-                rightSection={
-                  counter && (
-                    <Badge size="sm" color={counter.color} variant={counter.color === 'brand' ? 'filled' : 'light'}>
-                      {counter.value}
-                    </Badge>
-                  )
-                }
-              />
-            );
-          })}
+        <Stack gap={14} px="xs" pb="md" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          {GROUPS.map((group) => (
+            <Stack key={group.id} gap={2}>
+              <Box px="sm" pb={4}>
+                <MonoLabel>{group.label}</MonoLabel>
+              </Box>
+              {TABS.filter((item) => item.group === group.id).map((item) => {
+                const counter = counters[item.id];
+                const index = TABS.findIndex((other) => other.id === item.id);
+                return (
+                  <Tooltip key={item.id} label={item.hint} position="right" multiline maw={260} openDelay={600}>
+                    <NavLink
+                      active={current === item.id}
+                      label={item.label}
+                      variant="light"
+                      onClick={() => setTab(item.id)}
+                      leftSection={<item.icon size={16} strokeWidth={1.75} />}
+                      styles={{
+                        root: { borderRadius: 999, height: 34 },
+                        label: { fontWeight: current === item.id ? 600 : 500, fontSize: 14 },
+                      }}
+                      rightSection={
+                        counter ? (
+                          <Tooltip label={counter.hint}>
+                            <Badge size="sm" color={counter.color} className="mono">
+                              {counter.value}
+                            </Badge>
+                          </Tooltip>
+                        ) : index < 9 ? (
+                          <Text className="mono" fz={11} c="gray.5">
+                            {index + 1}
+                          </Text>
+                        ) : undefined
+                      }
+                    />
+                  </Tooltip>
+                );
+              })}
+            </Stack>
+          ))}
         </Stack>
 
         {stats && (
-          <>
-            <Divider />
-            <Stack gap={6} p="md">
-              {/* The digit hint is shown once here rather than as a badge on every row. */}
-              <Group gap={6} mb={2}>
-                <Kbd size="xs">1</Kbd>
-                <Text size="xs" c="dimmed">
-                  ..
-                </Text>
-                <Kbd size="xs">9</Kbd>
-                <Text size="xs" c="dimmed">
-                  switch sections
-                </Text>
-              </Group>
-              <StatusRow
-                label="model calls"
-                value={String(stats.llmBudgetLeft)}
-                hint="calls left for today"
-              />
-              {/*
-                Which model provider is visible at a glance: Anthropic bills per token,
-                Workers AI uses the quota of an already paid Cloudflare plan.
-              */}
-              <StatusRow
-                label="model"
-                value={stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
-                hint={stats.llmModel}
-              />
-              {/*
-                Mail has three states, not two: connected, not connected, and
-                connected with a broken sender address. The third is the nastiest,
-                because everything looks fine while letters go out with an unreadable From.
-              */}
-              <StatusRow
-                label="mail"
-                hint={gmail?.hint ?? gmail?.email ?? 'Gmail for sending'}
-                tone={gmail?.connected ? (gmail.emailValid ? 'ok' : 'warn') : 'warn'}
-                value={
-                  gmail?.connected
-                    ? gmail.emailValid
-                      ? (gmail.email ?? 'connected')
-                      : 'check the address'
-                    : undefined
-                }
-                action={
-                  gmail?.connected ? undefined : { label: 'connect', href: api.gmailConnectUrl() }
-                }
-              />
-            </Stack>
-          </>
+          <Stack gap={8} p="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+            <RunMenu />
+            <StatusRow label="model calls" value={String(stats.llmBudgetLeft)} hint="calls left for today" />
+            {/*
+              Which model provider is visible at a glance: Anthropic bills per token,
+              Workers AI uses the quota of an already paid Cloudflare plan.
+            */}
+            <StatusRow
+              label="model"
+              value={stats.llmProvider === 'workers-ai' ? 'Workers AI' : 'Anthropic'}
+              hint={stats.llmModel}
+            />
+            {/*
+              Mail has three states, not two: connected, not connected, and
+              connected with a broken sender address. The third is the nastiest,
+              because everything looks fine while letters go out with an unreadable From.
+            */}
+            <StatusRow
+              label="mail"
+              hint={gmail?.hint ?? gmail?.email ?? 'Gmail for sending'}
+              tone={gmail?.connected ? (gmail.emailValid ? 'ok' : 'warn') : 'warn'}
+              value={
+                gmail?.connected
+                  ? gmail.emailValid
+                    ? (gmail.email ?? 'connected')
+                    : 'check the address'
+                  : undefined
+              }
+              action={gmail?.connected ? undefined : { label: 'connect', href: api.gmailConnectUrl() }}
+            />
+            <Group gap={6}>
+              <Kbd>1</Kbd>
+              <Text size="xs" c="dimmed">
+                ..
+              </Text>
+              <Kbd>9</Kbd>
+              <Text size="xs" c="dimmed">
+                switch sections
+              </Text>
+            </Group>
+          </Stack>
         )}
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <div className={fullHeight ? 'min-h-0 flex-1' : 'min-h-0 flex-1 overflow-auto'}>
-          {tab === 'studios' && <StudiosPage />}
-          {tab === 'startups' && <StartupsPage />}
-          {tab === 'companies' && <CompaniesPage />}
-          {tab === 'tenders' && <TendersPage />}
-          {tab === 'sending' && <SendingPage />}
-          {tab === 'outreach' && <OutreachPage />}
-          {tab === 'sources' && <SourcesPage />}
-          {tab === 'templates' && <TemplatesPage />}
-          {tab === 'rules' && <RulesPage />}
-          {tab === 'operations' && <OperationsPage />}
-          {tab === 'stats' && (
-            <Suspense fallback={<Skeleton h={320} m="lg" />}>
-              <StatsPage />
-            </Suspense>
+        {/* Keyed by section: a new section starts at the top, not at the scroll of the last one. */}
+        <div
+          key={companyKey === null ? tab : 'company'}
+          className={fullHeight ? 'flex min-h-0 flex-1 flex-col' : 'min-h-0 flex-1 overflow-auto'}
+        >
+          {companyKey !== null ? (
+            <CompanyPage key={companyKey} companyKey={companyKey} />
+          ) : (
+            <>
+              {tab === 'today' && <TodayPage />}
+              {tab === 'studios' && <StudiosPage />}
+              {tab === 'startups' && <StartupsPage />}
+              {tab === 'companies' && <CompaniesPage />}
+              {tab === 'tenders' && <TendersPage />}
+              {tab === 'sending' && <SendingPage />}
+              {tab === 'outreach' && <OutreachPage />}
+              {tab === 'sources' && <SourcesPage />}
+              {tab === 'templates' && <TemplatesPage />}
+              {tab === 'rules' && <RulesPage />}
+              {tab === 'operations' && <OperationsPage />}
+              {tab === 'stats' && (
+                <Suspense
+                  fallback={
+                    <Text size="sm" c="dimmed" p="lg">
+                      loading
+                    </Text>
+                  }
+                >
+                  <StatsPage />
+                </Suspense>
+              )}
+            </>
           )}
         </div>
       </AppShell.Main>
     </AppShell>
-  );
-}
-
-function HeaderStat({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div>
-      <Text size="xs" c="dimmed" tt="uppercase" fw={500} style={{ letterSpacing: '0.04em' }}>
-        {label}
-      </Text>
-      {/* The value is read from a distance and the label only qualifies it, hence the big size gap. */}
-      <Text fz={16} lh={1.3} fw={600} c={color} className="tabular">
-        {value}
-      </Text>
-    </div>
   );
 }

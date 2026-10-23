@@ -19,6 +19,8 @@ interface StoredSlice {
   day: string;
   ids: number[];
   carried: number;
+  /** How many companies could be in a slice when this one was made. */
+  eligible?: number;
 }
 
 export interface QueueCard extends StudioCard {
@@ -94,13 +96,35 @@ export async function dailyQueue(now = new Date()): Promise<DailyQueue> {
   const threshold = rules().companies.threshold;
   const at = now.getTime();
 
+  const stored = await readSetting<StoredSlice | null>(QUEUE_KEY, null);
+
+  /*
+   * Today's slice is already full: score only its own companies. Scoring the whole directory took
+   * over a second on D1 for ten cards. The eligible count is the one taken when the slice was made.
+   */
+  if (stored?.day === day && stored.ids.length >= size && stored.eligible !== undefined) {
+    const { cards: own } = await studioPage({ scope: 'all', ids: stored.ids, limit: Number.MAX_SAFE_INTEGER });
+    const ownById = new Map(own.map((card) => [card.companyId, card]));
+    if (stored.ids.every((id) => ownById.has(id))) {
+      return {
+        day,
+        size,
+        cards: stored.ids.map((id) => {
+          const card = ownById.get(id)!;
+          return { ...card, done: !isEligible(card, threshold, at) };
+        }),
+        carried: stored.carried ?? 0,
+        eligible: stored.eligible,
+      };
+    }
+  }
+
   // One pass over the directory: done cards need their current status, eligible ones their score.
   const { cards: all } = await studioPage({ scope: 'all', limit: Number.MAX_SAFE_INTEGER });
   const byId = new Map(all.map((card) => [card.companyId, card]));
   const eligible = all.filter((card) => isEligible(card, threshold, at));
   const eligibleIds = new Set(eligible.map((card) => card.companyId));
 
-  const stored = await readSetting<StoredSlice | null>(QUEUE_KEY, null);
   let ids: number[];
   let carried = 0;
 
@@ -120,8 +144,8 @@ export async function dailyQueue(now = new Date()): Promise<DailyQueue> {
   );
   const next = [...ids, ...fill.map((card) => card.companyId)];
 
-  if (stored?.day !== day || next.length !== stored.ids.length) {
-    await writeSetting(QUEUE_KEY, { day, ids: next, carried } satisfies StoredSlice);
+  if (stored?.day !== day || next.length !== stored.ids.length || stored.eligible === undefined) {
+    await writeSetting(QUEUE_KEY, { day, ids: next, carried, eligible: eligible.length } satisfies StoredSlice);
   }
 
   return {

@@ -17,12 +17,87 @@ body,
   height: 100%;
 }
 
+body {
+  background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hairlines, not shadows: every bordered surface uses the light border, inputs keep the strong one. */
+:root {
+  --paper-border-color: var(--mantine-color-gray-2);
+  --table-border-color: var(--mantine-color-gray-2);
+}
+.mantine-Paper-root,
+.mantine-Card-root {
+  --paper-border-color: var(--mantine-color-gray-2);
+}
+.mantine-Table-table {
+  --table-border-color: var(--mantine-color-gray-2);
+}
+
+/* The focus ring is the accent, so it never reads as one more black outline. */
+:focus-visible {
+  outline-color: #2563eb;
+}
+
 /* Numbers in tables and scores line up in columns, otherwise they cannot be compared. */
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Raw vacancy text: monospaced, wrapped, no horizontal scroll. */
+/* Meta labels: tiny uppercase monospace with wide tracking. */
+.mono-label {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 10.5px;
+  line-height: 1.4;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mantine-color-gray-6);
+}
+
+.mono {
+  font-family: var(--mantine-font-family-monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Display numbers and titles: heavy, tight. */
+.display {
+  font-family: "Plus Jakarta Sans", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* The faint dotted grid, behind the page header only, never behind tables or text. */
+.dotted {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -8px -8px;
+}
+
+/* A list row: a hairline under it, a panel tint on hover, quick actions shown on hover or focus. */
+.list-row {
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+.list-row:hover,
+.list-row:focus-within,
+.list-row[data-active='true'] {
+  background: var(--mantine-color-gray-0);
+}
+.list-row[data-returned='true'] {
+  background: var(--mantine-color-brand-0);
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+.list-row .row-actions {
+  visibility: hidden;
+}
+.list-row:hover .row-actions,
+.list-row:focus-within .row-actions,
+.list-row[data-active='true'] .row-actions {
+  visibility: visible;
+}
+
+/* Raw source text: monospaced, wrapped, no horizontal scroll. */
 .raw-text {
   white-space: pre-wrap;
   word-break: break-word;

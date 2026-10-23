@@ -19,6 +19,7 @@ import { notifications } from '@mantine/notifications';
 import { Bookmark, Search, Trash2, X } from 'lucide-react';
 import { api, cleanFilter, type Bucket, type CompanyFilter } from '../lib/api';
 import { STATUS_OPTIONS } from './statuses';
+import { FIT_SERVICES, FIT_STAGES } from './ui';
 
 /** Facet values as select options, with the count beside the value. */
 const options = (rows: Bucket[] | undefined) =>
@@ -251,6 +252,36 @@ export function CompanyFilters({
           value={value.maxScore ?? ''}
           onChange={(score) => set('maxScore', score === '' ? undefined : Number(score))}
           w={100}
+        />
+              <Select
+          size="xs"
+          placeholder="would they buy"
+          data={[
+            { value: '67', label: 'possible or likely' },
+            { value: '100', label: 'likely only' },
+          ]}
+          value={value.minFit === undefined ? null : String(value.minFit)}
+          onChange={(fit) => set('minFit', fit ? Number(fit) : undefined)}
+          clearable
+          w={160}
+        />
+        <MultiSelect
+          size="xs"
+          placeholder={value.fitService?.length ? undefined : 'service'}
+          data={Object.entries(FIT_SERVICES).map(([key, label]) => ({ value: key, label }))}
+          value={value.fitService ?? []}
+          onChange={(service) => set('fitService', service)}
+          clearable
+          w={180}
+        />
+        <MultiSelect
+          size="xs"
+          placeholder={value.fitStage?.length ? undefined : 'stage'}
+          data={Object.entries(FIT_STAGES).map(([key, label]) => ({ value: key, label }))}
+          value={value.fitStage ?? []}
+          onChange={(stage) => set('fitStage', stage)}
+          clearable
+          w={160}
         />
       </Group>
 

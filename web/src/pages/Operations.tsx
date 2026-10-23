@@ -3,20 +3,34 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Badge,
+  Box,
   Button,
   Code,
   Group,
   NumberInput,
   Paper,
-  ScrollArea,
   Select,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Play, Square } from 'lucide-react';
+import {
+  Download,
+  Hourglass,
+  Layers,
+  Play,
+  Send,
+  Sparkles,
+  Square,
+  Stethoscope,
+  Terminal,
+  TriangleAlert,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
 import { api } from '../lib/api';
+import { PageHeader, SectionHeader } from '../components/ui';
 
 /**
  * Operations: what the CLI does, but with buttons.
@@ -54,12 +68,16 @@ interface Operation {
 interface OperationGroup {
   title: string;
   note: string;
+  icon: LucideIcon;
+  color: string;
   items: Operation[];
 }
 
 const GROUPS: OperationGroup[] = [
   {
     title: 'Collection',
+    icon: Download,
+    color: 'brand',
     note: 'where companies come from',
     items: [
       {
@@ -130,6 +148,8 @@ const GROUPS: OperationGroup[] = [
   },
   {
     title: 'Processing',
+    icon: Sparkles,
+    color: 'violet',
     note: 'what to do with what is already collected',
     items: [
       {
@@ -154,6 +174,15 @@ const GROUPS: OperationGroup[] = [
         fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 100 }],
       },
       {
+        id: 'fit',
+        label: 'Lead fit',
+        hint: 'Clef: would each company pay an outside developer, for which service, at what stage. Picks from config/fit.json, writes no text. Runs hourly in small batches',
+        path: '/fit',
+        slow: true,
+        batch: { field: 'limit', size: 20 },
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 100 }],
+      },
+      {
         id: 'classify-leads',
         label: 'Rate tenders',
         hint: 'Clef: how well an open tender fits a solo developer, 0 to 100',
@@ -173,6 +202,8 @@ const GROUPS: OperationGroup[] = [
   },
   {
     title: 'Sending',
+    icon: Send,
+    color: 'green',
     note: 'letters are prepared here and sent from the Outbox page',
     items: [
       {
@@ -212,6 +243,8 @@ const GROUPS: OperationGroup[] = [
   },
   {
     title: 'Checks',
+    icon: Stethoscope,
+    color: 'yellow',
     note: 'when something goes quiet, start here',
     items: [
       {
@@ -289,7 +322,13 @@ function Result({ value }: { value: Record<string, unknown> }) {
   return (
     <Group gap={6} mt={6}>
       {rows.map(([key, item]) => (
-        <Badge key={key} variant="light" color={key === 'error' ? 'red' : 'gray'}>
+        <Badge
+          key={key}
+          color={key === 'error' ? 'red' : 'gray'}
+          className="mono"
+          maw="100%"
+          leftSection={key === 'error' ? <TriangleAlert size={11} /> : undefined}
+        >
           {(LABELS[key] ?? key) + ': ' + String(item).slice(0, 80)}
         </Badge>
       ))}
@@ -410,22 +449,29 @@ function OperationCard({ operation }: { operation: Operation }) {
   });
 
   return (
-    <Paper withBorder p="sm">
-      <Group justify="space-between" align="start" wrap="nowrap" gap="sm">
+    <Box px="md" py="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+      <Group justify="space-between" align="center" wrap="nowrap" gap="md">
         <div style={{ minWidth: 0 }}>
           <Group gap={6}>
-            <Text size="sm" fw={500}>
+            <Text size="sm" fw={600}>
               {operation.label}
             </Text>
             {operation.slow && (
               <Tooltip label="long operation, the worker has a per-request time limit">
-                <Badge size="xs" color="yellow" variant="light">
+                <Badge size="xs" color="yellow" leftSection={<Hourglass size={10} />}>
                   long
                 </Badge>
               </Tooltip>
             )}
+            {(operation.batch || operation.networks) && (
+              <Tooltip label="runs as a series of small requests, and can be stopped between them">
+                <Badge size="xs" color="gray" leftSection={<Layers size={10} />}>
+                  {operation.batch ? `batches of ${operation.batch.size}` : 'per network'}
+                </Badge>
+              </Tooltip>
+            )}
           </Group>
-          <Text size="xs" c="dimmed">
+          <Text size="xs" c="gray.6" mt={2}>
             {operation.hint}
           </Text>
         </div>
@@ -458,7 +504,7 @@ function OperationCard({ operation }: { operation: Operation }) {
           <Button
             size="xs"
             mt={operation.fields?.length ? 22 : 0}
-            leftSection={<Play size={14} />}
+            leftSection={<Play size={13} />}
             loading={run.isPending}
             onClick={() => run.mutate()}
           >
@@ -484,13 +530,16 @@ function OperationCard({ operation }: { operation: Operation }) {
       </Group>
 
       {progress && (
-        <Text size="xs" c="dimmed" mt={6}>
-          {progress}
-        </Text>
+        <Group gap={6} mt={6} c="brand.7">
+          <Hourglass size={12} />
+          <Text size="xs" className="mono">
+            {progress}
+          </Text>
+        </Group>
       )}
 
       {result && <Result value={result} />}
-    </Paper>
+    </Box>
   );
 }
 
@@ -498,10 +547,15 @@ export function OperationsPage() {
   const { data: gmail } = useQuery({ queryKey: ['gmail-status'], queryFn: () => api.gmailStatus() });
 
   return (
-    <ScrollArea.Autosize mah="calc(100dvh - 60px)">
-      <Stack gap="lg" p="lg">
+    <>
+      <PageHeader
+        icon={Wrench}
+        title="Operations"
+        description="Everything the CLI does, with buttons. Each run is one request; long ones go in batches and can be stopped."
+      />
+      <Stack gap="md" p="lg" maw={1100}>
         {gmail && gmail.provider === 'gmail' && !gmail.connected && (
-          <Alert color="yellow" title="Mail is not connected">
+          <Alert color="yellow" icon={<TriangleAlert size={16} />} title="Mail is not connected">
             Sending operations will run, but there is nothing to send a letter with.
           </Alert>
         )}
@@ -512,7 +566,7 @@ export function OperationsPage() {
           only mean that nobody looked.
         */}
         {gmail && !gmail.readsReplies && (
-          <Alert color="yellow" title={`Sending through ${gmail.provider}, replies are not tracked`}>
+          <Alert color="yellow" icon={<TriangleAlert size={16} />} title={`Sending through ${gmail.provider}, replies are not tracked`}>
             This provider only sends letters. Checking replies and bounces reads the mailbox,
             and there is no access to it here, so replies have to be marked by hand on the
             Contacts page. For replies to be noticed automatically, use MAIL_PROVIDER=gmail.
@@ -520,31 +574,40 @@ export function OperationsPage() {
         )}
 
         {gmail && gmail.provider !== 'gmail' && !gmail.providers.find((row) => row.id === gmail.provider)?.connected && (
-          <Alert color="red" title={`${gmail.provider} is not configured`}>
+          <Alert color="red" icon={<TriangleAlert size={16} />} title={`${gmail.provider} is not configured`}>
             {gmail.providers.find((row) => row.id === gmail.provider)?.hint ?? 'check the environment variables'}
           </Alert>
         )}
 
         {GROUPS.map((group) => (
-          <Stack gap="xs" key={group.title}>
-            <div>
-              <Text fw={600}>{group.title}</Text>
-              <Text size="xs" c="dimmed">
-                {group.note}
-              </Text>
-            </div>
+          <Paper key={group.title} style={{ overflow: 'hidden' }}>
+            <Box px="md" pt="md" pb={4}>
+              <SectionHeader
+                icon={group.icon}
+                title={group.title}
+                color={group.color}
+                right={
+                  <Text size="xs" c="dimmed">
+                    {group.note}
+                  </Text>
+                }
+              />
+            </Box>
             {group.items.map((operation) => (
               <OperationCard key={operation.id} operation={operation} />
             ))}
-          </Stack>
+          </Paper>
         ))}
 
-        <Text size="xs" c="dimmed">
-          Only the commands that need files on disk or one-off setup stay in the
-          terminal: migrations, importing CSV and saved pages, exporting the database
-          to D1, connecting Gmail.
-        </Text>
+        <Group gap={6} c="gray.6" wrap="nowrap" align="flex-start">
+          <Terminal size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+          <Text size="xs">
+            Only the commands that need files on disk or one-off setup stay in the
+            terminal: migrations, importing CSV and saved pages, exporting the database
+            to D1, connecting Gmail.
+          </Text>
+        </Group>
       </Stack>
-    </ScrollArea.Autosize>
+    </>
   );
 }

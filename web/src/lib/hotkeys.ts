@@ -15,6 +15,10 @@ export function useHotkeys(map: Record<string, (() => void) | undefined>, enable
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      // Enter on a focused button or link is that control's own click, not a list shortcut.
+      if (event.key === 'Enter' && (tag === 'BUTTON' || tag === 'A')) return;
+      // Inside an open drawer or modal the page shortcuts stay quiet.
+      if (target?.closest('[role="dialog"]')) return;
 
       const handler = map[event.key.toLowerCase()];
       if (!handler) return;

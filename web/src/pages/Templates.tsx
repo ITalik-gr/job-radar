@@ -8,20 +8,29 @@ import {
   EmptyState,
   Group,
   Modal,
-  Paper,
   ScrollArea,
   Select,
-  Skeleton,
   Stack,
   Text,
   TextInput,
   Textarea,
-  Title,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Archive, ArchiveRestore, Copy, FileText, Plus, Save, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  Copy,
+  FileText,
+  PenLine,
+  Plus,
+  Save,
+  Send,
+  Signature,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react';
 import { api, formatDate, type TemplateRow } from '../lib/api';
 import { COMPANY_KINDS, type CompanyKind } from '../../../src/pipeline/company-kind';
 import type { Language, OutreachTarget } from '../../../src/pipeline/outreach';
@@ -29,6 +38,7 @@ import type { TemplateKind } from '../../../src/pipeline/templates';
 import { FALLBACK_HINT, LETTER_PLACEHOLDERS } from '../../../src/lib/letter';
 import { PaneFooter, PaneHeader, SplitView } from '../components/SplitView';
 import { useSelection } from '../lib/useRoute';
+import { MonoLabel, PageHeader, SectionHeader } from '../components/ui';
 
 /*
  * Labels keyed by the real types, not free strings. A Record over the union means a new
@@ -53,6 +63,13 @@ const TARGET_LABELS: Record<OutreachTarget, string> = {
   studio_named: 'named contact',
   studio_generic: 'generic mailbox',
   followup: 'follow-up, second letter in the thread',
+};
+
+/** The same roles, short enough for a list row. */
+const TARGET_SHORT: Record<OutreachTarget, string> = {
+  studio_named: 'named contact',
+  studio_generic: 'generic mailbox',
+  followup: 'follow-up',
 };
 
 const TARGET_OPTIONS = Object.entries(TARGET_LABELS).map(([value, label]) => ({ value, label }));
@@ -110,35 +127,35 @@ function Row({
         background: active ? 'var(--mantine-color-brand-0)' : undefined,
       }}
     >
-      <Group gap="xs" wrap="nowrap">
+      <Group gap={8} wrap="nowrap">
+        <FileText size={15} strokeWidth={1.75} color={`var(--mantine-color-${active ? 'brand-6' : 'gray-6'})`} />
         <Text size="sm" fw={600} truncate style={{ flex: 1, minWidth: 0 }}>
           {row.name}
         </Text>
         {row.archived && (
-          <Badge size="xs" color="gray">
+          <Badge size="xs" color="gray" leftSection={<Archive size={10} />}>
             archived
           </Badge>
         )}
       </Group>
-      <Group gap={6} mt={4} wrap="nowrap">
-        <Badge size="xs" color={row.kind === 'resume' ? 'brand' : 'gray'}>
-          {KIND_LABELS[row.kind as TemplateKind] ?? row.kind}
-        </Badge>
+      <Group gap={6} mt={6} pl={23} wrap="nowrap">
         {/* A template with a role takes part in sending on its own, the rest are for copying. */}
-        {row.targetType && (
-          <Badge size="xs" color="blue" variant="light">
-            sending, {row.language}
+        {row.targetType ? (
+          <Badge size="xs" color="brand" leftSection={<Send size={10} />}>
+            {TARGET_SHORT[row.targetType as OutreachTarget] ?? row.targetType}
+          </Badge>
+        ) : (
+          <Badge size="xs" color="gray">
+            {KIND_LABELS[row.kind as TemplateKind] ?? row.kind}
           </Badge>
         )}
-        <Text size="xs" c="dimmed" truncate>
-          {row.body ? `${row.body.length} characters` : 'no text yet'}
+        <Text size="xs" c="dimmed" className="mono">
+          {row.language ?? ''}
         </Text>
         {/* How many letters this template has produced: shows what is in use and what is a draft. */}
-        {row.usageCount > 0 && (
-          <Badge size="xs" color="brand" variant="light">
-            {row.usageCount} letter{row.usageCount === 1 ? '' : 's'}
-          </Badge>
-        )}
+        <Text size="xs" c={row.usageCount > 0 ? 'gray.7' : 'dimmed'} className="mono" ml="auto">
+          {row.body ? (row.usageCount > 0 ? `${row.usageCount} sent` : 'unused') : 'no text'}
+        </Text>
       </Group>
     </UnstyledButton>
   );
@@ -278,140 +295,154 @@ function Editor({
     <>
       <ScrollArea style={{ flex: 1, minHeight: 0 }}>
         <Box p="lg" maw={860}>
-          <Group gap="sm" mb="xs">
+          <Group gap="sm" mb="lg" wrap="nowrap">
+            <Text className="display" fz={20} truncate style={{ minWidth: 0 }}>
+              {draft.name || 'Untitled'}
+            </Text>
             {row.archived && (
-              <Badge size="sm" color="gray">
+              <Badge color="gray" leftSection={<Archive size={11} />}>
                 archived
               </Badge>
             )}
-            <Badge size="sm" color={row.usageCount > 0 ? 'brand' : 'gray'} variant="light">
-              {row.usageCount > 0 ? `used ${row.usageCount}` : 'not used yet'}
+            <Badge color={row.usageCount > 0 ? 'green' : 'gray'} variant="dot">
+              {row.usageCount > 0 ? `${row.usageCount} letters sent` : 'not used yet'}
             </Badge>
-            <Text size="xs" c="dimmed" ml="auto">
+            <Text size="xs" c="dimmed" className="mono" ml="auto" style={{ flexShrink: 0 }}>
               updated {formatDate(row.updatedAt)}
             </Text>
           </Group>
 
-          <Stack gap="md">
-            <Group gap="md" grow>
-              <TextInput
-                label="Name"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.currentTarget.value })}
-              />
-              <Select
-                label="Kind"
-                data={KIND_OPTIONS}
-                value={draft.kind}
-                onChange={(kind) => kind && setDraft({ ...draft, kind })}
-                allowDeselect={false}
-              />
-              <Select
-                label="For company kind"
-                description="this template will be suggested first"
-                data={FOR_KIND_OPTIONS}
-                value={draft.forKind ?? ANY_KIND}
-                onChange={(value) =>
-                  value && setDraft({ ...draft, forKind: value === ANY_KIND ? null : value })
-                }
-                allowDeselect={false}
-              />
-            </Group>
+          <Stack gap="xl">
+            <div>
+              <SectionHeader icon={Send} title="Where it is used" color="brand" />
+              <Stack gap="md">
+                <Group gap="md" grow>
+                  <TextInput
+                    label="Name"
+                    value={draft.name}
+                    onChange={(event) => setDraft({ ...draft, name: event.currentTarget.value })}
+                  />
+                  <Select
+                    label="Kind"
+                    data={KIND_OPTIONS}
+                    value={draft.kind}
+                    onChange={(kind) => kind && setDraft({ ...draft, kind })}
+                    allowDeselect={false}
+                  />
+                  <Select
+                    label="For company kind"
+                    description="this template will be suggested first"
+                    data={FOR_KIND_OPTIONS}
+                    value={draft.forKind ?? ANY_KIND}
+                    onChange={(value) =>
+                      value && setDraft({ ...draft, forKind: value === ANY_KIND ? null : value })
+                    }
+                    allowDeselect={false}
+                  />
+                </Group>
 
-            {/*
-              Role and language are not decoration: they are what a draft picks the
-              template by. An empty role means the template takes no part in sending and
-              is kept for manual copying, which is normal for half the list.
-            */}
-            <Group grow align="start">
-              <Select
-                label="Sending role"
-                description="when this template is used automatically"
-                data={TARGET_OPTIONS}
-                value={draft.targetType}
-                onChange={(targetType) => setDraft({ ...draft, targetType })}
-                placeholder="not used for sending, manual copying only"
-                clearable
-              />
-              <Select
-                label="Language"
-                description="uk for companies in Ukraine, en for everyone else"
-                data={LANGUAGE_OPTIONS}
-                value={draft.language}
-                onChange={(language) => language && setDraft({ ...draft, language })}
-                allowDeselect={false}
-              />
-            </Group>
+                {/*
+                  Role and language are not decoration: they are what a draft picks the
+                  template by. An empty role means the template takes no part in sending and
+                  is kept for manual copying, which is normal for half the list.
+                */}
+                <Group grow align="start">
+                  <Select
+                    label="Sending role"
+                    description="when this template is used automatically"
+                    data={TARGET_OPTIONS}
+                    value={draft.targetType}
+                    onChange={(targetType) => setDraft({ ...draft, targetType })}
+                    placeholder="not used for sending, manual copying only"
+                    clearable
+                  />
+                  <Select
+                    label="Language"
+                    description="uk for companies in Ukraine, en for everyone else"
+                    data={LANGUAGE_OPTIONS}
+                    value={draft.language}
+                    onChange={(language) => language && setDraft({ ...draft, language })}
+                    allowDeselect={false}
+                  />
+                </Group>
 
-            {clash && (
-              <Alert color="yellow">
-                The same role and language are already set on <b>{clash.name}</b>. Sending will
-                take one of the two, and which one cannot be predicted. Clear the role on one of
-                them or archive it.
-              </Alert>
-            )}
+                {clash && (
+                  <Alert color="yellow" icon={<TriangleAlert size={16} />}>
+                    The same role and language are already set on <b>{clash.name}</b>. Sending will
+                    take one of the two, and which one cannot be predicted. Clear the role on one of
+                    them or archive it.
+                  </Alert>
+                )}
 
-            {/*
-              The key is editable, and on change the radar rewrites it in the correspondence
-              records. The label says exactly that: otherwise an edit would look like a break
-              in the history.
-            */}
-            <TextInput
-              label="History key"
-              description={
-                row.usageCount > 0
-                  ? `stored in Contacts. If changed, ${row.usageCount} history records are rewritten to the new key`
-                  : 'stored in Contacts. Spaces and case are normalised to lowercase underscores'
-              }
-              value={draft.slug}
-              onChange={(event) => setDraft({ ...draft, slug: event.currentTarget.value })}
-              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
-            />
+                {/*
+                  The key is editable, and on change the radar rewrites it in the correspondence
+                  records. The label says exactly that: otherwise an edit would look like a break
+                  in the history.
+                */}
+                <TextInput
+                  label="History key"
+                  description={
+                    row.usageCount > 0
+                      ? `stored in Contacts. If changed, ${row.usageCount} history records are rewritten to the new key`
+                      : 'stored in Contacts. Spaces and case are normalised to lowercase underscores'
+                  }
+                  value={draft.slug}
+                  onChange={(event) => setDraft({ ...draft, slug: event.currentTarget.value })}
+                  styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+                />
+              </Stack>
+            </div>
 
-            <TextInput
-              label="Subject"
-              description="may stay empty for a resume"
-              value={draft.subject ?? ''}
-              onChange={(event) => setDraft({ ...draft, subject: event.currentTarget.value })}
-            />
+            <div>
+              <SectionHeader icon={PenLine} title="Text" />
+              <Stack gap="md">
+                <TextInput
+                  label="Subject"
+                  description="may stay empty for a resume"
+                  value={draft.subject ?? ''}
+                  onChange={(event) => setDraft({ ...draft, subject: event.currentTarget.value })}
+                />
 
-            <Textarea
-              label="Body"
-              description="your text, the tool neither generates nor rewrites it"
-              autosize
-              minRows={12}
-              maxRows={28}
-              value={draft.body}
-              onChange={(event) => setDraft({ ...draft, body: event.currentTarget.value })}
-              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
-            />
+                <Textarea
+                  label="Body"
+                  description="your text, the tool neither generates nor rewrites it"
+                  autosize
+                  minRows={12}
+                  maxRows={28}
+                  value={draft.body}
+                  onChange={(event) => setDraft({ ...draft, body: event.currentTarget.value })}
+                  styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
+                />
 
-            {/*
-              Placeholders must be in view while writing: otherwise the owner either does not
-              know they exist, or mistypes one and gets a blank.
-            */}
-            <Box>
-              <Text size="sm" fw={500} mb={6}>
-                What can go into the body and subject
-              </Text>
-              <Group gap={6}>
-                {LETTER_PLACEHOLDERS.map((item) => (
-                  <Tooltip key={item.token} label={item.hint}>
-                    <Badge
-                      color="gray"
-                      style={{ cursor: 'pointer', fontFamily: 'var(--mantine-font-family-monospace)' }}
-                      onClick={() => setDraft({ ...draft, body: `${draft.body}{{${item.token}}}` })}
-                    >
-                      {`{{${item.token}}}`}
-                    </Badge>
-                  </Tooltip>
-                ))}
-              </Group>
-              <Text size="xs" c="dimmed" mt={6}>
-                Click to append to the body. An empty value blocks the draft, unless the
-                placeholder has a fallback. {FALLBACK_HINT}
-              </Text>
-            </Box>
+                {/*
+                  Placeholders must be in view while writing: otherwise the owner either does not
+                  know they exist, or mistypes one and gets a blank.
+                */}
+                <Box>
+                  <MonoLabel>placeholders</MonoLabel>
+                  <Text size="xs" c="dimmed" mb={8} mt={2}>
+                    What can go into the body and subject
+                  </Text>
+                  <Group gap={6}>
+                    {LETTER_PLACEHOLDERS.map((item) => (
+                      <Tooltip key={item.token} label={item.hint}>
+                        <Badge
+                          color="gray"
+                          style={{ cursor: 'pointer', fontFamily: 'var(--mantine-font-family-monospace)' }}
+                          onClick={() => setDraft({ ...draft, body: `${draft.body}{{${item.token}}}` })}
+                        >
+                          {`{{${item.token}}}`}
+                        </Badge>
+                      </Tooltip>
+                    ))}
+                  </Group>
+                  <Text size="xs" c="dimmed" mt={6}>
+                    Click to append to the body. An empty value blocks the draft, unless the
+                    placeholder has a fallback. {FALLBACK_HINT}
+                  </Text>
+                </Box>
+              </Stack>
+            </div>
 
             <Textarea
               label="Note to self"
@@ -427,6 +458,7 @@ function Editor({
 
       <PaneFooter>
         <Button
+          variant="filled"
           leftSection={<Save size={15} />}
           disabled={!dirty}
           loading={save.isPending}
@@ -552,7 +584,7 @@ function SignatureModal({ opened, onClose }: { opened: boolean; onClose: () => v
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={save.isPending} onClick={() => save.mutate()}>
+          <Button variant="filled" loading={save.isPending} onClick={() => save.mutate()}>
             Save
           </Button>
         </Group>
@@ -612,11 +644,12 @@ export function TemplatesPage() {
 
   if (error) {
     return (
-      <Box p="lg">
-        <Alert color="red" title="Could not read the templates">
+      <>
+        <PageHeader icon={FileText} title="Templates" />
+        <Alert color="red" m="lg" title="Could not read the templates">
           {error instanceof Error ? error.message : String(error)}
         </Alert>
-      </Box>
+      </>
     );
   }
 
@@ -648,30 +681,42 @@ export function TemplatesPage() {
             The correspondence history key is derived from the name automatically, and can be
             changed later in the template itself.
           </Text>
-          <Button disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()}>
+          <Button variant="filled" disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()}>
             Create
           </Button>
         </Stack>
       </Modal>
+
+      <PageHeader
+        icon={FileText}
+        title="Templates"
+        description="Your letter texts. The tool fills placeholders and never writes or rewrites a word."
+      >
+        <Button leftSection={<Signature size={15} />} onClick={() => setSigning(true)}>
+          Signature
+        </Button>
+        <Button variant="filled" leftSection={<Plus size={15} />} onClick={() => setCreating(true)}>
+          New template
+        </Button>
+      </PageHeader>
 
       <SplitView
         listWidth={340}
         list={
           <>
             <PaneHeader>
-              <Title order={5} style={{ flex: 1 }}>
-                Templates
-              </Title>
-              <Button variant="default" onClick={() => setSigning(true)}>
-                Signature
-              </Button>
-              <Button variant="default" leftSection={<Plus size={15} />} onClick={() => setCreating(true)}>
-                New
-              </Button>
+              <MonoLabel>
+                {rows.filter((row) => !row.archived).length} active
+                {rows.some((row) => row.archived) ? `, ${rows.filter((row) => row.archived).length} archived` : ''}
+              </MonoLabel>
             </PaneHeader>
 
             <ScrollArea style={{ flex: 1, minHeight: 0 }}>
-              {isLoading && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} h={64} m="md" />)}
+              {isLoading && (
+                <Text size="sm" c="dimmed" p="md">
+                  loading
+                </Text>
+              )}
               {rows.map((row) => (
                 <Row key={row.id} row={row} active={current?.id === row.id} onSelect={() => setSelected(row.id)} />
               ))}

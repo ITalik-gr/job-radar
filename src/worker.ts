@@ -13,6 +13,7 @@ import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
 import { audit } from './pipeline/audit.js';
 import { classifyCompanies, classifyLeads } from './pipeline/classify.js';
+import { fitCompanies } from './pipeline/fit.js';
 import { decisionsAvailable } from './lib/decide.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
@@ -105,7 +106,10 @@ async function runSchedule(cron: string): Promise<void> {
    * follow-up drafts must be ready before the digest, not after it.
    */
   if (cron === '5 * * * *') {
-    return safely('outreach:replies', () => checkReplies({ ownEmail: config.gmail.fromEmail }));
+    await safely('outreach:replies', () => checkReplies({ ownEmail: config.gmail.fromEmail }));
+    // Lead fit rides the hourly run: a few model calls an hour stay far under the subrequest limit.
+    if (decisionsAvailable()) await safely('fit', () => fitCompanies({ limit: 8 }));
+    return;
   }
   if (cron === '30 6 * * *') {
     await safely('outreach:followups', () => prepareFollowups());

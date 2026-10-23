@@ -127,6 +127,10 @@ export interface StudioCard {
   /** Hiring developers right now, and how many roles were seen. */
   hiring: boolean;
   hiringRoles: number | null;
+  /** The model's fit read: 0 to 100 (null until asked), the service and stage it picked. */
+  fit: number | null;
+  fitService: string | null;
+  fitStage: string | null;
   score: number;
   why: { reason: string; weight: number }[];
   contacts: CompanyContact[];
@@ -135,42 +139,8 @@ export interface StudioCard {
   lastContactedAt: number | null;
 }
 
-/**
- * The one filter shape, the same as `src/pipeline/filters.ts`: the Companies page, the
- * Leads page, saved filters and `search_companies` over MCP all speak it.
- */
-export interface CompanyFilter {
-  search?: string;
-  market?: 'ua' | 'intl';
-  country?: string;
-  city?: string;
-  kind?: string[];
-  industry?: string[];
-  source?: string;
-  tags?: string[];
-  status?: string[];
-  hasEmail?: boolean;
-  hasNamedContact?: boolean;
-  hasSite?: boolean;
-  hasAuditIssues?: boolean;
-  hiring?: boolean;
-  minScore?: number;
-  maxScore?: number;
-  minRating?: number;
-  includeContacted?: boolean;
-}
-
-/** URL parameters for a filter: lists comma separated, booleans 1 or 0, empty values dropped. */
-export function filterParams(filter: CompanyFilter): Record<string, string> {
-  const params: Record<string, string> = {};
-  for (const [key, value] of Object.entries(filter)) {
-    if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) continue;
-    if (Array.isArray(value)) params[key] = value.join(',');
-    else if (typeof value === 'boolean') params[key] = value ? '1' : '0';
-    else params[key] = String(value);
-  }
-  return params;
-}
+export { filterFromParams, filterParams, type CompanyFilter } from './filterParams';
+import { filterParams, type CompanyFilter } from './filterParams';
 
 /** A filter without empty fields, the form a saved filter is stored in. */
 export function cleanFilter(filter: CompanyFilter): CompanyFilter {
@@ -181,8 +151,24 @@ export function cleanFilter(filter: CompanyFilter): CompanyFilter {
   ) as CompanyFilter;
 }
 
+/**
+ * A company as a list row: what Leads, Startups and Companies show. The server sends this trimmed
+ * shape for lists (a line of description, the positive reasons only), the full `StudioCard` only
+ * for the company page and the daily slice. A full card fits this type too.
+ */
+export type ListCard = Pick<
+  StudioCard,
+  | 'companyId' | 'name' | 'domain' | 'country' | 'city' | 'kind' | 'market' | 'industry' | 'phone'
+  | 'sizeHint' | 'rating' | 'reviewsCount' | 'description' | 'tags' | 'techHints' | 'status' | 'hiring'
+  | 'hiringRoles' | 'fit' | 'fitService' | 'fitStage' | 'score' | 'why' | 'lastChecked' | 'lastContactedAt'
+> & {
+  slim?: true;
+  contacts: Pick<CompanyContact, 'id' | 'name' | 'role' | 'email' | 'emailValid'>[];
+  audit: { issues: string[] } | null;
+};
+
 export interface CompanyPage {
-  cards: StudioCard[];
+  cards: ListCard[];
   total: number;
   aboveThreshold: number;
   threshold: number | null;
@@ -311,7 +297,10 @@ export interface Rules {
     hasCareersPage: number;
     /** May be missing from a config saved before these existed, like reputation. */
     openLead?: number;
+    minLeadFit?: number;
     namedContact?: number;
+    /** The model's fit read by level (`src/pipeline/fit.ts`); 0 turns a level off. */
+    modelFit?: { likely: number; possible: number; unlikely: number; no: number };
     site?: {
       buyerKinds: string[];
       perIssue: number;
@@ -332,6 +321,7 @@ export interface Rules {
       noReviewsPenalty: number;
     };
   } & Record<string, unknown>;
+  queue?: { size: number };
   [key: string]: unknown;
 }
 
@@ -450,6 +440,29 @@ export interface VerdictReport {
   error: string | null;
 }
 
+/** The Tenders filter, as the API takes it: every value a string from the page address. */
+export interface LeadParams {
+  source?: string;
+  status?: string;
+  all?: string;
+  q?: string;
+  minBudget?: string;
+  maxBudget?: string;
+  minFit?: string;
+  deadlineDays?: string;
+  sort?: string;
+}
+
+export interface CompanyFit {
+  companyId: number;
+  fit: number | null;
+  level: 'no' | 'unlikely' | 'possible' | 'likely' | null;
+  service: string | null;
+  stage: string | null;
+  source: 'model' | 'cache';
+  probabilities: { service: Record<string, number>; stage: Record<string, number> };
+}
+
 /** A letter draft on the Outbox page. */
 export interface DraftRow {
   id: number;
@@ -559,20 +572,27 @@ export const api = {
     }),
   deleteFilter: (id: number) => request<{ deleted: SavedFilter | null }>(`/filters/${id}`, { method: 'DELETE' }),
   queue: () => request<DailyQueue>('/queue'),
-  leads: (params: { source?: string; status?: string; all?: boolean }) => {
+  leads: (params: LeadParams) => {
     const query = new URLSearchParams(
-      Object.entries({ source: params.source ?? '', status: params.status ?? '', all: params.all ? '1' : '' }).filter(
-        ([, value]) => value,
-      ),
+      Object.entries(params).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== ''),
     ).toString();
     return request<LeadRow[]>(`/leads${query ? `?${query}` : ''}`);
   },
+  /** The model's fit read for one company. Costs a call unless the same record was asked before. */
+  companyFit: (id: number) => request<CompanyFit>(`/companies/${id}/fit`, { method: 'POST', body: '{}' }),
+  fit: (limit = 50) =>
+    request<{ itemsFound: number; itemsNew: number; fromCache: number; remaining: number; errors: string[] }>('/fit', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
   setLeadStatus: (id: number, status: string) =>
     request<{ id: number; before: string; after: string }>(`/leads/${id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status }),
     }),
   company: (id: number) => request<CompanyDetail>(`/companies/${id}`),
+  /** A company as a scored card by its address key: the domain, or `id-42`. */
+  companyCard: (key: string) => request<StudioCard>(`/companies/card/${encodeURIComponent(key)}`),
   setCompanyState: (id: number, body: Record<string, unknown>) =>
     request<{ ok: true }>(`/companies/${id}/state`, { method: 'POST', body: JSON.stringify(body) }),
   outreach: (waiting?: number) => request<OutreachRow[]>(`/outreach${waiting ? `?waiting=${waiting}` : ''}`),

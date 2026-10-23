@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { companies, companyState, contacts, leads as leadsTable, outreach, siteAudits, type Company } from '../db/schema.js';
 import { scoreCompany, type CompanyBreakdown } from './company-score.js';
@@ -55,6 +55,10 @@ export interface StudioCard {
   /** Hiring developers right now, and how many roles were seen. */
   hiring: boolean;
   hiringRoles: number | null;
+  /** The model's fit read, see `fit.ts`. Null until asked. */
+  fit: number | null;
+  fitService: string | null;
+  fitStage: string | null;
   score: number;
   why: { reason: string; weight: number }[];
   /** `id` is there so the contact can be edited right from the card. */
@@ -81,6 +85,9 @@ export interface StudioFilters extends CompanyFilter {
   limit?: number;
   scope?: 'leads' | 'all';
   sort?: 'score' | 'name';
+  /** Internal: only these companies. Not part of the shared filter shape. */
+  ids?: number[];
+  domain?: string;
 }
 
 export interface StudioPage {
@@ -107,7 +114,10 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
    * Selection is done by SQL, not JavaScript, so the cost of a query depends on how many rows it
    * asks for rather than on the size of the database.
    */
-  const conditions = filterConditions(filters);
+  const { ids, domain, ...shared } = filters;
+  const conditions = filterConditions(shared);
+  if (ids) conditions.push(inArray(companies.id, ids));
+  if (domain) conditions.push(eq(companies.domain, domain));
   if (leads) {
     /*
      * A business without a site is a lead too ("you have no site", section 5), but only when it
@@ -258,6 +268,9 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
         snoozedUntil: row.snoozedUntil,
         hiring: hiringNow(row.company, now),
         hiringRoles: row.company.hiringRoles,
+        fit: row.company.fit,
+        fitService: row.company.fitService,
+        fitStage: row.company.fitStage,
         score: breakdown.score,
         why: [...breakdown.positives, ...breakdown.negatives].sort((a, b) => b.weight - a.weight),
         contacts: (byCompany.get(row.company.id) ?? []).map((contact) => ({
@@ -275,6 +288,59 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
     .sort((a, b) => (filters.sort === 'name' ? a.name.localeCompare(b.name) : b.score - a.score));
 
   return cards;
+}
+
+/** How much of the description a list row carries: one line under the name. */
+const SUMMARY_CHARS = 180;
+
+/** The reasons a row shows as chips: demand, no site, a named contact. The rest is on the company page. */
+const ROW_REASONS = /^(open tender|no site|named contact)/;
+
+/** Reasons that only say who a company is, not why to write: the row falls back past them. */
+const GENERIC_REASONS = /^(size |kind: |country |model fit)/;
+
+/**
+ * A card as a list row needs it. The directory on the worker holds thousands of companies, and
+ * full cards came to about 7 MB of JSON per page open. A row shows a line of description, the
+ * reason to write, reach and a few tags; the company page fetches the full card. `slim` marks it,
+ * so a trimmed card is never taken for the whole one.
+ */
+export function slimCard(card: StudioCard) {
+  const positives = card.why.filter((item) => item.weight > 0);
+  return {
+    slim: true as const,
+    companyId: card.companyId,
+    name: card.name,
+    domain: card.domain,
+    country: card.country,
+    city: card.city,
+    kind: card.kind,
+    market: card.market,
+    industry: card.industry,
+    phone: card.phone,
+    sizeHint: card.sizeHint,
+    rating: card.rating,
+    reviewsCount: card.reviewsCount,
+    description:
+      card.description && card.description.length > SUMMARY_CHARS
+        ? `${card.description.slice(0, SUMMARY_CHARS).trimEnd()}...`
+        : card.description,
+    tags: card.tags.slice(0, 12),
+    techHints: card.techHints.slice(0, 6),
+    status: card.status,
+    hiring: card.hiring,
+    hiringRoles: card.hiringRoles,
+    fit: card.fit,
+    fitService: card.fitService,
+    fitStage: card.fitStage,
+    score: card.score,
+    // The strongest telling plus stays too: a row with nothing specific still says why it is listed.
+    why: positives.filter((item) => item === positives.find((first) => !GENERIC_REASONS.test(first.reason)) || ROW_REASONS.test(item.reason)),
+    contacts: card.contacts.map(({ id, name, role, email, emailValid }) => ({ id, name, role, email, emailValid })),
+    audit: card.audit ? { issues: card.audit.issues } : null,
+    lastChecked: card.lastChecked,
+    lastContactedAt: card.lastContactedAt,
+  };
 }
 
 /** A page of the list together with counters for the interface. */
@@ -295,6 +361,22 @@ export async function studioPage(filters: StudioFilters = {}): Promise<StudioPag
     aboveThreshold: passing.length,
     threshold,
   };
+}
+
+/**
+ * One company as a scored card, for the company page: the details endpoint has no score, and the
+ * page shows where it comes from. Nothing is hidden here, a blacklisted company still opens.
+ *
+ * The key is the one the web app keeps in its address: a domain, or `id-42` for a business
+ * without a site. An empty key matches nothing, never every company without a domain.
+ */
+export async function companyCard(key: string): Promise<StudioCard | null> {
+  const byId = /^id-(\d+)$/.exec(key);
+  if (!byId && !key.trim()) return null;
+  const [card] = await scoreAll(
+    byId ? { ids: [Number(byId[1])], scope: 'all' } : { domain: key.trim().toLowerCase(), scope: 'all' },
+  );
+  return card ?? null;
 }
 
 /** A thin wrapper for tests and for callers that need only the list. */

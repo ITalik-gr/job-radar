@@ -1,4 +1,4 @@
-import { Group, Text } from '@mantine/core';
+import { Badge, Group, Text } from '@mantine/core';
 import {
   Ban,
   Circle,
@@ -84,6 +84,15 @@ export function StatusCell({ status }: { status: string | null }) {
         {statusLabel(status)}
       </Text>
     </Group>
+  );
+}
+
+/** The status as a tinted pill with a coloured dot, for headers and rows that have the room. */
+export function StatusBadge({ status }: { status: string | null }) {
+  return (
+    <Badge variant="dot" color={statusColor(status)} size="md" style={{ flexShrink: 0 }}>
+      {statusLabel(status)}
+    </Badge>
   );
 }
 

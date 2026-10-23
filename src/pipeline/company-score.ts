@@ -1,4 +1,5 @@
 import type { Company } from '../db/schema.js';
+import { fitLevel } from './fit-level.js';
 import { hiringNow } from './hiring.js';
 import { rules } from './rules.js';
 
@@ -161,6 +162,10 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
   // A named person with an address is read by someone who decides; hello@ is read by whoever.
   const named = (input.contacts ?? []).find((contact) => contact.name && contact.email);
   if (named) push(`named contact ${named.name}`, config.namedContact);
+
+  // The model's read of whether they would buy (fit.ts): a classification weighed by level.
+  const level = fitLevel(company.fit ?? null);
+  if (level) push(`model fit: ${level}`, config.modelFit[level]);
 
   if (company.country) {
     const weight = config.countryWeights[company.country];

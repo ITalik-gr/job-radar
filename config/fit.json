@@ -1,0 +1,28 @@
+{
+  "_": "Lead fit: would this company buy what the owner sells. Clef picks from these lists and returns calibrated probabilities, it writes no text. Tune the lists to your own services in a fork; a changed list changes the input hash, so companies are asked again.",
+  "_buyer": "How likely the company is to pay an outside developer, lowest first. Stored on companies.fit as 0 to 100; the score weighs it by level (rules: companies.modelFit).",
+  "buyer": [
+    "no: a large company with its own engineering department, an investor or fund, a public body that only buys through tenders, or a field to avoid (gambling, casino, adult, forex, crypto speculation)",
+    "unlikely: builds software itself and rarely hires outside, or there is nothing to build for it",
+    "possible: could use outside development help, but nothing in the record points at a need",
+    "likely: a small team or business with something to build, fix or automate and no large in-house team, or an agency that subcontracts work to freelancers"
+  ],
+  "_services": "Which service fits best. Keys are stored on companies.fit_service.",
+  "services": {
+    "website": "a new or rebuilt website, landing page or online store for a business",
+    "mvp": "build a product or MVP from scratch: front end, back end, payments, deploy",
+    "ai": "add AI features to a product: LLM features, agents, chat or answers over its own data",
+    "automation": "automate business processes: integrations between tools, bots, internal dashboards",
+    "optimization": "make an existing product faster, cheaper or more reliable, or fix a product that does not hold load",
+    "white_label": "white-label or subcontract development for an agency's own clients",
+    "none": "none of these fits"
+  },
+  "_stages": "What stage the company is at. Keys are stored on companies.fit_stage.",
+  "stages": {
+    "idea": "pre-launch or pre-seed: an idea or a prototype, no product live yet",
+    "early": "launched, small team, early customers or a seed round",
+    "growth": "growing fast, raised a Series A or later, hiring",
+    "established": "an established business or agency running for years",
+    "unknown": "not enough information to tell"
+  }
+}

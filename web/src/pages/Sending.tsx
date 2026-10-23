@@ -6,24 +6,37 @@ import {
   Autocomplete,
   Badge,
   Button,
-  Card,
   Group,
+  Paper,
   Progress,
-  ScrollArea,
+  SegmentedControl,
   Select,
-  Skeleton,
   Stack,
-  Tabs,
   Text,
   Textarea,
   TextInput,
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Building2, CircleAlert, RefreshCw, Send, Trash2 } from 'lucide-react';
+import {
+  CircleCheck,
+  FileText,
+  Globe,
+  Inbox,
+  Landmark,
+  Mail,
+  RefreshCw,
+  Save,
+  Send,
+  SkipForward,
+  Timer,
+  TriangleAlert,
+  UserRound,
+} from 'lucide-react';
 import { api, type Blocker, type DraftRow, type SendCounters } from '../lib/api';
 import { companyHref } from '../lib/route';
 import { useSelection } from '../lib/useRoute';
+import { MonoLabel, PageHeader } from '../components/ui';
 
 /**
  * Outbox: the main working screen for sending.
@@ -33,51 +46,65 @@ import { useSelection } from '../lib/useRoute';
  * under another name.
  */
 
-function timeLeft(until: number, now: number): string {
+export function timeLeft(until: number, now: number): string {
   const seconds = Math.max(0, Math.ceil((until - now) / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-function Counters({ counters, now }: { counters: SendCounters; now: number }) {
+export function Counters({ counters, now }: { counters: SendCounters; now: number }) {
   const share = counters.limit === 0 ? 0 : (counters.sentToday / counters.limit) * 100;
 
   return (
-    <Card withBorder p="sm">
-      <Group justify="space-between" mb={6}>
-        <Text size="sm">
-          sent today{' '}
-          <Text span fw={600} className="tabular">
-            {counters.sentToday} of {counters.limit}
+    <Paper px="md" py="sm">
+      <Group justify="space-between" align="flex-end" mb={8} wrap="nowrap">
+        <div>
+          <MonoLabel>sent today</MonoLabel>
+          <Text className="display tabular" fz={24} lh={1.15} mt={2}>
+            {counters.sentToday}
+            <Text span c="gray.5" fz={16}>
+              {' '}
+              / {counters.limit}
+            </Text>
           </Text>
-        </Text>
-        {counters.nextAllowedAt ? (
-          <Tooltip label="a three minute pause between letters, fixed in code">
-            <Badge color="yellow" variant="light" className="tabular">
-              next in {timeLeft(counters.nextAllowedAt, now)}
-            </Badge>
-          </Tooltip>
-        ) : counters.windowOpen ? (
-          <Badge color="green" variant="light">
-            ready to send
-          </Badge>
-        ) : (
-          <Badge color="red" variant="light">
-            sending closed
-          </Badge>
-        )}
+        </div>
+        <SendState counters={counters} now={now} />
       </Group>
-      <Progress value={share} color={share >= 100 ? 'red' : 'blue'} size="sm" />
+      <Progress value={share} color={share >= 100 ? 'red' : 'ink'} size={4} />
       {counters.bounceRate > 0 && (
         <Text size="xs" c="dimmed" mt={6}>
           bounces over recent letters: {Math.round(counters.bounceRate * 100)} percent
         </Text>
       )}
-    </Card>
+    </Paper>
   );
 }
 
-function DraftCard({
+/** Whether a letter can go out right now: the pause timer, an open window, or closed. */
+function SendState({ counters, now }: { counters: SendCounters; now: number }) {
+  if (counters.nextAllowedAt) {
+    return (
+      <Tooltip label="a three minute pause between letters, fixed in code">
+        <Badge color="yellow" size="lg" leftSection={<Timer size={13} />} className="tabular">
+          next in {timeLeft(counters.nextAllowedAt, now)}
+        </Badge>
+      </Tooltip>
+    );
+  }
+  return counters.windowOpen ? (
+    <Badge color="green" size="lg" variant="dot">
+      ready to send
+    </Badge>
+  ) : (
+    <Tooltip label="letters go out 08:00 to 22:00 on weekdays, or the daily limit is reached">
+      <Badge color="red" size="lg" variant="dot">
+        sending closed
+      </Badge>
+    </Tooltip>
+  );
+}
+
+export function DraftCard({
   draft,
   onSend,
   onDiscard,
@@ -163,36 +190,59 @@ function DraftCard({
   const words = body.trim().split(/\s+/).filter(Boolean).length;
 
   return (
-    <Card withBorder p="md">
-      <Group justify="space-between" align="start" mb="xs">
-        <div>
+    <Paper p="md">
+      <Group justify="space-between" align="start" mb="sm" wrap="nowrap">
+        <div style={{ minWidth: 0 }}>
           {/*
             The name leads to the company card in the app, not to its site.
             The owner returns to a draft a week after writing it, and "which company
             is this" is the first question. The site answers it worse than the card,
             which holds the stack, score, contacts and history.
           */}
-          <Group gap={6} align="center">
-            <Text fw={600}>{draft.company}</Text>
+          <Group gap={8} align="center" wrap="nowrap">
             <Tooltip label="company card: stack, contacts, correspondence history">
-              <Anchor href={companyHref(draft.domain)} c="dimmed" style={{ display: 'flex' }}>
-                <Building2 size={14} />
+              <Anchor href={companyHref(draft.domain)} c="ink" className="display" fz={17} truncate>
+                {draft.company}
               </Anchor>
             </Tooltip>
-            <Anchor href={`https://${draft.domain}`} target="_blank" rel="noreferrer" size="xs" c="dimmed">
-              {draft.domain}
-            </Anchor>
+            {draft.domain && (
+              <Anchor
+                href={`https://${draft.domain}`}
+                target="_blank"
+                rel="noreferrer"
+                size="xs"
+                c="dimmed"
+                className="mono"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+              >
+                <Globe size={12} />
+                {draft.domain}
+              </Anchor>
+            )}
           </Group>
-          <Text size="xs" c="dimmed">
-            {draft.contactName ? `${draft.contactName}, ` : ''}
-            {draft.contactEmail ?? 'no address'}
-            {draft.leadTitle ? ` | ${draft.leadTitle}` : ''}
-          </Text>
+          <Group gap={12} mt={4} wrap="nowrap">
+            <Group gap={4} wrap="nowrap">
+              <UserRound size={13} color="var(--mantine-color-gray-6)" />
+              <Text size="xs" c="gray.7" truncate>
+                {draft.contactName ? `${draft.contactName}, ` : ''}
+                {draft.contactEmail ?? 'no address'}
+              </Text>
+            </Group>
+            {draft.leadTitle && (
+              <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
+                <Landmark size={13} color="var(--mantine-color-brand-6)" />
+                <Text size="xs" c="gray.7" truncate>
+                  {draft.leadTitle}
+                </Text>
+              </Group>
+            )}
+          </Group>
         </div>
-        <Group gap={6}>
+        <Group gap={6} wrap="nowrap">
           <Select
             size="xs"
             w={210}
+            leftSection={<FileText size={13} />}
             data={templateOptions}
             value={draft.templateUsed}
             placeholder={templateOptions.length === 0 ? 'no templates' : 'no template'}
@@ -200,20 +250,22 @@ function DraftCard({
             allowDeselect={false}
             onChange={(slug) => slug && slug !== draft.templateUsed && retemplate.mutate(slug)}
           />
-          <Badge variant="light" color="gray">
-            {draft.language ?? ''}
-          </Badge>
+          {draft.language && (
+            <Badge color="gray" className="mono">
+              {draft.language}
+            </Badge>
+          )}
         </Group>
       </Group>
 
       {draft.error && (
-        <Alert color="yellow" icon={<CircleAlert size={16} />} mb="xs" p="xs">
+        <Alert color="yellow" icon={<TriangleAlert size={16} />} mb="xs" p="xs">
           {draft.error}
         </Alert>
       )}
 
       {blockers.length > 0 && (
-        <Alert color="red" icon={<CircleAlert size={16} />} mb="xs" p="xs">
+        <Alert color="red" icon={<TriangleAlert size={16} />} mb="xs" p="xs" title="Send checks failed">
           <Stack gap={2}>
             {blockers.map((blocker) => (
               <Text key={blocker.code} size="sm">
@@ -234,8 +286,9 @@ function DraftCard({
         A typed address becomes a company contact at once and shows on the studio card.
       */}
       <Autocomplete
-        label="address"
+        label="Address"
         size="xs"
+        leftSection={<Mail size={13} />}
         placeholder="pick a found one or type your own"
         data={options.map((item) => item.email)}
         value={email}
@@ -274,14 +327,21 @@ function DraftCard({
       </Text>
 
       <TextInput
-        label="subject"
+        label="Subject"
         size="xs"
         value={subject}
         onChange={(event) => setSubject(event.currentTarget.value)}
         mb="xs"
       />
       <Textarea
-        label={`body, ${words} words`}
+        label={
+          <>
+            Body{' '}
+            <Text span size="xs" c={words > 160 ? 'red' : 'dimmed'} className="mono">
+              {words} / 160 words
+            </Text>
+          </>
+        }
         size="xs"
         autosize
         minRows={8}
@@ -293,8 +353,8 @@ function DraftCard({
       <Group justify="space-between" mt="sm">
         <Group gap="xs">
           <Button
-            size="xs"
-            leftSection={<Send size={14} />}
+            variant="filled"
+            leftSection={<Send size={15} />}
             loading={sending}
             disabled={dirty}
             onClick={() => onSend(draft.id)}
@@ -302,8 +362,8 @@ function DraftCard({
             Send
           </Button>
           <Button
-            size="xs"
             variant="default"
+            leftSection={<Save size={15} />}
             disabled={!dirty}
             loading={save.isPending}
             onClick={() => save.mutate()}
@@ -312,10 +372,9 @@ function DraftCard({
           </Button>
         </Group>
         <Button
-          size="xs"
           variant="subtle"
           color="red"
-          leftSection={<Trash2 size={14} />}
+          leftSection={<SkipForward size={15} />}
           onClick={() => onDiscard(draft.id)}
         >
           Skip
@@ -326,8 +385,47 @@ function DraftCard({
           save the edits first, the letter goes out with exactly the text stored in the database
         </Text>
       )}
-    </Card>
+    </Paper>
   );
+}
+
+/**
+ * One click sends one draft. The server runs every guard again; a refusal comes back as blockers
+ * that the draft card shows. Shared by this page and the letter drawer on the company page.
+ */
+export function useSendDraft(
+  setBlockersById: React.Dispatch<React.SetStateAction<Record<number, Blocker[]>>>,
+) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.sendDraft(id),
+    onSuccess: (result, id) => {
+      if (result.sent) {
+        setBlockersById((current) => ({ ...current, [id]: [] }));
+        notifications.show({ color: 'green', title: 'sent', message: 'the letter went out' });
+      } else {
+        setBlockersById((current) => ({ ...current, [id]: result.blockers }));
+        notifications.show({
+          color: 'red',
+          title: 'letter not sent',
+          message: result.blockers[0]?.message ?? 'unknown reason',
+        });
+      }
+      void client.invalidateQueries({ queryKey: ['drafts'] });
+      void client.invalidateQueries({ queryKey: ['outreach'] });
+      void client.invalidateQueries({ queryKey: ['company'] });
+    },
+  });
+}
+
+/** The pause timer must tick on its own, otherwise the button stays grey until a reload. */
+export function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
 }
 
 export function SendingPage() {
@@ -338,15 +436,9 @@ export function SendingPage() {
    */
   const [chosen, setChosen] = useSelection('sending');
   const tab = chosen ?? 'ready';
-  const setTab = (value: string | null) => setChosen(value === 'ready' ? null : value);
+  const setTab = (value: string) => setChosen(value === 'ready' ? null : value);
   const [blockersById, setBlockersById] = useState<Record<number, Blocker[]>>({});
-  const [now, setNow] = useState(() => Date.now());
-
-  // The pause timer must tick on its own, otherwise the button stays grey until a reload.
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['drafts'],
@@ -366,24 +458,7 @@ export function SendingPage() {
     },
   });
 
-  const send = useMutation({
-    mutationFn: (id: number) => api.sendDraft(id),
-    onSuccess: (result, id) => {
-      if (result.sent) {
-        setBlockersById((current) => ({ ...current, [id]: [] }));
-        notifications.show({ color: 'green', title: 'sent', message: 'the letter went out' });
-      } else {
-        setBlockersById((current) => ({ ...current, [id]: result.blockers }));
-        notifications.show({
-          color: 'red',
-          title: 'letter not sent',
-          message: result.blockers[0]?.message ?? 'unknown reason',
-        });
-      }
-      void client.invalidateQueries({ queryKey: ['drafts'] });
-      void client.invalidateQueries({ queryKey: ['outreach'] });
-    },
-  });
+  const send = useSendDraft(setBlockersById);
 
   const discard = useMutation({
     mutationFn: (id: number) => api.discardDraft(id),
@@ -398,43 +473,65 @@ export function SendingPage() {
     };
   }, [data]);
 
-  if (error) return <Alert color="red" m="lg">{(error as Error).message}</Alert>;
-  if (isLoading || !data) return <Skeleton h={320} m="lg" />;
-
   const list = tab === 'attention' ? attention : ready;
 
   return (
-    <Stack gap="sm" p="lg">
-      <Group justify="space-between">
-        <Counters counters={data.counters} now={now} />
+    <>
+      <PageHeader
+        icon={Send}
+        title="Outbox"
+        description="Ready letter drafts. One click sends one letter; every send check runs again on the server."
+      >
         <Button
-          size="xs"
-          variant="default"
-          leftSection={<RefreshCw size={14} />}
+          variant="filled"
+          leftSection={<RefreshCw size={15} />}
           loading={prepare.isPending}
           onClick={() => prepare.mutate()}
         >
           Prepare drafts
         </Button>
-      </Group>
+      </PageHeader>
 
-      <Tabs value={tab} onChange={setTab}>
-        <Tabs.List>
-          <Tabs.Tab value="ready">Ready {ready.length}</Tabs.Tab>
-          <Tabs.Tab value="attention">Need attention {attention.length}</Tabs.Tab>
-        </Tabs.List>
-      </Tabs>
-
-      {list.length === 0 ? (
-        <Text size="sm" c="dimmed">
-          {tab === 'attention'
-            ? 'nothing is stuck'
-            : 'no drafts, prepare them with the button above'}
+      {error ? (
+        <Alert color="red" m="lg" title="Could not read the drafts">
+          {(error as Error).message}
+        </Alert>
+      ) : isLoading || !data ? (
+        <Text size="sm" c="dimmed" p="lg">
+          loading
         </Text>
       ) : (
-        <ScrollArea.Autosize mah="calc(100vh - 260px)">
-          <Stack gap="sm">
-            {list.map((draft) => (
+        <Stack gap="md" p="lg" maw={980}>
+          <Counters counters={data.counters} now={now} />
+
+          <SegmentedControl
+            size="sm"
+            w="fit-content"
+            value={tab}
+            onChange={setTab}
+            data={[
+              { value: 'ready', label: `Ready ${ready.length}` },
+              { value: 'attention', label: `Need attention ${attention.length}` },
+            ]}
+          />
+
+          {list.length === 0 ? (
+            <Paper p="lg">
+              <Group gap="sm">
+                {tab === 'attention' ? (
+                  <CircleCheck size={18} color="var(--mantine-color-green-7)" />
+                ) : (
+                  <Inbox size={18} color="var(--mantine-color-gray-6)" />
+                )}
+                <Text size="sm" c="gray.7">
+                  {tab === 'attention'
+                    ? 'Nothing is stuck.'
+                    : 'No drafts. Prepare them with the button above, or build one from a company page.'}
+                </Text>
+              </Group>
+            </Paper>
+          ) : (
+            list.map((draft) => (
               <DraftCard
                 key={draft.id}
                 draft={draft}
@@ -443,10 +540,10 @@ export function SendingPage() {
                 onSend={(id) => send.mutate(id)}
                 onDiscard={(id) => discard.mutate(id)}
               />
-            ))}
-          </Stack>
-        </ScrollArea.Autosize>
+            ))
+          )}
+        </Stack>
       )}
-    </Stack>
+    </>
   );
 }

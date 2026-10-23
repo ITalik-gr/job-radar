@@ -69,6 +69,15 @@ export const companies = sqliteTable(
     copyrightYear: integer('copyright_year'),
     lastPostAt: integer('last_post_at'),
     /**
+     * The model's read of whether this company would buy the owner's services (`config/fit.json`):
+     * how likely, 0 to 100, which service, what stage the company is at. Picked from fixed lists by
+     * Clef, never written text. `fit_at` is when it was asked; null means never.
+     */
+    fit: integer('fit'),
+    fitService: text('fit_service'),
+    fitStage: text('fit_stage'),
+    fitAt: integer('fit_at'),
+    /**
      * The site renders its content with script, and the server-side crawl got nothing from it.
      *
      * Such domains go into a separate queue for the extension: it opens the page in the owner's

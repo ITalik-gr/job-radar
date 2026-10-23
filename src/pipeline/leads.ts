@@ -143,7 +143,24 @@ export interface LeadQuery {
   status?: LeadStatus;
   /** Open only: no closing date and a deadline in the future or none. Default true. */
   open?: boolean;
+  /** Substring of the title, the text or the buyer's name. */
+  search?: string;
+  /** Budget bounds, in the lead's own currency. A lead without a budget does not pass either bound. */
+  minBudget?: number;
+  maxBudget?: number;
+  /** Minimum model fit, 0 to 100. An unrated lead does not pass. */
+  minFit?: number;
+  /** Deadline within this many days from now. */
+  deadlineDays?: number;
+  sort?: 'deadline' | 'budget' | 'fit' | 'new';
   limit?: number;
+}
+
+function leadOrder(sort: LeadQuery['sort']) {
+  if (sort === 'budget') return [sql`${leads.budget} is null`, desc(leads.budget)];
+  if (sort === 'fit') return [sql`${leads.fit} is null`, desc(leads.fit), asc(leads.deadlineAt)];
+  if (sort === 'new') return [desc(leads.firstSeen)];
+  return [sql`${leads.deadlineAt} is null`, asc(leads.deadlineAt), desc(leads.firstSeen)];
 }
 
 /**
@@ -161,9 +178,20 @@ export async function listLeads(query: LeadQuery = {}, now = Date.now()): Promis
         query.source ? eq(leads.source, query.source) : undefined,
         query.status ? eq(leads.status, query.status) : undefined,
         open ? and(isNull(leads.closedAt), or(isNull(leads.deadlineAt), gt(leads.deadlineAt, now))) : undefined,
+        query.search
+          ? sql`(lower(${leads.title}) like ${`%${query.search.toLowerCase()}%`}
+              or lower(coalesce(${leads.text}, '')) like ${`%${query.search.toLowerCase()}%`}
+              or lower(coalesce(${companies.name}, '')) like ${`%${query.search.toLowerCase()}%`})`
+          : undefined,
+        query.minBudget === undefined ? undefined : sql`${leads.budget} >= ${query.minBudget}`,
+        query.maxBudget === undefined ? undefined : sql`${leads.budget} <= ${query.maxBudget}`,
+        query.minFit === undefined ? undefined : sql`${leads.fit} >= ${query.minFit}`,
+        query.deadlineDays === undefined
+          ? undefined
+          : sql`${leads.deadlineAt} is not null and ${leads.deadlineAt} <= ${now + query.deadlineDays * 86_400_000}`,
       ),
     )
-    .orderBy(sql`${leads.deadlineAt} is null`, asc(leads.deadlineAt), desc(leads.firstSeen))
+    .orderBy(...leadOrder(query.sort))
     .limit(query.limit ?? 500);
 
   return rows.map((row) => ({ ...row.lead, companyName: row.companyName, companyDomain: row.companyDomain }));

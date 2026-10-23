@@ -9,10 +9,11 @@ import {
 } from '../pipeline/companies.js';
 import { filterFromQuery } from '../pipeline/filters.js';
 import { companyFacets } from '../pipeline/stats.js';
-import { studioPage, type StudioFilters } from '../pipeline/studios.js';
+import { companyCard, slimCard, studioPage, type StudioFilters } from '../pipeline/studios.js';
 import { normalizeEmail, rememberContact } from '../pipeline/outreach.js';
 import { refreshCompany } from '../pipeline/refresh.js';
 import { companyVerdict } from '../pipeline/verdict.js';
+import { fitCompany, fitLabels } from '../pipeline/fit.js';
 import { deleteContact, updateContact } from '../pipeline/contacts.js';
 
 export const companiesRoutes = new Hono();
@@ -38,7 +39,8 @@ export function pageFilters(query: Record<string, string>): StudioFilters | { er
 companiesRoutes.get('/', async (c) => {
   const filters = pageFilters(c.req.query());
   if ('error' in filters) return c.json(filters, 400);
-  return c.json(await studioPage({ ...filters, limit: filters.limit ?? Number.MAX_SAFE_INTEGER, scope: 'all' }));
+  const page = await studioPage({ ...filters, limit: filters.limit ?? Number.MAX_SAFE_INTEGER, scope: 'all' });
+  return c.json({ ...page, cards: page.cards.map(slimCard) });
 });
 
 /** The values the filter selects offer: segments, industries, sources and so on, with counts. */
@@ -53,6 +55,16 @@ companiesRoutes.post('/bulk', async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
+});
+
+/**
+ * One company as a scored list card, by the key the web app puts in its address: the domain, or
+ * `id-42` for a business without a site.
+ */
+companiesRoutes.get('/card/:key', async (c) => {
+  const card = await companyCard(c.req.param('key'));
+  if (!card) return c.json({ error: 'no such company' }, 404);
+  return c.json(card);
 });
 
 companiesRoutes.get('/:id', async (c) => {
@@ -86,6 +98,18 @@ companiesRoutes.post('/:id/refresh', async (c) =>
 companiesRoutes.post('/:id/verdict', async (c) =>
   c.json(await companyVerdict(Number(c.req.param('id')))),
 );
+
+/** The model's fit read for one company, on a button press. Served from the cache when asked before. */
+companiesRoutes.post('/:id/fit', async (c) => {
+  try {
+    return c.json(await fitCompany(Number(c.req.param('id'))));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+/** What the fit keys mean, from the same config the model reads. */
+companiesRoutes.get('/fit/labels', (c) => c.json(fitLabels()));
 
 companiesRoutes.post('/:id/contacts', async (c) => {
   const companyId = Number(c.req.param('id'));

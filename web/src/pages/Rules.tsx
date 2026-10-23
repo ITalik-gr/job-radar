@@ -1,26 +1,46 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActionIcon,
   Alert,
-  Box,
+  Anchor,
   Button,
-  Card,
   Group,
   NumberInput,
   Paper,
-  ScrollArea,
-  Skeleton,
+  SimpleGrid,
   Stack,
   Table,
   Text,
   TextInput,
-  Title,
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Plus, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  Code,
+  Gauge,
+  Globe,
+  Landmark,
+  ListChecks,
+  Plus,
+  RotateCcw,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  Store,
+  Tag,
+  Trash2,
+  TrendingUp,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { api, type Rules } from '../lib/api';
+import { PageHeader, SectionHeader } from '../components/ui';
 
 const SOURCE_LABELS: Record<string, string> = {
   db: 'edits from the interface',
@@ -28,16 +48,33 @@ const SOURCE_LABELS: Record<string, string> = {
   bundled: 'default values',
 };
 
-function SectionTitle({ title, hint }: { title: string; hint: string }) {
+/** A rules section: an icon header, one line on what it does, then the fields. */
+function Section({
+  icon,
+  title,
+  hint,
+  color,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  hint: string;
+  color?: string;
+  children: ReactNode;
+}) {
   return (
-    <Box mb="md">
-      <Title order={4}>{title}</Title>
-      <Text size="sm" c="dimmed">
+    <Paper p="md">
+      <SectionHeader icon={icon} title={title} color={color} />
+      <Text size="sm" c="gray.7" mt={-4} mb="md">
         {hint}
       </Text>
-    </Box>
+      {children}
+    </Paper>
   );
 }
+
+/** How many rows a weight table shows before "show all": no scroll box inside the page scroll. */
+const TABLE_ROWS = 10;
 
 /** A weight table: key plus number, with rows that can be added and removed. */
 function TermWeights({
@@ -52,6 +89,7 @@ function TermWeights({
   const [term, setTerm] = useState('');
   const [weight, setWeight] = useState<number | string>(1);
   const [filter, setFilter] = useState('');
+  const [all, setAll] = useState(false);
 
   const rows = useMemo(
     () =>
@@ -60,6 +98,7 @@ function TermWeights({
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
     [terms, filter],
   );
+  const shown = all || filter ? rows : rows.slice(0, TABLE_ROWS);
 
   const add = () => {
     const key = term.trim().toLowerCase();
@@ -70,7 +109,7 @@ function TermWeights({
 
   return (
     <Stack gap="sm">
-      <Group gap="sm" align="flex-end">
+      <Group gap="sm" align="flex-end" wrap="nowrap">
         <TextInput
           label="Key"
           placeholder={placeholder}
@@ -79,73 +118,81 @@ function TermWeights({
           onKeyDown={(event) => event.key === 'Enter' && add()}
           style={{ flex: 1 }}
         />
-        <NumberInput label="Weight" value={weight} onChange={setWeight} w={100} allowDecimal step={1} />
+        <NumberInput label="Weight" value={weight} onChange={setWeight} w={90} allowDecimal step={1} />
         <Button variant="default" leftSection={<Plus size={15} />} onClick={add}>
           Add
         </Button>
       </Group>
 
-      <TextInput
-        placeholder="filter"
-        leftSection={<Search size={14} />}
-        value={filter}
-        onChange={(event) => setFilter(event.currentTarget.value)}
-      />
+      {Object.keys(terms).length > TABLE_ROWS && (
+        <TextInput
+          placeholder="filter"
+          leftSection={<Search size={14} />}
+          value={filter}
+          onChange={(event) => setFilter(event.currentTarget.value)}
+        />
+      )}
 
       <Paper style={{ overflow: 'hidden' }}>
-        <ScrollArea.Autosize mah={360}>
-          <Table stickyHeader layout="fixed">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>key</Table.Th>
-                <Table.Th w={110} ta="right">
-                  weight
-                </Table.Th>
-                <Table.Th w={60} />
+        <Table layout="fixed">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>key</Table.Th>
+              <Table.Th w={110} ta="right">
+                weight
+              </Table.Th>
+              <Table.Th w={60} />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {shown.map(([key, value]) => (
+              <Table.Tr key={key}>
+                <Table.Td>
+                  <Text size="sm" className="mono" truncate>
+                    {key}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <NumberInput
+                    size="xs"
+                    value={value}
+                    onChange={(next) => onChange({ ...terms, [key]: Number(next) || 0 })}
+                    allowDecimal
+                    step={1}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Group justify="flex-end">
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      aria-label={`remove ${key}`}
+                      onClick={() => {
+                        const next = { ...terms };
+                        delete next[key];
+                        onChange(next);
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </ActionIcon>
+                  </Group>
+                </Table.Td>
               </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {rows.map(([key, value]) => (
-                <Table.Tr key={key}>
-                  <Table.Td>
-                    <Text size="sm" truncate>
-                      {key}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      size="xs"
-                      value={value}
-                      onChange={(next) => onChange({ ...terms, [key]: Number(next) || 0 })}
-                      allowDecimal
-                      step={1}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Group justify="flex-end">
-                      <ActionIcon
-                        color="red"
-                        aria-label={`remove ${key}`}
-                        onClick={() => {
-                          const next = { ...terms };
-                          delete next[key];
-                          onChange(next);
-                        }}
-                      >
-                        <Trash2 size={15} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea.Autosize>
+            ))}
+          </Table.Tbody>
+        </Table>
       </Paper>
 
-      <Text size="xs" c="dimmed">
-        {Object.keys(terms).length} total
-      </Text>
+      <Group gap="sm">
+        <Text size="xs" c="dimmed" className="mono">
+          {Object.keys(terms).length} total
+        </Text>
+        {!filter && rows.length > TABLE_ROWS && (
+          <Anchor component="button" size="xs" onClick={() => setAll((value) => !value)}>
+            {all ? 'show the top ten' : `show all ${rows.length}`}
+          </Anchor>
+        )}
+      </Group>
     </Stack>
   );
 }
@@ -186,22 +233,20 @@ export function RulesPage() {
     },
   });
 
-  if (error) {
+  if (error || isLoading || !draft || !data) {
     return (
-      <Box p="lg">
-        <Alert color="red" title="Could not read the rules">
-          {error instanceof Error ? error.message : String(error)}
-        </Alert>
-      </Box>
-    );
-  }
-
-  if (isLoading || !draft || !data) {
-    return (
-      <Stack gap="md" p="lg">
-        <Skeleton h={120} />
-        <Skeleton h={320} />
-      </Stack>
+      <>
+        <PageHeader icon={SlidersHorizontal} title="Rules" />
+        {error ? (
+          <Alert color="red" m="lg" title="Could not read the rules">
+            {error instanceof Error ? error.message : String(error)}
+          </Alert>
+        ) : (
+          <Text size="sm" c="dimmed" p="lg">
+            loading
+          </Text>
+        )}
+      </>
     );
   }
 
@@ -232,213 +277,238 @@ export function RulesPage() {
   const patchCompanies = (part: Partial<Rules['companies']>) =>
     setDraft({ ...draft, companies: { ...draft.companies, ...part } });
 
+  const modelFit = draft.companies.modelFit ?? { likely: 4, possible: 0, unlikely: -3, no: -8 };
+  const queue = draft.queue ?? { size: 10 };
+
   return (
-    <Stack gap="md" p="lg">
-      <Paper p="md">
-        <Group gap="md">
-          <Box>
-            <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>
-              rules source
-            </Text>
-            <Text fw={600}>{SOURCE_LABELS[data.source] ?? data.source}</Text>
-          </Box>
-
-          <Text size="sm" c="dimmed" maw={420}>
-            What is saved here overrides both the file and the bundled values. In production this is
-            the only way to change the rules without a deploy: the worker has no filesystem.
-          </Text>
-
-          <Group gap="sm" ml="auto">
-            {data.source === 'db' && (
-              <Tooltip label="drop the interface edits and go back to config/scoring.json">
-                <Button
-                  variant="default"
-                  leftSection={<RotateCcw size={15} />}
-                  loading={reset.isPending}
-                  onClick={() => reset.mutate()}
-                >
-                  Reset
-                </Button>
-              </Tooltip>
-            )}
-            <Button
-              leftSection={<Save size={15} />}
-              disabled={!dirty}
-              loading={save.isPending}
-              onClick={() => save.mutate(draft)}
+    <>
+      <PageHeader
+        icon={SlidersHorizontal}
+        title="Rules"
+        description={
+          <>
+            Lead scoring weights. Source:{' '}
+            <Tooltip
+              label="What is saved here overrides both the file and the bundled values. In production this is the only way to change the rules without a deploy: the worker has no filesystem."
+              multiline
+              maw={320}
             >
-              {dirty ? 'Save changes' : 'No changes'}
+              <Text span fw={600} c="ink">
+                {SOURCE_LABELS[data.source] ?? data.source}
+              </Text>
+            </Tooltip>
+          </>
+        }
+      >
+        {data.source === 'db' && (
+          <Tooltip label="drop the interface edits and go back to config/scoring.json">
+            <Button leftSection={<RotateCcw size={15} />} loading={reset.isPending} onClick={() => reset.mutate()}>
+              Reset
             </Button>
+          </Tooltip>
+        )}
+        <Button
+          variant="filled"
+          leftSection={<Save size={15} />}
+          disabled={!dirty}
+          loading={save.isPending}
+          onClick={() => save.mutate(draft)}
+        >
+          {dirty ? 'Save changes' : 'No changes'}
+        </Button>
+      </PageHeader>
+
+      <Stack gap="md" p="lg" maw={1200}>
+        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+          <Section
+            icon={ListChecks}
+            title="Threshold and queue"
+            color="ink"
+            hint="Below the threshold a company stays in the database but is not shown as a lead."
+          >
+            <Group gap="md" align="flex-end">
+              <NumberInput
+                label="Lead threshold"
+                description="sum of the weights"
+                value={draft.companies.threshold}
+                onChange={(value) => patchCompanies({ threshold: Number(value) || 0 })}
+                w={168}
+                allowDecimal
+              />
+              <NumberInput
+                label="Today, companies"
+                description="the daily slice size"
+                value={queue.size}
+                onChange={(value) => setDraft({ ...draft, queue: { ...queue, size: Number(value) || 1 } })}
+                w={168}
+                min={1}
+                max={50}
+              />
+            </Group>
+          </Section>
+
+          <Section
+            icon={Sparkles}
+            title="Model fit"
+            color="violet"
+            hint="How much the model's read counts: would this company pay an outside developer. 0 turns a level off."
+          >
+            <Group gap="md" align="flex-end">
+              {(['likely', 'possible', 'unlikely', 'no'] as const).map((level) => (
+                <NumberInput
+                  key={level}
+                  label={level}
+                  value={modelFit[level]}
+                  onChange={(value) => patchCompanies({ modelFit: { ...modelFit, [level]: Number(value) || 0 } })}
+                  w={92}
+                  allowDecimal
+                  allowNegative
+                />
+              ))}
+            </Group>
+          </Section>
+        </SimpleGrid>
+
+        <Section icon={TrendingUp} title="Signals" color="green" hint="Things that say a company needs work done right now.">
+          <Group gap="md" align="flex-end">
+            <NumberInput
+              label="Hiring developers"
+              description="seen on a board, 45 days"
+              value={draft.companies.hiring}
+              onChange={(value) => patchCompanies({ hiring: Number(value) || 0 })}
+              w={168}
+              leftSection={<Briefcase size={14} />}
+              allowDecimal
+              allowNegative
+            />
+            <NumberInput
+              label="Has a careers page"
+              description="on their own site"
+              value={draft.companies.hasCareersPage}
+              onChange={(value) => patchCompanies({ hasCareersPage: Number(value) || 0 })}
+              w={168}
+              allowDecimal
+              allowNegative
+            />
+            <NumberInput
+              label="Open tender"
+              description="deadline still ahead"
+              value={draft.companies.openLead ?? 6}
+              onChange={(value) => patchCompanies({ openLead: Number(value) || 0 })}
+              w={168}
+              leftSection={<Landmark size={14} />}
+              allowDecimal
+              allowNegative
+            />
+            <NumberInput
+              label="Tender fit from"
+              description="model rating, 0 to 100"
+              value={draft.companies.minLeadFit ?? 50}
+              onChange={(value) => patchCompanies({ minLeadFit: Number(value) || 0 })}
+              w={168}
+              min={0}
+              max={100}
+            />
+            <NumberInput
+              label="Named contact"
+              description="a person with an email"
+              value={draft.companies.namedContact ?? 2}
+              onChange={(value) => patchCompanies({ namedContact: Number(value) || 0 })}
+              w={168}
+              leftSection={<UserRound size={14} />}
+              allowDecimal
+              allowNegative
+            />
           </Group>
-        </Group>
-      </Paper>
+        </Section>
 
-      <Card>
-        <SectionTitle title="Threshold and signals" hint="below the threshold a company stays in the database but is not shown as a lead" />
-        <Group gap="xl" align="flex-end">
-          <NumberInput
-            label="Lead threshold"
-            description="sum of the weights below"
-            value={draft.companies.threshold}
-            onChange={(value) => patchCompanies({ threshold: Number(value) || 0 })}
-            w={200}
-            allowDecimal
-          />
-          <NumberInput
-            label="Hiring developers"
-            description="seen on a board in the last 45 days"
-            value={draft.companies.hiring}
-            onChange={(value) => patchCompanies({ hiring: Number(value) || 0 })}
-            w={200}
-            allowDecimal
-            allowNegative
-          />
-          <NumberInput
-            label="Has a careers page"
-            value={draft.companies.hasCareersPage}
-            onChange={(value) => patchCompanies({ hasCareersPage: Number(value) || 0 })}
-            w={200}
-            allowDecimal
-            allowNegative
-          />
-          <NumberInput
-            label="Open tender"
-            description="deadline still ahead"
-            value={draft.companies.openLead ?? 6}
-            onChange={(value) => patchCompanies({ openLead: Number(value) || 0 })}
-            w={200}
-            allowDecimal
-            allowNegative
-          />
-          <NumberInput
-            label="Named contact"
-            description="a person with an email"
-            value={draft.companies.namedContact ?? 2}
-            onChange={(value) => patchCompanies({ namedContact: Number(value) || 0 })}
-            w={200}
-            allowDecimal
-            allowNegative
-          />
-        </Group>
-      </Card>
-
-      <Card>
-        <SectionTitle
+        <Section
+          icon={Gauge}
           title="Site audit"
-          hint={`for ${site.buyerKinds.join(', ')}: a weak site is the reason to write, stack weights and the old footer penalty do not apply`}
-        />
-        <Group gap="lg" align="flex-end" wrap="wrap">
-          {(
-            [
-              ['perIssue', 'Per audit issue', ''],
-              ['maxIssues', 'Issues counted', 'at most'],
-              ['noSite', 'No site', 'with a phone or email'],
-              ['fastScore', 'Fast from', 'PageSpeed score'],
-              ['modernFastSite', 'Fresh fast site', site.modernPlatforms.join(', ')],
-            ] as const
-          ).map(([key, label, description]) => (
-            <NumberInput
-              key={key}
-              label={label}
-              description={description || undefined}
-              value={site[key]}
-              onChange={(value) => patchCompanies({ site: { ...site, [key]: Number(value) || 0 } })}
-              w={168}
-              allowDecimal
-              allowNegative
-            />
-          ))}
-        </Group>
-      </Card>
+          color="red"
+          hint={`For ${site.buyerKinds.join(', ')}: a weak site is the reason to write, stack weights and the old footer penalty do not apply.`}
+        >
+          <Group gap="md" align="flex-end" wrap="wrap">
+            {(
+              [
+                ['perIssue', 'Per audit issue', 'each one found'],
+                ['maxIssues', 'Issues counted', 'at most'],
+                ['noSite', 'No site', 'with a phone or email'],
+                ['fastScore', 'Fast from', 'PageSpeed score'],
+                ['modernFastSite', 'Fresh fast site', site.modernPlatforms.join(', ')],
+              ] as const
+            ).map(([key, label, description]) => (
+              <NumberInput
+                key={key}
+                label={label}
+                description={description}
+                value={site[key]}
+                onChange={(value) => patchCompanies({ site: { ...site, [key]: Number(value) || 0 } })}
+                w={168}
+                allowDecimal
+                allowNegative
+              />
+            ))}
+          </Group>
+        </Section>
 
-      {/*
-        Catalog reputation. These weights used to be editable only in config/scoring.json,
-        and Workers has no filesystem, so in production they could not be changed at all.
-      */}
-      <Card>
-        <SectionTitle
+        {/*
+          Catalog reputation. These weights used to be editable only in config/scoring.json,
+          and Workers has no filesystem, so in production they could not be changed at all.
+        */}
+        <Section
+          icon={Star}
           title="Catalog reputation"
-          hint="catalog rating and reviews. An empty profile with no reviews often means an abandoned studio"
-        />
-        <Group gap="lg" align="flex-end" wrap="wrap">
+          color="yellow"
+          hint="Catalog rating and reviews. An empty profile with no reviews often means an abandoned studio."
+        >
+          <Group gap="md" align="flex-end" wrap="wrap">
+            {(
+              [
+                ['goodRating', 'High rating from', 'where the bonus starts'],
+                ['goodRatingBonus', 'Rating bonus', 'added'],
+                ['weakRating', 'Low rating below', 'a penalty applies'],
+                ['weakRatingPenalty', 'Rating penalty', 'added'],
+                ['reviewsFrom', 'Reviews from', 'counts as many'],
+                ['reviewsBonus', 'Reviews bonus', 'added'],
+                ['noReviewsPenalty', 'No reviews penalty', 'added'],
+              ] as const
+            ).map(([key, label, description]) => (
+              <NumberInput
+                key={key}
+                label={label}
+                description={description}
+                value={reputation[key]}
+                onChange={(value) => patchCompanies({ reputation: { ...reputation, [key]: Number(value) || 0 } })}
+                w={168}
+                allowDecimal
+                allowNegative
+              />
+            ))}
+          </Group>
+        </Section>
+
+        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
           {(
             [
-              ['goodRating', 'High rating from', 'where the bonus starts'],
-              ['goodRatingBonus', 'Rating bonus', ''],
-              ['weakRating', 'Low rating below', 'under this a penalty applies'],
-              ['weakRatingPenalty', 'Rating penalty', ''],
-              ['reviewsFrom', 'Reviews from', 'how many reviews count as many'],
-              ['reviewsBonus', 'Reviews bonus', ''],
-              ['noReviewsPenalty', 'No reviews penalty', ''],
+              ['kindWeights', Building2, 'Segment', 'studio, design, startup, smb, ecommerce, public, product, outstaff, unknown.', 'e.g. smb'],
+              ['industryWeights', Store, 'Industry', 'As stored on the company. Niches you sell to go up, excluded ones strongly down.', 'e.g. dental'],
+              ['tagWeights', Tag, 'Catalog tags', 'What the catalogs say a company does: web development, saas, branding.', 'e.g. saas'],
+              ['techWeights', Code, 'Site stack', 'What enrichment found on their site. A dated stack is a reason to write.', 'e.g. wordpress'],
+              ['countryWeights', Globe, 'Country', 'ISO codes as stored on the company: UA, PL, DE.', 'e.g. UA'],
+              ['sizeWeights', Users, 'Size', 'Catalog size buckets.', 'e.g. 10 - 49'],
             ] as const
-          ).map(([key, label, description]) => (
-            <NumberInput
-              key={key}
-              label={label}
-              description={description || undefined}
-              value={reputation[key]}
-              onChange={(value) => patchCompanies({ reputation: { ...reputation, [key]: Number(value) || 0 } })}
-              w={168}
-              allowDecimal
-              allowNegative
-            />
+          ).map(([key, icon, title, hint, placeholder]) => (
+            <Section key={key} icon={icon} title={title} hint={hint}>
+              <TermWeights
+                terms={draft.companies[key]}
+                onChange={(next) => patchCompanies({ [key]: next })}
+                placeholder={placeholder}
+              />
+            </Section>
           ))}
-        </Group>
-      </Card>
-
-      <Card>
-        <SectionTitle title="Segment" hint="studio, design, startup, smb, ecommerce, public, product, outstaff, unknown" />
-        <TermWeights
-          terms={draft.companies.kindWeights}
-          onChange={(next) => patchCompanies({ kindWeights: next })}
-          placeholder="e.g. smb"
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle title="Industry" hint="lower case, as stored on the company. Niches you sell to go up, excluded ones strongly down" />
-        <TermWeights
-          terms={draft.companies.industryWeights}
-          onChange={(next) => patchCompanies({ industryWeights: next })}
-          placeholder="e.g. dental"
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle title="Catalog tags" hint="what the catalogs say a company does: web development, saas, branding" />
-        <TermWeights
-          terms={draft.companies.tagWeights}
-          onChange={(next) => patchCompanies({ tagWeights: next })}
-          placeholder="e.g. saas"
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle title="Site stack" hint="what enrichment found on their site. A dated stack is a reason to write" />
-        <TermWeights
-          terms={draft.companies.techWeights}
-          onChange={(next) => patchCompanies({ techWeights: next })}
-          placeholder="e.g. wordpress"
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle title="Country" hint="as stored on the company: UA, PL, DE" />
-        <TermWeights
-          terms={draft.companies.countryWeights}
-          onChange={(next) => patchCompanies({ countryWeights: next })}
-          placeholder="e.g. UA"
-        />
-      </Card>
-
-      <Card>
-        <SectionTitle title="Size" hint="catalog size buckets" />
-        <TermWeights
-          terms={draft.companies.sizeWeights}
-          onChange={(next) => patchCompanies({ sizeWeights: next })}
-          placeholder="e.g. 10 - 49"
-        />
-      </Card>
-    </Stack>
+        </SimpleGrid>
+      </Stack>
+    </>
   );
 }

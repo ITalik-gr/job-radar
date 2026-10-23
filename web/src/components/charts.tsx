@@ -14,12 +14,12 @@ import {
 
 /*
  * One colour for every chart. Nowhere here are two series on the same axes, so a
- * categorical palette is not needed, and the blue #2a78d6 clears contrast on white.
+ * categorical palette is not needed, and the accent blue #2563eb clears contrast on white.
  * Values are labelled right on the marks; the hover tooltip stays for the cases where
  * a label or a name got cut off.
  */
-const SERIES = '#2a78d6';
-const SERIES_DIM = '#b7d3f6';
+const SERIES = '#2563eb';
+const SERIES_DIM = '#bfd3fb';
 const GRID = 'var(--mantine-color-gray-2)';
 const AXIS = 'var(--mantine-color-gray-4)';
 

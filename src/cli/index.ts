@@ -19,6 +19,7 @@ import { discover } from '../pipeline/discover.js';
 import { enrich } from '../pipeline/enrich.js';
 import { audit } from '../pipeline/audit.js';
 import { classifyCompanies, classifyLeads } from '../pipeline/classify.js';
+import { fitCompanies } from '../pipeline/fit.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
 import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
 import { toCsv } from '../lib/csv.js';
@@ -400,6 +401,16 @@ program
       'still to audit': stats.remaining,
       errors: stats.errors.length,
     });
+    for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('fit')
+  .description('Clef: would each company buy your services (config/fit.json): likelihood, service, stage')
+  .option('-n, --limit <number>', 'how many companies to ask about', '50')
+  .action(async (opts: { limit: string }) => {
+    const stats = await fitCompanies({ limit: Number(opts.limit) });
+    console.table({ asked: stats.itemsFound, saved: stats.itemsNew, 'from cache': stats.fromCache, 'still to ask': stats.remaining, errors: stats.errors.length });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
   });
 

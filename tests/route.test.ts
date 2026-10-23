@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { companyHref, href, ownsAddress, parse } from '../web/src/lib/route';
+import { companyHref, href, hrefWith, ownsAddress, parse, parseQuery } from '../web/src/lib/route';
+import { filterFromParams, filterParams, type CompanyFilter } from '../web/src/lib/filterParams';
 
 /**
  * Page addresses. A small thing that decides whether a link to a company from a draft
@@ -56,5 +57,46 @@ describe('who may write the selection', () => {
   it('an empty address belongs to whoever is open by default', () => {
     expect(ownsAddress('', 'studios')).toBe(true);
     expect(ownsAddress('#/', 'studios')).toBe(true);
+  });
+});
+
+/*
+ * List state lives after a `?` in the hash, so going back to a list restores its filters. The
+ * path must ignore it, or `#/studios?mode=all` would read as a section named `studios?mode=all`.
+ */
+describe('list state in the address', () => {
+  it('the path ignores the query', () => {
+    expect(parse('#/studios?country=UA')).toEqual(['studios']);
+    expect(parse('#/companies/acme.com?x=1')).toEqual(['companies', 'acme.com']);
+  });
+
+  it('reads and writes the query, dropping empty values', () => {
+    expect(parseQuery('#/studios?country=UA&mode=all')).toEqual({ country: 'UA', mode: 'all' });
+    expect(parseQuery('#/studios')).toEqual({});
+    expect(hrefWith(['studios'], { country: 'UA', q: '', mode: undefined })).toBe('#/studios?country=UA');
+    expect(hrefWith(['studios'], {})).toBe('#/studios');
+  });
+
+  it('a value with spaces and commas survives the round trip', () => {
+    const target = hrefWith(['companies'], { q: 'web design, kyiv' });
+    expect(parseQuery(target)).toEqual({ q: 'web design, kyiv' });
+  });
+});
+
+describe('a company filter in the address', () => {
+  it('survives the round trip through URL parameters', () => {
+    const filter: CompanyFilter = {
+      search: 'dental',
+      kind: ['smb', 'ecommerce'],
+      hasEmail: true,
+      hiring: false,
+      minScore: 5,
+      country: 'UA',
+    };
+    expect(filterFromParams(filterParams(filter))).toEqual(filter);
+  });
+
+  it('ignores what is not the filter', () => {
+    expect(filterFromParams({ sort: 'name', minScore: 'abc', market: 'ua' })).toEqual({ market: 'ua' });
   });
 });

@@ -121,6 +121,25 @@ export interface SiteSignals {
   /** The most recent date found on a blog or news page. */
   lastPostAt: number | null;
   techHints: string[];
+  /** The site's own one-line description (meta or Open Graph), for a company the catalog left without one. */
+  siteDescription: string | null;
+}
+
+/**
+ * What the site says it does, from its meta description. Taken as written: a page's own words,
+ * not a guess (rule 6). Too short to say anything, or a leftover theme placeholder, is no answer.
+ */
+export function extractSiteDescription(html: string): string | null {
+  const $ = cheerio.load(html);
+  const raw =
+    $('meta[name="description"]').attr('content') ??
+    $('meta[property="og:description"]').attr('content') ??
+    $('meta[name="twitter:description"]').attr('content') ??
+    '';
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (text.length < 30) return null;
+  if (/^(just another wordpress site|my wordpress blog|default description)/i.test(text)) return null;
+  return text.slice(0, 500);
 }
 
 /** HTML into lines of visible text. Scripts and styles are dropped, tags become line breaks. */
@@ -400,6 +419,7 @@ export function extractSignals(html: string): SiteSignals {
     lastPostAt: isoDates.length > 0 ? Math.max(...isoDates.filter(Number.isFinite)) : null,
     // Markup and text together: the first tells what the site is built on, the second what they can do.
     techHints: detectStack(html),
+    siteDescription: extractSiteDescription(html),
   };
 }
 
@@ -661,6 +681,14 @@ export async function saveEnrichment(result: EnrichResult): Promise<{ added: num
   patch.needsBrowser = !hasEmail && (result.clientRendered || !result.reachable);
 
   if (result.signals) {
+    if (result.signals.siteDescription) {
+      const [current] = await db
+        .select({ description: companies.description })
+        .from(companies)
+        .where(eq(companies.id, result.companyId));
+      // A catalog description is kept: it was written about the company, the meta tag for search engines.
+      if (!current?.description?.trim()) patch.description = result.signals.siteDescription;
+    }
     // Signs of life are stored, not just computed: scoring relies on them.
     if (result.signals.copyrightYear) patch.copyrightYear = result.signals.copyrightYear;
     if (result.signals.lastPostAt) patch.lastPostAt = result.signals.lastPostAt;

@@ -1,21 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Group,
-  Paper,
-  Skeleton,
-  Stack,
-  Table,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Alert, Badge, Button, Group, Paper, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Play } from 'lucide-react';
-import { Dot } from '../components/statuses';
+import { Briefcase, Building2, Database, Landmark, Play, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { api, type SourceRow } from '../lib/api';
+import { PageHeader, StatStrip } from '../components/ui';
 
 function when(ms: number | undefined): string {
   if (!ms) return 'never';
@@ -63,18 +51,12 @@ function shorten(message: string): string {
     .slice(0, 300);
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <Box>
-      <Text size="xs" tt="uppercase" fw={500} c="dimmed" style={{ letterSpacing: '0.04em' }}>
-        {label}
-      </Text>
-      <Text size="xl" fw={600} c={color} className="tabular">
-        {value}
-      </Text>
-    </Box>
-  );
-}
+/** What a source feeds: companies from a catalog, demand, or only the hiring signal. */
+const KINDS: Record<string, { label: string; icon: LucideIcon }> = {
+  catalog: { label: 'catalog', icon: Building2 },
+  lead: { label: 'demand', icon: Landmark },
+  board: { label: 'hiring signal', icon: Briefcase },
+};
 
 export function SourcesPage() {
   const client = useQueryClient();
@@ -90,125 +72,146 @@ export function SourcesPage() {
       notifications.show({ color: 'red', title: id, message: String(mutationError) }),
   });
 
-  if (error) {
-    return (
-      <Box p="lg">
-        <Alert color="red" title="Could not read source status">
-          {error instanceof Error ? error.message : String(error)}
-        </Alert>
-      </Box>
-    );
-  }
+  const header = (
+    <PageHeader
+      icon={Database}
+      title="Sources"
+      description="Adapter health and manual runs. An empty result after a non-empty history is flagged: scrapers break quietly and look like they work."
+    />
+  );
 
-  if (isLoading || !data) {
+  if (error || isLoading || !data) {
     return (
-      <Box p="lg">
-        <Skeleton h={360} />
-      </Box>
+      <>
+        {header}
+        {error ? (
+          <Alert color="red" m="lg" title="Could not read source status">
+            {error instanceof Error ? error.message : String(error)}
+          </Alert>
+        ) : (
+          <Text size="sm" c="dimmed" p="lg">
+            loading
+          </Text>
+        )}
+      </>
     );
   }
 
   const broken = data.filter((row) => row.lastRun?.status === 'warn' || row.lastRun?.status === 'error');
+  const never = data.filter((row) => !row.lastRun);
 
   return (
-    <Stack gap="md" p="lg">
-      <Paper p="lg">
-        <Group gap="xl">
-          <Stat label="adapters" value={data.length} />
-          <Stat label="need attention" value={broken.length} color={broken.length ? 'red.8' : undefined} />
-          <Text size="sm" c="dimmed" maw={360} ml="auto">
-            An empty result after a non-empty history is flagged as an error: scrapers break quietly
-            and look like they work.
-          </Text>
-        </Group>
-      </Paper>
+    <>
+      {header}
+      <Stack gap="md" p="lg">
+        <StatStrip
+          items={[
+            { label: 'adapters', value: data.length },
+            { label: 'working', value: data.length - broken.length - never.length, color: 'green.7' },
+            { label: 'need attention', value: broken.length, color: broken.length ? 'red.7' : undefined },
+            { label: 'never run', value: never.length, color: never.length ? 'gray.6' : undefined },
+          ]}
+        />
 
-      <Paper style={{ overflow: 'hidden' }}>
-        <Table layout="fixed">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>source</Table.Th>
-              <Table.Th w={110}>kind</Table.Th>
-              <Table.Th w={150}>last run</Table.Th>
-              <Table.Th w={190}>status</Table.Th>
-              <Table.Th w={110} ta="right">
-                found
-              </Table.Th>
-              <Table.Th w={100} ta="right">
-                new
-              </Table.Th>
-              <Table.Th>errors</Table.Th>
-              <Table.Th w={140} />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {data.map((row: SourceRow) => {
-              const status = row.lastRun?.status;
-              const bad = status === 'warn' || status === 'error';
-              const busy = run.isPending && run.variables === row.id;
+        <Paper style={{ overflow: 'hidden' }}>
+          <Table layout="fixed">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>source</Table.Th>
+                <Table.Th w={150}>feeds</Table.Th>
+                <Table.Th w={150}>last run</Table.Th>
+                <Table.Th w={190}>status</Table.Th>
+                <Table.Th w={110} ta="right">
+                  found
+                </Table.Th>
+                <Table.Th w={100} ta="right">
+                  new
+                </Table.Th>
+                <Table.Th>errors</Table.Th>
+                <Table.Th w={140} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {data.map((row: SourceRow) => {
+                const status = row.lastRun?.status;
+                const bad = status === 'warn' || status === 'error';
+                const busy = run.isPending && run.variables === row.id;
 
-              return (
-                <Table.Tr key={row.id} bg={bad ? 'red.0' : undefined}>
-                  <Table.Td>
-                    <Text fw={500}>{row.id}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c="dimmed">
-                      {row.kind}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{when(row.lastRun?.startedAt)}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap={8} wrap="nowrap">
-                      <Dot color={statusColor(row.lastRun)} />
-                      <Text size="sm" truncate>
+                return (
+                  <Table.Tr key={row.id} bg={bad ? 'red.0' : undefined}>
+                    <Table.Td>
+                      <Text fw={600} size="sm" className="mono">
+                        {row.id}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <KindLabel kind={row.kind} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" className="mono" c="gray.7">
+                        {when(row.lastRun?.startedAt)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="dot" color={statusColor(row.lastRun)} maw="100%">
                         {statusLabel(row.lastRun)}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      <Text size="sm" className="mono">
+                        {row.lastRun?.itemsFound ?? ''}
                       </Text>
-                    </Group>
-                  </Table.Td>
-                  <Table.Td ta="right">
-                    <Text size="sm" className="tabular">
-                      {row.lastRun?.itemsFound ?? ''}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td ta="right">
-                    <Text size="sm" className="tabular">
-                      {row.lastRun?.itemsNew ?? ''}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {row.lastRun?.errors.length ? (
-                      <Tooltip label={row.lastRun.errors.map(shorten).join('; ')} multiline w={420}>
-                        <Badge color="red">{row.lastRun.errors.length}, hover to read</Badge>
-                      </Tooltip>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        -
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      <Text size="sm" className="mono" c={row.lastRun?.itemsNew ? 'green.7' : undefined}>
+                        {row.lastRun?.itemsNew ?? ''}
                       </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group justify="flex-end">
-                      <Button
-                        variant="default"
-                        loading={busy}
-                        disabled={run.isPending && !busy}
-                        leftSection={<Play size={14} />}
-                        onClick={() => run.mutate(row.id)}
-                        title={row.requiresSlug ? 'works only for companies with a saved slug' : undefined}
-                      >
-                        Run
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      </Paper>
-    </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      {row.lastRun?.errors.length ? (
+                        <Tooltip label={row.lastRun.errors.map(shorten).join('; ')} multiline w={420}>
+                          <Badge color="red" leftSection={<TriangleAlert size={11} />}>
+                            {row.lastRun.errors.length}, hover to read
+                          </Badge>
+                        </Tooltip>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          -
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group justify="flex-end">
+                        <Button
+                          variant="default"
+                          loading={busy}
+                          disabled={run.isPending && !busy}
+                          leftSection={<Play size={14} />}
+                          onClick={() => run.mutate(row.id)}
+                          title={row.requiresSlug ? 'works only for companies with a saved slug' : undefined}
+                        >
+                          Run
+                        </Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      </Stack>
+    </>
+  );
+}
+
+function KindLabel({ kind }: { kind: string }) {
+  const known = KINDS[kind];
+  const Icon = known?.icon ?? Database;
+  return (
+    <Group gap={6} wrap="nowrap" c="gray.7">
+      <Icon size={14} strokeWidth={1.75} />
+      <Text size="sm">{known?.label ?? kind}</Text>
+    </Group>
   );
 }

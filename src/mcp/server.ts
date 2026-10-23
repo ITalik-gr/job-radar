@@ -500,13 +500,19 @@ export function createMcpServer(): McpServer {
         source: z.string().optional().describe('prozorro, ain, devua'),
         status: z.enum(LEAD_STATUSES).optional(),
         includeClosed: z.boolean().default(false).describe('Also expired tenders'),
+        search: z.string().optional().describe('Substring of the title, text or buyer name'),
+        minBudget: z.number().optional().describe('In the lead currency, UAH for Prozorro. A lead without a budget does not pass'),
+        maxBudget: z.number().optional(),
+        minFit: z.number().min(0).max(100).optional().describe('Model fit for a solo developer, 0 to 100'),
+        deadlineDays: z.number().int().min(0).optional().describe('Deadline within this many days'),
+        sort: z.enum(['deadline', 'budget', 'fit', 'new']).default('deadline'),
         limit: z.number().int().min(1).max(200).default(30),
       },
       annotations: read,
     },
-    async ({ source, status, includeClosed, limit }) =>
+    async ({ source, status, includeClosed, limit, ...filters }) =>
       json(
-        (await listLeads({ source, status, open: !includeClosed, limit })).map(({ text, ...row }) => ({
+        (await listLeads({ source, status, open: !includeClosed, limit, ...filters })).map(({ text, ...row }) => ({
           ...row,
           text: text && text.length > 400 ? `${text.slice(0, 400)}...` : text,
         })),

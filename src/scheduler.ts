@@ -11,6 +11,7 @@ import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
 import { audit } from './pipeline/audit.js';
 import { classifyCompanies, classifyLeads } from './pipeline/classify.js';
+import { fitCompanies } from './pipeline/fit.js';
 import { decisionsAvailable } from './lib/decide.js';
 import { notify } from './notify/telegram.js';
 import { isOverdue, lastSuccessAt } from './lib/runs.js';
@@ -27,6 +28,8 @@ export const SCHEDULE = {
   audit: '15 */6 * * *',
   /** Industry and segment for companies the rules could not place, after enrichment ran. */
   classify: '45 */6 * * *',
+  /** Lead fit from the model, a small batch an hour, so the daily call cap is never eaten in one go. */
+  fit: '50 * * * *',
   catalogs: '0 4 * * 1',
   discovery: '0 5 * * 2',
   /**
@@ -148,6 +151,11 @@ export function startScheduler(): void {
   cron.schedule(
     SCHEDULE.classify,
     () => void (decisionsAvailable() && safely('classify', () => classifyCompanies({ limit: 40 }))),
+    { timezone },
+  );
+  cron.schedule(
+    SCHEDULE.fit,
+    () => void (decisionsAvailable() && safely('fit', () => fitCompanies({ limit: 8 }))),
     { timezone },
   );
   cron.schedule(SCHEDULE.discovery, () => void safely('discover', () => discover({ limit: 40 })), { timezone });
