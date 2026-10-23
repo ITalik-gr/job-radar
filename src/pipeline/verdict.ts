@@ -1,8 +1,8 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { getDb } from '../db/client.js';
-import { companies, companyState, contacts, llmCache, outreach, siteAudits } from '../db/schema.js';
+import { companies, companyState, contacts, leads, llmCache, outreach, siteAudits } from '../db/schema.js';
 import { log } from '../lib/log.js';
 import { callModelWith, extractJson, hash, noteLlmCall, remainingBudget } from '../lib/llm.js';
 import { hiringNow } from './hiring.js';
@@ -16,6 +16,7 @@ import {
   type OutreachTarget,
 } from './outreach.js';
 import { scoreCompany } from './company-score.js';
+import { rules } from './rules.js';
 
 /**
  * The company verdict: which template to approach it with and what to hook onto.
@@ -126,10 +127,29 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
   const people = await db.select().from(contacts).where(eq(contacts.companyId, companyId));
 
   const [audit] = await db
-    .select({ issues: siteAudits.issues })
+    .select({
+      issues: siteAudits.issues,
+      perfScore: siteAudits.perfScore,
+      mobileOk: siteAudits.mobileOk,
+      cms: siteAudits.cms,
+    })
     .from(siteAudits)
     .where(eq(siteAudits.companyId, companyId))
     .orderBy(desc(siteAudits.checkedAt))
+    .limit(1);
+
+  const [openLead] = await db
+    .select({ title: leads.title })
+    .from(leads)
+    .where(
+      and(
+        eq(leads.companyId, companyId),
+        isNull(leads.closedAt),
+        ne(leads.status, 'skipped'),
+        sql`(${leads.deadlineAt} is null or ${leads.deadlineAt} > ${Date.now()})`,
+        sql`(${leads.fit} is null or ${leads.fit} >= ${rules().companies.minLeadFit})`,
+      ),
+    )
     .limit(1);
 
   const history = await db
@@ -142,6 +162,9 @@ export async function collectCompany(companyId: number): Promise<CompanyBlock> {
   const breakdown = scoreCompany({
     company,
     status: state?.status ?? null,
+    audit: audit ?? null,
+    openLead: openLead ?? null,
+    contacts: people,
   });
 
   const day = (value: number | null) => (value ? new Date(value).toISOString().slice(0, 10) : null);

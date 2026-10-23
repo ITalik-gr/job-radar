@@ -36,3 +36,6 @@ imports/**/*_files/
 
 # Local worker secrets for wrangler dev
 .dev.vars*
+
+# Browser screenshots and snapshots from UI checks
+.playwright-mcp/

@@ -219,6 +219,16 @@ export function RulesPage() {
     reviewsBonus: 1,
     noReviewsPenalty: -1,
   };
+  // Same reason and same defaults as the Zod schema: the site section came after the config.
+  const site = draft.companies.site ?? {
+    buyerKinds: ['smb', 'ecommerce', 'public'],
+    perIssue: 2,
+    maxIssues: 3,
+    noSite: 4,
+    modernPlatforms: ['next.js', 'astro', 'nuxt', 'gatsby'],
+    fastScore: 80,
+    modernFastSite: -4,
+  };
   const patchCompanies = (part: Partial<Rules['companies']>) =>
     setDraft({ ...draft, companies: { ...draft.companies, ...part } });
 
@@ -291,6 +301,53 @@ export function RulesPage() {
             allowDecimal
             allowNegative
           />
+          <NumberInput
+            label="Open tender"
+            description="deadline still ahead"
+            value={draft.companies.openLead ?? 6}
+            onChange={(value) => patchCompanies({ openLead: Number(value) || 0 })}
+            w={200}
+            allowDecimal
+            allowNegative
+          />
+          <NumberInput
+            label="Named contact"
+            description="a person with an email"
+            value={draft.companies.namedContact ?? 2}
+            onChange={(value) => patchCompanies({ namedContact: Number(value) || 0 })}
+            w={200}
+            allowDecimal
+            allowNegative
+          />
+        </Group>
+      </Card>
+
+      <Card>
+        <SectionTitle
+          title="Site audit"
+          hint={`for ${site.buyerKinds.join(', ')}: a weak site is the reason to write, stack weights and the old footer penalty do not apply`}
+        />
+        <Group gap="lg" align="flex-end" wrap="wrap">
+          {(
+            [
+              ['perIssue', 'Per audit issue', ''],
+              ['maxIssues', 'Issues counted', 'at most'],
+              ['noSite', 'No site', 'with a phone or email'],
+              ['fastScore', 'Fast from', 'PageSpeed score'],
+              ['modernFastSite', 'Fresh fast site', site.modernPlatforms.join(', ')],
+            ] as const
+          ).map(([key, label, description]) => (
+            <NumberInput
+              key={key}
+              label={label}
+              description={description || undefined}
+              value={site[key]}
+              onChange={(value) => patchCompanies({ site: { ...site, [key]: Number(value) || 0 } })}
+              w={168}
+              allowDecimal
+              allowNegative
+            />
+          ))}
         </Group>
       </Card>
 

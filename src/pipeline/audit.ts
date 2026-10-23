@@ -5,14 +5,17 @@ import { companies, companyState, siteAudits, type Company } from '../db/schema.
 import { fetchText, HttpError } from '../lib/http.js';
 import { log } from '../lib/log.js';
 import { withRun } from '../lib/runs.js';
+import pLimit from 'p-limit';
+import { detectTech } from './discover.js';
 import { pickLanguage, type Language } from './outreach.js';
 
 /**
  * Site audit, section 5 of CLAUDE.md: the concrete reason to write.
  *
  * One PageSpeed Insights call per site (mobile strategy) gives the performance score, LCP, the
- * viewport check and the final URL after redirects. Copyright year and platform are not fetched
- * again: enrichment already stored them on the company.
+ * viewport check, the final URL after redirects, real-user LCP when Chrome has enough visits, and
+ * the list of requests the page made, which names its platform. The copyright year comes from
+ * enrichment, not a second crawl.
  *
  * Issues are letter-ready phrases in the letter language of the company (Ukrainian for UA, as
  * `pickLanguage` decides), because the first one goes straight into `{{finding}}`. Only measured
@@ -24,9 +27,14 @@ const API_URL = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
 /** A site is audited again after this long: a slow site rarely gets fixed within a quarter. */
 export const REAUDIT_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
 
-/** Google's own "poor" thresholds for mobile: LCP over 4 s, performance under 50. */
-const SLOW_LCP_MS = 4000;
-const POOR_SCORE = 50;
+/**
+ * Real visitors: Google's own "poor" line for LCP. Lab numbers come from a throttled budget phone
+ * on slow 4G, where even stripe.com takes 6.7 s, so the lab line is far stricter: only a site that
+ * is slow by any measure becomes a sentence in a letter.
+ */
+const SLOW_FIELD_LCP_MS = 4000;
+const SLOW_LAB_LCP_MS = 10_000;
+const POOR_LAB_SCORE = 30;
 /** A footer two years behind is a site nobody touches. */
 const STALE_COPYRIGHT_YEARS = 2;
 
@@ -49,6 +57,12 @@ const CMS = [
   'gatsby',
 ];
 
+/**
+ * Sites audited at once. One PageSpeed call takes about half a minute inside Google, and the API
+ * allows hundreds a minute, so a few in parallel cost nothing and cut a batch to a third.
+ */
+const PARALLEL = 3;
+
 /** Companies not worth a PageSpeed call: the owner already decided about them. */
 const SKIP_STATUSES = ['blacklist', 'rejected_by_me', 'rejected_by_them'];
 
@@ -60,20 +74,27 @@ export class PageUnreachableError extends Error {}
 
 export interface PageSpeedResult {
   finalUrl: string | null;
-  /** 0 to 100, mobile. */
+  /** 0 to 100, mobile, lab. */
   perfScore: number | null;
+  /** Lab LCP on a throttled phone. */
   lcpMs: number | null;
+  /** 75th percentile LCP of real Chrome visitors, page or origin. Null for most small sites. */
+  fieldLcpMs: number | null;
   mobileOk: boolean | null;
   https: boolean | null;
+  /** Platform seen in the page's own requests (wp-content, tildacdn, ...). */
+  cms: string | null;
 }
 
 interface LighthouseAudit {
   score?: number | null;
   numericValue?: number;
+  details?: { items?: { url?: string }[] };
 }
 
 interface PageSpeedResponse {
   error?: { code?: number; message?: string };
+  loadingExperience?: { metrics?: { LARGEST_CONTENTFUL_PAINT_MS?: { percentile?: number } } };
   lighthouseResult?: {
     finalUrl?: string;
     finalDisplayedUrl?: string;
@@ -88,10 +109,7 @@ interface PageSpeedResponse {
  * https. The key goes in a header, never here: a failed request's URL ends up in the `runs` table.
  */
 export function pageSpeedUrl(domain: string): string {
-  const params = new URLSearchParams({ url: `http://${domain}`, strategy: 'mobile' });
-  // The viewport audit sits in best practices since Lighthouse 12, not in performance.
-  params.append('category', 'performance');
-  params.append('category', 'best-practices');
+  const params = new URLSearchParams({ url: `http://${domain}`, strategy: 'mobile', category: 'performance' });
   return `${API_URL}?${params}`;
 }
 
@@ -115,21 +133,30 @@ export function parsePageSpeed(payload: string): PageSpeedResult {
   const finalUrl = lighthouse.finalDisplayedUrl ?? lighthouse.finalUrl ?? null;
   const score = lighthouse.categories?.performance?.score;
   const lcp = audits['largest-contentful-paint']?.numericValue;
-  const viewport = audits.viewport?.score;
-  const onHttps = audits['is-on-https']?.score;
+  const fieldLcp = response.loadingExperience?.metrics?.LARGEST_CONTENTFUL_PAINT_MS?.percentile;
+  // Lighthouse 13 replaced the `viewport` audit with `viewport-insight`. Anything between pass and
+  // fail stays unknown: "no mobile version" is too strong a claim to make on a partial score.
+  const viewport = (audits['viewport-insight'] ?? audits.viewport)?.score;
+  const requests = (audits['network-requests']?.details?.items ?? []).map((item) => item.url ?? '');
 
   return {
     finalUrl,
     perfScore: typeof score === 'number' ? Math.round(score * 100) : null,
     lcpMs: typeof lcp === 'number' ? Math.round(lcp) : null,
-    mobileOk: typeof viewport === 'number' ? viewport === 1 : null,
-    // Where the site ended up decides https; the audit is a fallback, it also flags mixed content.
-    https: finalUrl ? finalUrl.startsWith('https:') : typeof onHttps === 'number' ? onHttps === 1 : null,
+    fieldLcpMs: typeof fieldLcp === 'number' ? fieldLcp : null,
+    mobileOk: viewport === 1 ? true : viewport === 0 ? false : null,
+    https: finalUrl ? finalUrl.startsWith('https:') : null,
+    cms: cmsFrom(requests),
   };
 }
 
-export function cmsFrom(techHints: string[]): string | null {
-  return CMS.find((name) => techHints.includes(name)) ?? null;
+/**
+ * The platform from request URLs, not from the company's stack hints: those include what a site
+ * says in words, and stripe.com mentioning Shopify made it a Shopify site.
+ */
+export function cmsFrom(requestUrls: string[]): string | null {
+  const found = detectTech(requestUrls.join('\n'));
+  return CMS.find((name) => found.includes(name)) ?? null;
 }
 
 export interface IssueInput extends PageSpeedResult {
@@ -154,14 +181,30 @@ export function auditIssues(input: IssueInput, language: Language): string[] {
   if (input.mobileOk === false) {
     issues.push(uk ? 'сайт не має мобільної версії' : 'the site has no mobile layout');
   }
-  if (input.lcpMs !== null && input.lcpMs > SLOW_LCP_MS) {
-    const value = uk ? seconds(input.lcpMs) : seconds(input.lcpMs).replace(',', '.');
-    issues.push(uk ? `головна сторінка вантажиться ${value} с на телефоні` : `the home page takes ${value} s to load on a phone`);
-  } else if (input.perfScore !== null && input.perfScore < POOR_SCORE) {
+  const value = (ms: number) => (uk ? seconds(ms) : seconds(ms).replace(',', '.'));
+  /*
+   * Real visitors outrank the lab: when Chrome has field data and it is fine, a bad lab run says
+   * nothing a site owner would recognise. Each phrase names where its number comes from.
+   */
+  if (input.fieldLcpMs !== null) {
+    if (input.fieldLcpMs > SLOW_FIELD_LCP_MS) {
+      issues.push(
+        uk
+          ? `відвідувачі з телефона чекають на головну сторінку ${value(input.fieldLcpMs)} с (дані Chrome)`
+          : `visitors on phones wait ${value(input.fieldLcpMs)} s for the home page (Chrome data)`,
+      );
+    }
+  } else if (input.lcpMs !== null && input.lcpMs > SLOW_LAB_LCP_MS) {
     issues.push(
       uk
-        ? `PageSpeed оцінює швидкість сайту на телефоні в ${input.perfScore} зі 100`
-        : `PageSpeed rates the site ${input.perfScore} out of 100 on a phone`,
+        ? `у тесті Google PageSpeed головна сторінка вантажиться ${value(input.lcpMs)} с на телефоні`
+        : `in the Google PageSpeed test the home page takes ${value(input.lcpMs)} s to load on a phone`,
+    );
+  } else if (input.perfScore !== null && input.perfScore < POOR_LAB_SCORE) {
+    issues.push(
+      uk
+        ? `Google PageSpeed оцінює швидкість сайту на телефоні в ${input.perfScore} зі 100`
+        : `Google PageSpeed rates the site ${input.perfScore} out of 100 on a phone`,
     );
   }
   if (input.https === false) {
@@ -265,13 +308,24 @@ export async function saveAudit(company: Company, result: PageSpeedResult, now =
     mobileOk: result.mobileOk,
     perfScore: result.perfScore,
     lcpMs: result.lcpMs,
-    cms: cmsFrom(company.techHints),
+    fieldLcpMs: result.fieldLcpMs,
+    cms: result.cms,
     copyrightYear: company.copyrightYear,
     issues,
   };
   await getDb().insert(siteAudits).values(row);
   return row;
 }
+
+const EMPTY_RESULT: PageSpeedResult = {
+  finalUrl: null,
+  perfScore: null,
+  lcpMs: null,
+  fieldLcpMs: null,
+  mobileOk: null,
+  https: null,
+  cms: null,
+};
 
 export interface AuditStats {
   itemsFound: number;
@@ -291,7 +345,11 @@ export async function audit(options: AuditOptions = {}): Promise<AuditStats> {
     const targets = await candidatesForAudit(options);
     const stats: AuditStats = { itemsFound: targets.length, itemsNew: 0, errors: [], audited: 0, withIssues: 0, remaining: 0 };
 
-    for (const company of targets) {
+    const limit = pLimit(PARALLEL);
+    let stopped = false;
+
+    await Promise.all(targets.map((company) => limit(async () => {
+      if (stopped) return;
       try {
         const saved = await saveAudit(company, await runPageSpeed(company.domain));
         stats.audited += 1;
@@ -305,13 +363,13 @@ export async function audit(options: AuditOptions = {}): Promise<AuditStats> {
          * No speed or layout issue is claimed: a page Google could not open may open for a person.
          */
         if (error instanceof PageUnreachableError) {
-          await saveAudit(company, { finalUrl: null, perfScore: null, lcpMs: null, mobileOk: null, https: null });
+          await saveAudit(company, EMPTY_RESULT);
         }
         log.warn({ domain: company.domain, err: message }, 'site audit failed');
         // The quota or the key is gone: every next call would fail the same way.
-        if (error instanceof HttpError && (error.status === 429 || error.status === 403)) break;
+        if (error instanceof HttpError && (error.status === 429 || error.status === 403)) stopped = true;
       }
-    }
+    })));
 
     if (!options.domain) {
       const [left] = await getDb()

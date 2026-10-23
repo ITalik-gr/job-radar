@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
-import { companies, companyState, contacts, outreach, siteAudits, type Company } from '../db/schema.js';
+import { companies, companyState, contacts, leads as leadsTable, outreach, siteAudits, type Company } from '../db/schema.js';
 import { scoreCompany, type CompanyBreakdown } from './company-score.js';
 import { filterConditions, type CompanyFilter } from './filters.js';
 import { hiringNow } from './hiring.js';
@@ -184,6 +184,8 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
       companyId: siteAudits.companyId,
       checkedAt: siteAudits.checkedAt,
       perfScore: siteAudits.perfScore,
+      mobileOk: siteAudits.mobileOk,
+      cms: siteAudits.cms,
       issues: siteAudits.issues,
     })
     .from(siteAudits)
@@ -193,13 +195,36 @@ async function scoreAll(filters: StudioFilters): Promise<StudioCard[]> {
   const latestAudit = new Map<number, (typeof auditRows)[number]>();
   for (const row of auditRows) if (!latestAudit.has(row.companyId)) latestAudit.set(row.companyId, row);
 
+  // Open tenders with the deadline ahead, the nearest per company.
+  const leadRows = await db
+    .select({ companyId: leadsTable.companyId, title: leadsTable.title })
+    .from(leadsTable)
+    .where(
+      and(
+        sql`${leadsTable.companyId} in ${chosen}`,
+        isNull(leadsTable.closedAt),
+        ne(leadsTable.status, 'skipped'),
+        sql`(${leadsTable.deadlineAt} is null or ${leadsTable.deadlineAt} > ${now})`,
+        // A tender the model rated as not for a solo developer is not demand worth a score.
+        sql`(${leadsTable.fit} is null or ${leadsTable.fit} >= ${rules().companies.minLeadFit})`,
+      ),
+    )
+    .orderBy(sql`coalesce(${leadsTable.deadlineAt}, 9e15)`);
+
+  const openLead = new Map<number, { title: string }>();
+  for (const row of leadRows) if (row.companyId && !openLead.has(row.companyId)) openLead.set(row.companyId, row);
+
   const cards = rows
     .map((row) => {
+      const audit = latestAudit.get(row.company.id);
       const breakdown: CompanyBreakdown = scoreCompany({
         company: row.company,
         status: row.status,
+        audit: audit ?? null,
+        openLead: openLead.get(row.company.id) ?? null,
+        contacts: byCompany.get(row.company.id) ?? [],
+        now,
       });
-      const audit = latestAudit.get(row.company.id);
 
       return {
         companyId: row.company.id,

@@ -199,6 +199,16 @@ function Detail({ row, onClose }: { row: StudioCard; onClose: () => void }) {
                       speed {audit.perfScore}
                     </Badge>
                   )}
+                  {audit.fieldLcpMs !== null && (
+                    <Badge color={audit.fieldLcpMs <= 2500 ? 'green' : audit.fieldLcpMs <= 4000 ? 'yellow' : 'red'}>
+                      real visitors {(audit.fieldLcpMs / 1000).toFixed(1)} s
+                    </Badge>
+                  )}
+                  {audit.lcpMs !== null && (
+                    <Badge color="gray" variant="light">
+                      lab {(audit.lcpMs / 1000).toFixed(1)} s
+                    </Badge>
+                  )}
                   {audit.mobileOk === false && <Badge color="red">no mobile layout</Badge>}
                   {audit.https === false && <Badge color="red">no https</Badge>}
                   {audit.cms && <Badge color="gray">{audit.cms}</Badge>}

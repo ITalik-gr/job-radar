@@ -12,6 +12,8 @@ import { syncAllLeads } from './pipeline/leads.js';
 import { discover } from './pipeline/discover.js';
 import { enrich } from './pipeline/enrich.js';
 import { audit } from './pipeline/audit.js';
+import { classifyCompanies, classifyLeads } from './pipeline/classify.js';
+import { decisionsAvailable } from './lib/decide.js';
 import { notify } from './notify/telegram.js';
 import { refreshRulesFromDb } from './pipeline/rules.js';
 import { setAiBinding } from './lib/workers-ai.js';
@@ -83,6 +85,8 @@ async function runSchedule(cron: string): Promise<void> {
     await safely('enrich', () => enrich({ limit: 10 }));
     // One subrequest per site, but each takes half a minute of wall time inside Google.
     if (config.pagespeed.apiKey) await safely('audit', () => audit({ limit: 5 }));
+    // After enrichment, so a fresh description is what the model reads.
+    if (decisionsAvailable()) await safely('classify', () => classifyCompanies({ limit: 40 }));
     return;
   }
 
@@ -107,6 +111,7 @@ async function runSchedule(cron: string): Promise<void> {
     await safely('outreach:followups', () => prepareFollowups());
     // Tenders and funding news once a day: a tender lives for a week or two, news for a day.
     await safely('leads', () => syncAllLeads());
+    if (decisionsAvailable()) await safely('classify:leads', () => classifyLeads({ limit: 40 }));
     return;
   }
 

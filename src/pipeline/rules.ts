@@ -48,6 +48,28 @@ export const rulesSchema = z.object({
       .default({}),
     hourlyRateBonus: numberMap,
     /*
+     * Site audit and demand signals. Optional with defaults, like kindWeights: a config saved from
+     * the interface before these fields existed must stay valid.
+     */
+    site: z
+      .object({
+        /** Segments for whom a weak site is the reason to write, see `company-score.ts`. */
+        buyerKinds: z.array(z.string()).default(['smb', 'ecommerce', 'public']),
+        perIssue: z.number().default(2),
+        /** Issues counted at most, so four small ones do not outweigh a tender. */
+        maxIssues: z.number().int().default(3),
+        noSite: z.number().default(4),
+        modernPlatforms: z.array(z.string()).default(['next.js', 'astro', 'nuxt', 'gatsby']),
+        fastScore: z.number().default(80),
+        modernFastSite: z.number().default(-4),
+      })
+      .default({}),
+    /** An open tender with the deadline ahead: they asked for something. */
+    openLead: z.number().default(6),
+    /** Tenders the model rated under this fit (0 to 100) do not count; unrated ones do. */
+    minLeadFit: z.number().default(50),
+    namedContact: z.number().default(2),
+    /*
      * Catalog reputation. Optional with defaults, like kindWeights and stale: a config saved from the
      * interface before the field existed must stay valid.
      */

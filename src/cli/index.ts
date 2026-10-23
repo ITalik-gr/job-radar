@@ -18,6 +18,7 @@ import { BUSINESS_TYPES, DOMAINS } from '../sources/catalogs/dou.js';
 import { discover } from '../pipeline/discover.js';
 import { enrich } from '../pipeline/enrich.js';
 import { audit } from '../pipeline/audit.js';
+import { classifyCompanies, classifyLeads } from '../pipeline/classify.js';
 import { backfillKinds } from '../pipeline/company-kind.js';
 import { backfillCatalogFields } from '../pipeline/backfill-catalog.js';
 import { toCsv } from '../lib/csv.js';
@@ -397,6 +398,31 @@ program
       audited: stats.audited,
       'with issues': stats.withIssues,
       'still to audit': stats.remaining,
+      errors: stats.errors.length,
+    });
+    for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+  });
+
+program
+  .command('classify')
+  .description('Clef: industry and segment for companies the rules could not place, fit for open tenders')
+  .option('-n, --limit <number>', 'how many companies or tenders to ask about', '50')
+  .option('--leads', 'tenders instead of companies')
+  .action(async (opts: { limit: string; leads?: boolean }) => {
+    if (opts.leads) {
+      const stats = await classifyLeads({ limit: Number(opts.limit) });
+      console.table({ rated: stats.itemsNew, 'still to rate': stats.remaining, errors: stats.errors.length });
+      for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);
+      return;
+    }
+    const stats = await classifyCompanies({ limit: Number(opts.limit) });
+    console.table({
+      asked: stats.decided,
+      'industry set': stats.industrySet,
+      'segment set': stats.kindSet,
+      'industry from segment': stats.industryFromKind,
+      'unsure, left as is': stats.unsure,
+      'still to ask': stats.remaining,
       errors: stats.errors.length,
     });
     for (const error of stats.errors.slice(0, 10)) console.log(`  ! ${error}`);

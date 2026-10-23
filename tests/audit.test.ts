@@ -17,22 +17,37 @@ import {
 } from '../src/pipeline/audit.js';
 
 /*
- * `slow-site.json` and `unreachable.json` follow the documented PageSpeed v5 response with a made
- * up domain: without a key the quota is zero, so nothing could be recorded. `quota-error.json` is
- * a real keyless response. Replace the first two with recorded ones once the key is set.
+ * `webflow-site.json` is a recorded Lighthouse 13 response, trimmed to the fields the parser reads.
+ * `quota-error.json` is a real keyless response. `slow-site.json` and `unreachable.json` are made up
+ * in the same shape: a failing viewport and a dead domain are hard to find on demand.
  */
+const recorded = readFileSync('fixtures/pagespeed/webflow-site.json', 'utf8');
 const slow = readFileSync('fixtures/pagespeed/slow-site.json', 'utf8');
 const unreachable = readFileSync('fixtures/pagespeed/unreachable.json', 'utf8');
 const quota = readFileSync('fixtures/pagespeed/quota-error.json', 'utf8');
 
 describe('PageSpeed parsing', () => {
+  it('a recorded response: field LCP, viewport insight, platform from requests', () => {
+    expect(parsePageSpeed(recorded)).toEqual({
+      finalUrl: 'https://www.newscatcherapi.com/',
+      perfScore: 61,
+      lcpMs: 9806,
+      fieldLcpMs: 3588,
+      mobileOk: true,
+      https: true,
+      cms: 'webflow',
+    });
+  });
+
   it('a slow site without a viewport and https', () => {
     expect(parsePageSpeed(slow)).toEqual({
       finalUrl: 'http://slow-clinic.example.ua/',
       perfScore: 31,
-      lcpMs: 9422,
+      lcpMs: 12422,
+      fieldLcpMs: null,
       mobileOk: false,
       https: false,
+      cms: 'wordpress',
     });
   });
 
@@ -48,7 +63,15 @@ describe('PageSpeed parsing', () => {
 
   it('a missing audit stays null instead of a guess', () => {
     const bare = JSON.stringify({ lighthouseResult: { categories: {}, audits: {} } });
-    expect(parsePageSpeed(bare)).toEqual({ finalUrl: null, perfScore: null, lcpMs: null, mobileOk: null, https: null });
+    expect(parsePageSpeed(bare)).toEqual({
+      finalUrl: null,
+      perfScore: null,
+      lcpMs: null,
+      fieldLcpMs: null,
+      mobileOk: null,
+      https: null,
+      cms: null,
+    });
   });
 
   it('the key never goes into the URL', () => {
@@ -56,17 +79,25 @@ describe('PageSpeed parsing', () => {
     expect(url).not.toContain('key=');
     expect(url).toContain('url=http%3A%2F%2Fclinic.ua');
     expect(url).toContain('strategy=mobile');
-    expect(url).toContain('category=best-practices');
+    expect(url).toContain('category=performance');
   });
 });
 
 describe('Audit issues', () => {
-  const measured = { finalUrl: 'http://a.ua/', perfScore: 31, lcpMs: 9422, mobileOk: false, https: false };
+  const measured = {
+    finalUrl: 'http://a.ua/',
+    perfScore: 31,
+    lcpMs: 12422,
+    fieldLcpMs: null,
+    mobileOk: false,
+    https: false,
+    cms: null,
+  };
 
-  it('Ukrainian phrases, most convincing first', () => {
+  it('Ukrainian phrases, most convincing first, the lab number named as a test', () => {
     expect(auditIssues({ ...measured, copyrightYear: 2019, year: 2026 }, 'uk')).toEqual([
       'сайт не має мобільної версії',
-      'головна сторінка вантажиться 9,4 с на телефоні',
+      'у тесті Google PageSpeed головна сторінка вантажиться 12,4 с на телефоні',
       'сайт відкривається без HTTPS',
       'у футері досі copyright 2019',
     ]);
@@ -75,26 +106,36 @@ describe('Audit issues', () => {
   it('English phrases for a non UA company', () => {
     expect(auditIssues({ ...measured, copyrightYear: null, year: 2026 }, 'en')).toEqual([
       'the site has no mobile layout',
-      'the home page takes 9.4 s to load on a phone',
+      'in the Google PageSpeed test the home page takes 12.4 s to load on a phone',
       'the site opens without HTTPS',
     ]);
   });
 
-  it('a low score is named only when LCP is not the reason already', () => {
-    const issues = auditIssues({ ...measured, lcpMs: 2500, mobileOk: true, https: true, copyrightYear: 2025, year: 2026 }, 'uk');
-    expect(issues).toEqual(['PageSpeed оцінює швидкість сайту на телефоні в 31 зі 100']);
+  it('real visitors outrank the lab, both ways', () => {
+    const slowField = auditIssues({ ...measured, mobileOk: true, https: true, fieldLcpMs: 5200, copyrightYear: null }, 'uk');
+    expect(slowField).toEqual(['відвідувачі з телефона чекають на головну сторінку 5,2 с (дані Chrome)']);
+    // stripe.com: 6.7 s in the lab, fine for real visitors. Not a sentence for a letter.
+    const fastField = auditIssues({ ...measured, mobileOk: true, https: true, fieldLcpMs: 2100, copyrightYear: null }, 'uk');
+    expect(fastField).toEqual([]);
+  });
+
+  it('a lab LCP under 10 s is not an issue, a very low score is', () => {
+    const base = { ...measured, mobileOk: true, https: true, lcpMs: 8000, copyrightYear: 2025, year: 2026 };
+    expect(auditIssues({ ...base, perfScore: 38 }, 'uk')).toEqual([]);
+    expect(auditIssues({ ...base, perfScore: 22 }, 'uk')).toEqual(['Google PageSpeed оцінює швидкість сайту на телефоні в 22 зі 100']);
   });
 
   it('a good site and unknown fields give no issues', () => {
-    const good = { finalUrl: 'https://a.ua/', perfScore: 92, lcpMs: 1800, mobileOk: true, https: true };
+    const good = { ...measured, perfScore: 92, lcpMs: 1800, mobileOk: true, https: true };
     expect(auditIssues({ ...good, copyrightYear: 2026, year: 2026 }, 'uk')).toEqual([]);
-    const unknown = { finalUrl: null, perfScore: null, lcpMs: null, mobileOk: null, https: null };
+    const unknown = { ...measured, perfScore: null, lcpMs: null, mobileOk: null, https: null };
     expect(auditIssues({ ...unknown, copyrightYear: null }, 'uk')).toEqual([]);
   });
 
-  it('the platform comes from stack hints', () => {
-    expect(cmsFrom(['react', 'tailwind', 'wordpress'])).toBe('wordpress');
-    expect(cmsFrom(['tailwind'])).toBeNull();
+  it('the platform comes from request URLs, not from words', () => {
+    expect(cmsFrom(['https://a.ua/wp-content/themes/x.css', 'https://cdn.tailwindcss.com/'])).toBe('wordpress');
+    expect(cmsFrom(['https://static.tildacdn.com/js/tilda.js'])).toBe('tilda');
+    expect(cmsFrom(['https://a.ua/app.js'])).toBeNull();
   });
 });
 
@@ -119,7 +160,8 @@ describe('Audit run', () => {
       country: 'UA',
       market: 'ua',
       copyrightYear: 2019,
-      techHints: ['wordpress'],
+      // Words on the site, not its platform: the audit takes the platform from requests.
+      techHints: ['shopify'],
     });
     await add('Down', 'down.example.ua', { kind: 'smb', country: 'UA', market: 'ua' });
     const rejected = await add('Rejected', 'rejected.example.ua', { kind: 'smb', country: 'UA', market: 'ua' });
@@ -164,7 +206,8 @@ describe('Audit run', () => {
       https: false,
       mobileOk: false,
       perfScore: 31,
-      lcpMs: 9422,
+      lcpMs: 12422,
+      fieldLcpMs: null,
       cms: 'wordpress',
       copyrightYear: 2019,
     });
@@ -185,17 +228,20 @@ describe('Audit run', () => {
 
   it('a quota error stops the run instead of burning through the batch', async () => {
     await getDb().delete(siteAudits);
+    for (const index of [1, 2, 3]) {
+      await upsertCompany({ name: `Extra ${index}`, domain: `extra${index}.example.com`, source: 'places' });
+    }
     const calls: string[] = [];
     vi.stubGlobal('fetch', async (input: string) => {
       calls.push(input);
       return new Response(quota, { status: 429, headers: { 'content-type': 'application/json' } });
     });
     const stats = await audit({ limit: 10 });
+    expect(stats.itemsFound).toBe(6);
     expect(stats.audited).toBe(0);
-    expect(stats.errors).toHaveLength(1);
     expect(stats.errors[0]).toContain('Quota exceeded');
-    // One retry of the same call, no second company.
-    expect(new Set(calls).size).toBe(1);
+    // The three already in flight finish, none of the other three starts.
+    expect(new Set(calls).size).toBe(3);
   });
 
   it('without a key the audit refuses to run', async () => {

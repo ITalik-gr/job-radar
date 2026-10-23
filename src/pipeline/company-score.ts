@@ -12,9 +12,28 @@ export interface ScoreReason {
  * developer: what matters is segment, industry, size, service profile, stack and country.
  */
 
+/** What scoring needs from the latest site audit. */
+export interface AuditSignal {
+  issues: string[];
+  perfScore: number | null;
+  mobileOk: boolean | null;
+  cms: string | null;
+}
+
+export interface ContactSignal {
+  name: string | null;
+  email: string | null;
+  phone?: string | null;
+}
+
 export interface CompanyScoreInput {
   company: Company;
   status?: string | null;
+  /** Latest audit; undefined or null when the site was never audited. */
+  audit?: AuditSignal | null;
+  /** An open lead (tender) with its deadline still ahead. */
+  openLead?: { title: string } | null;
+  contacts?: ContactSignal[];
   /** The current time. A separate field so the staleness penalty can be tested. */
   now?: number;
 }
@@ -103,10 +122,45 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
     if (company.reviewsCount === 0) push('no reviews', reputation.noReviewsPenalty);
   }
 
-  const tech = company.techHints.map(normalize);
-  for (const [name, weight] of Object.entries(config.techWeights)) {
-    if (tech.includes(normalize(name))) push(`stack: ${name}`, weight);
+  /*
+   * Two kinds of company read the same site the opposite way. A studio on Next.js shares the
+   * owner's stack and is a good partner, a studio with a 2019 footer is dead. A clinic on Tilda
+   * with a 2019 footer is exactly who buys a new site, and a clinic with a fresh fast Next.js
+   * site has nothing to buy. So for site buyers stack weights and the stale penalty are skipped,
+   * and the audit speaks instead.
+   */
+  const siteBuyer = config.site.buyerKinds.includes(company.kind);
+
+  if (!siteBuyer) {
+    const tech = company.techHints.map(normalize);
+    for (const [name, weight] of Object.entries(config.techWeights)) {
+      if (tech.includes(normalize(name))) push(`stack: ${name}`, weight);
+    }
   }
+
+  if (siteBuyer) {
+    const site = config.site;
+    const audit = input.audit;
+    if (!company.domain) {
+      // No site at all is the strongest reason, as long as there is a way to reach them.
+      const reachable = Boolean(company.phone) || (input.contacts ?? []).some((c) => c.email || c.phone);
+      if (reachable) push('no site', site.noSite);
+    } else if (audit) {
+      const counted = audit.issues.slice(0, site.maxIssues);
+      for (const issue of counted) push(`site: ${issue}`, site.perIssue);
+      const modern = audit.cms !== null && site.modernPlatforms.includes(audit.cms);
+      if (modern && audit.issues.length === 0 && (audit.perfScore ?? 0) >= site.fastScore && audit.mobileOk !== false) {
+        push(`fresh fast ${audit.cms} site`, site.modernFastSite);
+      }
+    }
+  }
+
+  // Explicit demand: they asked for something, and the deadline has not passed.
+  if (input.openLead) push(`open tender: ${input.openLead.title.slice(0, 60)}`, config.openLead);
+
+  // A named person with an address is read by someone who decides; hello@ is read by whoever.
+  const named = (input.contacts ?? []).find((contact) => contact.name && contact.email);
+  if (named) push(`named contact ${named.name}`, config.namedContact);
 
   if (company.country) {
     const weight = config.countryWeights[company.country];
@@ -127,7 +181,7 @@ export function scoreCompany(input: CompanyScoreInput): CompanyBreakdown {
    * site rather than being guessed out of thin air.
    */
   const stale = config.stale;
-  if (stale) {
+  if (stale && !siteBuyer) {
     const thisYear = new Date(input.now ?? Date.now()).getFullYear();
     if (company.copyrightYear && thisYear - company.copyrightYear >= stale.copyrightYearsBehind) {
       push(`copyright ${company.copyrightYear}`, stale.copyrightPenalty);

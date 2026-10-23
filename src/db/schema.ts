@@ -490,7 +490,10 @@ export const siteAudits = sqliteTable(
     mobileOk: integer('mobile_ok', { mode: 'boolean' }),
     /** PageSpeed performance score, 0 to 100, mobile. */
     perfScore: integer('perf_score'),
+    /** Lab LCP on a throttled phone. */
     lcpMs: integer('lcp_ms'),
+    /** Real Chrome visitors, 75th percentile. Null when the site has too few visits for Google. */
+    fieldLcpMs: integer('field_lcp_ms'),
     cms: text('cms'),
     copyrightYear: integer('copyright_year'),
     /** Short, concrete, letter-ready: "loads 9 s on a phone", "no mobile layout". */

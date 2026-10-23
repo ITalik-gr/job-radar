@@ -41,7 +41,7 @@ The repository is public (MIT). Anyone can fork it and run their own copy.
    database (the Gmail refresh token included: a database backup must not be mailbox access).
 8. **English in code and documentation.** Comments, names, log messages, `.md` files.
    Ukrainian stays for chat with the owner, for letter templates, and for personal files that
-   are not committed. Interface language: not decided yet.
+   are not committed. Interface language: English (decided 2026-10-23).
 9. **Nothing personal about the owner in the repository.** No name, email, phone, signature
    in code defaults, worker address or account ids. All of that lives in `.env`,
    `wrangler.local.jsonc` (gitignored) and the database.
@@ -222,14 +222,17 @@ For every company with a domain:
   small list of concrete issues ("no mobile version", "loads 9 s on a phone", "copyright
   2019"). Issues feed the `{{finding}}` placeholder of a letter and the lead score
 
-How the audit works (`src/pipeline/audit.ts`, `pnpm cli audit`, every 6 hours in a small batch):
-one PageSpeed call per site, mobile, on `http://domain` so the final URL shows the https
-redirect. Copyright year and platform come from enrichment, not a second crawl. Issues are
-letter-ready phrases in the company's letter language, most convincing first, and only from
-measured fields. Traps: the keyless PageSpeed quota is zero, so no key means the audit is off;
-the key goes in the `x-goog-api-key` header, a failed URL lands in `runs`; a page Lighthouse
-could not load gets an empty audit row so it waits 90 days instead of heading every batch;
-a 429 or 403 stops the run. The success fixtures are made up, replace them with recorded ones.
+How the audit works (`src/pipeline/audit.ts`, `pnpm cli audit`, every 6 hours in a small batch,
+three sites in parallel): one PageSpeed call per site, mobile, performance only, on
+`http://domain` so the final URL shows the https redirect. Real-user LCP (Chrome field data)
+outranks the lab: the lab phone is so throttled that stripe.com takes 6.7 s there, so a lab number
+becomes an issue only past 10 s or under score 30, and the phrase says it is a PageSpeed test.
+The platform comes from the page's request URLs, never from stack hints (those include words on
+the site). Issues are letter-ready phrases in the company's letter language, most convincing
+first, only from measured fields. Traps: the keyless quota is zero, no key means the audit is off;
+the key goes in the `x-goog-api-key` header, a failed URL lands in `runs`; Lighthouse 13 renamed
+`viewport` to `viewport-insight`; a page Lighthouse could not load gets an empty audit row so it
+waits 90 days instead of heading every batch; a 429 or 403 stops the run.
 
 A business with no site at all is also a lead ("you have no site"), as long as it has a
 phone or an email.
@@ -248,6 +251,27 @@ verdict.
 - Named contact with email: plus. No way to reach: excluded from the queue
 - Reputation for agencies: rating, reviews
 - Blacklist and recent contact: excluded entirely
+
+Site buyers (`site.buyerKinds`, default smb, ecommerce, public) read a site the opposite way
+from agencies: for them stack weights and the old footer penalty are skipped and the audit
+speaks (each issue up to three, no site, fresh fast modern site as a minus). A studio on Next.js
+is a good partner, a clinic on Next.js has nothing to buy. Inputs come in `scoreAll`
+(`src/pipeline/studios.ts`): latest audit, nearest open lead, contacts.
+
+**Classification** (`src/pipeline/classify.ts`, `src/lib/decide.ts`, `pnpm cli classify`):
+Clef-flash picks from lists in `config/classify.json`, no generated text. Studio, design and
+outstaff get industry `agency` by rule, no call. Other companies missing an industry or still
+`unknown`, with some text (description of 40+ characters or tags), get the industry and segment
+questions; tenders get a fit from 0 to 100. An answer is applied when the picked option has at
+least `minProbability` and leads the runner-up by `minMargin`; the segment list leaves out smb,
+ecommerce and public. Tenders under `minLeadFit` (scoring rules) stop counting as an open tender.
+Traps: Clef's own `confidence` is entropy over all options and punishes long lists (a clear
+"agency" among 26 industries came back at 0.3), so it is not used; the same two questions are
+always asked, because the cache key covers the questions and a changed set re-asks a company;
+a batch never re-asks a cached input but re-applies cached answers for free, so a threshold change
+reaches old answers; a changed list changes the key and re-asks everyone; Clef cannot name
+things, so funding news still need a human to name the company; the REST body names the model
+short (`clef-flash`), the URL by full id.
 
 **Filters** on the Companies page and in MCP use one query shape: market, country, city,
 segment, industry, source, tags, status, has email, has named contact, has site, audit
@@ -329,8 +353,8 @@ contacts, leads, letter history), **Tenders** (open leads by deadline, funding n
 replies, follow-ups), **Templates**, **Rules**, **Sources** (adapter health, run now),
 **Operations**.
 
-Style: dense, dark, no animations, no half-screen empty states. A redesign is planned as the
-last stage.
+Style: dense, light (decided 2026-10-23), no animations, no half-screen empty states. A full
+redesign is stage 6, direction and tokens in `docs/DESIGN.md` (draft, not implemented).
 
 ---
 
@@ -350,9 +374,13 @@ owner's confirmation.
 4. ~~**Ukrainian sources**~~ Done 2026-10-22: `prozorro`, `places`, `ain`, `devua` with
    fixture tests, a `lead` source kind, companies without a site (migration 0019: `registry_code`,
    `place_id`, `contacts.phone`, countries as ISO codes), Tenders page
-5. **Site audit and lead scoring**, Clef for segment, industry and lead fit
-6. **Design pass**
-7. Later: Product Hunt, Brave1 and USF catalogs, state register, renaming the project
+5. ~~**Site audit and lead scoring**~~ Done 2026-10-23: PageSpeed audit with real-user LCP
+   first (migration 0020: `site_audits.field_lcp_ms`), letter-ready issues, site-buyer scoring,
+   open tender and named contact weights, Clef-flash for industry, segment and tender fit
+6. **Design pass**: direction in `docs/DESIGN.md` (Dub and ClickUp references, icons
+   everywhere), waiting for the owner's approval of the example boards
+7. Later: Product Hunt, Brave1 and USF catalogs, state register, renaming the project.
+   Ideas to discuss first: `docs/IDEAS.md` (problem collector from Reddit, X, Threads)
 
 Open items carried over: send window and day boundary follow `TZ` instead of a hardcoded
 Kyiv; worker crons are fixed UTC (digest shifts an hour after DST ends); the frontend was

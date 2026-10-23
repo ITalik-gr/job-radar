@@ -162,6 +162,13 @@ export const config = {
     get verdictModel() {
       return str('VERDICT_MODEL', str('OUTREACH_MODEL', 'claude-sonnet-5'));
     },
+    /**
+     * Clef decision model for classification (`src/lib/decide.ts`). Clef-flash is the cheap one;
+     * `@cf/cloudflare/clef` is the larger sibling for when flash gets a segment wrong too often.
+     */
+    get clefModel() {
+      return str('CLEF_MODEL', '@cf/cloudflare/clef-flash');
+    },
     /** Workers AI model. Llama 3.3 is the cheapest of those that hold strict JSON. */
     get workersModel() {
       return str('WORKERS_AI_MODEL', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');

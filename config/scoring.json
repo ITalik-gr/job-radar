@@ -110,6 +110,22 @@
       "reviewsBonus": 1,
       "noReviewsPenalty": -1
     },
+    "site": {
+      "_": "Site audit for segments that buy sites. For them stack weights and the stale penalty are skipped: a Tilda clinic with a 2019 footer is a lead, not a dead company. Each audit issue adds perIssue, up to maxIssues. A fresh fast site on a modern platform has nothing to sell.",
+      "buyerKinds": ["smb", "ecommerce", "public"],
+      "perIssue": 2,
+      "maxIssues": 3,
+      "noSite": 4,
+      "modernPlatforms": ["next.js", "astro", "nuxt", "gatsby"],
+      "fastScore": 80,
+      "modernFastSite": -4
+    },
+    "_openLead": "An open tender with the deadline still ahead: explicit demand, the strongest signal.",
+    "openLead": 6,
+    "_minLeadFit": "A tender the model rated under this fit (0 to 100) does not count as an open tender. Unrated tenders count.",
+    "minLeadFit": 50,
+    "_namedContact": "A named person with an email: the letter reaches someone who decides.",
+    "namedContact": 2,
     "hourlyRateBonus": {
       "_": "An agency's rate hints at budget. Very cheap ones will not pay, very expensive ones will not take outside work.",
       "$25 - $49 / hr": 1,

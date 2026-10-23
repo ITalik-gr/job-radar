@@ -47,6 +47,8 @@ export interface SiteAudit {
   mobileOk: boolean | null;
   perfScore: number | null;
   lcpMs: number | null;
+  /** Real Chrome visitors, 75th percentile; null for most small sites. */
+  fieldLcpMs: number | null;
   cms: string | null;
   copyrightYear: number | null;
   issues: string[];
@@ -307,6 +309,18 @@ export interface Rules {
     sizeWeights: Record<string, number>;
     hiring: number;
     hasCareersPage: number;
+    /** May be missing from a config saved before these existed, like reputation. */
+    openLead?: number;
+    namedContact?: number;
+    site?: {
+      buyerKinds: string[];
+      perIssue: number;
+      maxIssues: number;
+      noSite: number;
+      modernPlatforms: string[];
+      fastScore: number;
+      modernFastSite: number;
+    };
     /** Catalog reputation. May be missing from a config saved before it existed. */
     reputation?: {
       goodRating: number;

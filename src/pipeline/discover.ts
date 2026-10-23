@@ -36,7 +36,7 @@ export const TECH_MARKERS: [RegExp, string][] = [
   [/data-svelte|svelte-/i, 'svelte'],
   [/vue(\.runtime)?\.|data-v-app/i, 'vue'],
   [/shopify|cdn\.shopify/i, 'shopify'],
-  [/webflow/i, 'webflow'],
+  [/webflow|website-files\.com/i, 'webflow'],
   [/tilda|tildacdn/i, 'tilda'],
   [/images\.prom\.ua|\.prom\.st\//i, 'prom'],
   [/horoshop/i, 'horoshop'],

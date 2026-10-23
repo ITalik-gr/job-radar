@@ -45,6 +45,7 @@ import { fullStats } from '../pipeline/stats.js';
 import { discover } from '../pipeline/discover.js';
 import { browserQueue, enrich, saveBrowserFindings, type BrowserFindings } from '../pipeline/enrich.js';
 import { audit } from '../pipeline/audit.js';
+import { classifyCompanies, classifyLeads } from '../pipeline/classify.js';
 import { syncCatalog, syncDou, importFromBrowser } from '../pipeline/catalogs.js';
 import { companiesRoutes, pageFilters } from './companies.js';
 import { dailyQueue } from '../pipeline/daily-queue.js';
@@ -766,6 +767,16 @@ app.post('/api/enrich', async (c) => {
 app.post('/api/audit', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { limit?: number; domain?: string };
   return c.json(await audit({ limit: body.limit ?? 10, domain: body.domain }));
+});
+
+app.post('/api/classify', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  return c.json(await classifyCompanies({ limit: body.limit ?? 50 }));
+});
+
+app.post('/api/classify/leads', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+  return c.json(await classifyLeads({ limit: body.limit ?? 50 }));
 });
 
 app.post('/api/catalogs/dou/run', async (c) => {

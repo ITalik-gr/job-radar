@@ -145,6 +145,23 @@ const GROUPS: OperationGroup[] = [
         path: '/maintenance/backfill-catalog',
       },
       {
+        id: 'classify',
+        label: 'Classify companies',
+        hint: 'Clef: industry and segment where tags and sources gave none. Only confident answers are applied',
+        path: '/classify',
+        slow: true,
+        batch: { field: 'limit', size: 20 },
+        fields: [{ name: 'limit', label: 'companies', kind: 'number', def: 100 }],
+      },
+      {
+        id: 'classify-leads',
+        label: 'Rate tenders',
+        hint: 'Clef: how well an open tender fits a solo developer, 0 to 100',
+        path: '/classify/leads',
+        slow: true,
+        fields: [{ name: 'limit', label: 'tenders', kind: 'number', def: 50 }],
+      },
+      {
         id: 'embed',
         label: 'Compute vectors',
         hint: 'for finding similar companies, through Workers AI',

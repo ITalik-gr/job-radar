@@ -135,6 +135,7 @@ export function TendersPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={80}>deadline</Table.Th>
+                <Table.Th w={56}>fit</Table.Th>
                 <Table.Th>lead</Table.Th>
                 <Table.Th w={260}>company</Table.Th>
                 <Table.Th w={140} ta="right">
@@ -149,6 +150,19 @@ export function TendersPage() {
                 <Table.Tr key={lead.id} style={lead.status === 'skipped' ? { opacity: 0.5 } : undefined}>
                   <Table.Td>
                     <DaysLeft deadline={lead.deadlineAt} />
+                  </Table.Td>
+                  <Table.Td>
+                    {lead.fit === null ? (
+                      <Text size="sm" c="dimmed">
+                        -
+                      </Text>
+                    ) : (
+                      <Tooltip label="model estimate: how well the tender fits a solo developer">
+                        <Badge size="sm" color={lead.fit >= 67 ? 'green' : lead.fit >= 50 ? 'yellow' : 'gray'}>
+                          {lead.fit}
+                        </Badge>
+                      </Tooltip>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Tooltip label={lead.text ?? lead.title} multiline maw={520} openDelay={400}>

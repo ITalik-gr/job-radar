@@ -7,15 +7,14 @@
     "finalUrl": "http://slow-clinic.example.ua/",
     "mainDocumentUrl": "http://slow-clinic.example.ua/",
     "finalDisplayedUrl": "http://slow-clinic.example.ua/",
-    "lighthouseVersion": "12.8.2",
+    "lighthouseVersion": "13.5.0",
     "fetchTime": "2026-10-23T09:00:00.000Z",
     "runWarnings": [],
     "configSettings": {
       "formFactor": "mobile",
       "locale": "en-US",
       "onlyCategories": [
-        "performance",
-        "best-practices"
+        "performance"
       ]
     },
     "audits": {
@@ -24,9 +23,9 @@
         "title": "Largest Contentful Paint",
         "score": 0.02,
         "scoreDisplayMode": "numeric",
-        "numericValue": 9421.6,
+        "numericValue": 12421.6,
         "numericUnit": "millisecond",
-        "displayValue": "9.4 s"
+        "displayValue": "12.4 s"
       },
       "first-contentful-paint": {
         "id": "first-contentful-paint",
@@ -37,17 +36,34 @@
         "numericUnit": "millisecond",
         "displayValue": "4.1 s"
       },
-      "viewport": {
-        "id": "viewport",
-        "title": "Does not have a `<meta name=\"viewport\">` tag with `width` or `initial-scale`",
+      "viewport-insight": {
+        "id": "viewport-insight",
+        "title": "Optimize viewport for mobile",
         "score": 0,
-        "scoreDisplayMode": "metricSavings"
+        "scoreDisplayMode": "numeric",
+        "metricSavings": {
+          "INP": 300
+        }
       },
-      "is-on-https": {
-        "id": "is-on-https",
-        "title": "Does not use HTTPS",
-        "score": 0,
-        "scoreDisplayMode": "binary"
+      "network-requests": {
+        "id": "network-requests",
+        "title": "Network Requests",
+        "score": null,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "type": "table",
+          "items": [
+            {
+              "url": "http://slow-clinic.example.ua/"
+            },
+            {
+              "url": "http://slow-clinic.example.ua/wp-content/themes/clinic/style.css"
+            },
+            {
+              "url": "http://slow-clinic.example.ua/wp-includes/js/jquery/jquery.min.js"
+            }
+          ]
+        }
       }
     },
     "categories": {
@@ -55,11 +71,6 @@
         "id": "performance",
         "title": "Performance",
         "score": 0.31
-      },
-      "best-practices": {
-        "id": "best-practices",
-        "title": "Best Practices",
-        "score": 0.58
       }
     }
   },
